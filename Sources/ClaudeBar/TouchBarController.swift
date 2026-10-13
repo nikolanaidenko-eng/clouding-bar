@@ -2,8 +2,12 @@ import AppKit
 
 /// Owns what's on the Touch Bar. Two layouts:
 ///
-///   idle:        [esc] [✳] [usage]            [skills…] [⚡ skip perms]
-///   permission:  [esc] [✳] [message]  [Allow Once] [Always Allow] [Reject]
+///   idle:        [esc] [session ███░░ 42% · 1:23] [context 31%  ▲ 41k ▼ 2.3k]
+///                [caveman] [compact] [office]
+///   permission:  [esc] [message]  [Allow Once] [Always Allow] [Reject]
+///
+/// Kept narrow enough to share the Touch Bar with the Control Strip
+/// (volume, brightness) unless hideControlStrip is set in the config.
 ///
 /// Presented system-modally via SystemModalTouchBar (see that file for the
 /// fine print). The physical Esc key disappears while a system-modal bar is
@@ -16,16 +20,46 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
 
     private let config: Config
     private let usageTracker: UsageTracker
+    private let status: LiveStatus
     private var presentedBar: NSTouchBar?
     private var mode: Mode = .idle
     private var usageLabel: NSTextField?
+    private var sessionMeter: MeterView?
+    private var contextMeter: MeterView?
 
-    init(config: Config, usageTracker: UsageTracker) {
+    init(config: Config, usageTracker: UsageTracker, status: LiveStatus) {
         self.config = config
         self.usageTracker = usageTracker
+        self.status = status
         super.init()
         usageTracker.onUpdate = { [weak self] in
-            self?.usageLabel?.stringValue = usageTracker.summary
+            guard let self else { return }
+            if let tokens = usageTracker.contextTokens {
+                status.apply(contextTokens: tokens, model: usageTracker.requestedModel,
+                             windowOverride: config.contextWindowSize)
+            }
+            usageLabel?.stringValue = usageTracker.summary
+            updateStatus()
+        }
+    }
+
+    /// Pushes the latest numbers into the meters without rebuilding the bar.
+    func updateStatus() {
+        status.expireIfNeeded()
+        if let meter = sessionMeter {
+            meter.percent = status.sessionPercent
+            if let p = status.sessionPercent {
+                var text = "\(Int(p.rounded()))%"
+                if let countdown = status.resetCountdown { text += " · resets \(countdown)" }
+                meter.valueText = text
+            } else {
+                meter.valueText = "—"
+            }
+        }
+        if let meter = contextMeter {
+            meter.percent = status.contextPercent
+            meter.title = "Context " + (status.contextPercent.map { "\(Int($0.rounded()))%" } ?? "—")
+            meter.valueText = config.showUsage ? usageTracker.summary : ""
         }
     }
 
@@ -41,21 +75,24 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         bar.delegate = self
         switch mode {
         case .idle:
-            var ids: [NSTouchBarItem.Identifier] = [.escKey, .claudeGlyph]
-            if config.showUsage { ids.append(.usage) }
+            var ids: [NSTouchBarItem.Identifier] = [.escKey, .sessionMeter, .contextMeter]
             ids.append(.flexibleSpace)
-            ids.append(.skills)
+            if !config.skills.isEmpty { ids.append(.skills) }
             if config.offerSkipPermissions { ids.append(.skipPermissions) }
+            ids.append(.summary)
+            ids.append(.compact)
+            if !config.officeURL.isEmpty { ids.append(.office) }
             bar.defaultItemIdentifiers = ids
         case .permission:
             bar.defaultItemIdentifiers = [
-                .escKey, .claudeGlyph, .permissionMessage, .flexibleSpace,
+                .escKey, .permissionMessage, .flexibleSpace,
                 .allowOnce, .alwaysAllow, .reject,
             ]
         }
 
-        SystemModalTouchBar.present(bar)
+        SystemModalTouchBar.present(bar, fullWidth: config.hideControlStrip)
         presentedBar = bar
+        updateStatus()
     }
 
     func dismiss() {
@@ -63,6 +100,9 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
             SystemModalTouchBar.dismiss(bar)
             presentedBar = nil
         }
+        sessionMeter = nil
+        contextMeter = nil
+        usageLabel = nil
     }
 
     // MARK: - NSTouchBarDelegate
@@ -87,6 +127,31 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
             usageLabel = label
             item.view = label
             return item
+
+        case .sessionMeter:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            let meter = MeterView(title: "Session", width: 380)
+            sessionMeter = meter
+            DispatchQueue.main.async { [weak self] in self?.updateStatus() }
+            item.view = meter
+            return item
+
+        case .contextMeter:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            let meter = MeterView(title: "Context", width: 210)
+            contextMeter = meter
+            DispatchQueue.main.async { [weak self] in self?.updateStatus() }
+            item.view = meter
+            return item
+
+        case .summary:
+            return button(identifier, title: "caveman", action: #selector(summarizeLastReply))
+
+        case .office:
+            return button(identifier, title: "office", action: #selector(openOffice))
+
+        case .compact:
+            return button(identifier, title: "compact", action: #selector(compactContext))
 
         case .skills:
             // One button per configured skill, side by side.
@@ -142,6 +207,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     // the matching key in the frontmost terminal.
 
     @objc private func pressEscape() {
+        DebugLog.tap("esc")
         KeySender.tap(KeySender.escape)
     }
 
@@ -155,7 +221,29 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         KeySender.type("claude --dangerously-skip-permissions")
     }
 
+    @objc private func summarizeLastReply() {
+        DebugLog.tap("caveman")
+        KeySender.type(config.summaryPrompt, pressReturn: true)
+    }
+
+    @objc private func compactContext() {
+        DebugLog.tap("compact")
+        KeySender.type(config.compactCommand, pressReturn: true)
+    }
+
+    /// Opens the configured link (the Agent Office tab in VS Code by
+    /// default). A plain URL open: no keystrokes, no Accessibility needed.
+    @objc private func openOffice() {
+        DebugLog.tap("office")
+        guard let url = URL(string: config.officeURL) else {
+            NSSound.beep()
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
     @objc private func allowOnce() {
+        DebugLog.tap("allowOnce")
         KeySender.type("1")
         show(.idle)
     }
@@ -175,6 +263,11 @@ private extension NSTouchBarItem.Identifier {
     static let escKey = Self("dev.claudebar.esc")
     static let claudeGlyph = Self("dev.claudebar.glyph")
     static let usage = Self("dev.claudebar.usage")
+    static let sessionMeter = Self("dev.claudebar.session-meter")
+    static let contextMeter = Self("dev.claudebar.context-meter")
+    static let summary = Self("dev.claudebar.summary")
+    static let compact = Self("dev.claudebar.compact")
+    static let office = Self("dev.claudebar.office")
     static let skills = Self("dev.claudebar.skills")
     static let skipPermissions = Self("dev.claudebar.skip-permissions")
     static let permissionMessage = Self("dev.claudebar.permission.message")

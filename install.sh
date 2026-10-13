@@ -24,25 +24,23 @@ rm -rf "$APP_DEST"
 cp -R "$APP_SRC" "$APP_DEST"
 
 echo "Installing hook relay to $CLAUDEBAR_DIR"
-cp hooks/claudebar-relay.sh "$CLAUDEBAR_DIR/"
-chmod +x "$CLAUDEBAR_DIR/claudebar-relay.sh"
+cp hooks/claudebar-relay.sh hooks/claudebar-statusline.sh "$CLAUDEBAR_DIR/"
+chmod +x "$CLAUDEBAR_DIR/claudebar-relay.sh" "$CLAUDEBAR_DIR/claudebar-statusline.sh"
 
 if [ ! -f "$CLAUDEBAR_DIR/config.json" ]; then
   echo "Writing starter config to $CLAUDEBAR_DIR/config.json"
   cat > "$CLAUDEBAR_DIR/config.json" <<'EOF'
 {
-  "skills": ["/code-review", "/simplify", "/init"],
-  "showUsage": true,
-  "offerSkipPermissions": true
+  "showUsage": true
 }
 EOF
 fi
 
 echo "Registering Claude Code hooks in $SETTINGS"
-python3 - "$SETTINGS" "$CLAUDEBAR_DIR/claudebar-relay.sh" <<'PYEOF'
+python3 - "$SETTINGS" "$CLAUDEBAR_DIR/claudebar-relay.sh" "$CLAUDEBAR_DIR/claudebar-statusline.sh" "$CLAUDEBAR_DIR/statusline-original" <<'PYEOF'
 import json, os, sys
 
-settings_path, relay = sys.argv[1], sys.argv[2]
+settings_path, relay, statusline, original_path = sys.argv[1:5]
 settings = {}
 if os.path.exists(settings_path):
     with open(settings_path) as f:
@@ -61,10 +59,30 @@ for event in ["SessionStart", "SessionEnd", "Notification", "Stop", "UserPromptS
     if not already:
         entries.append({"hooks": [relay_hook]})
 
+# Make sure an already-installed ClaudeBar status line also refreshes on a
+# timer, so the bar fills in without waiting for the next message.
+existing = settings.get("statusLine")
+if isinstance(existing, dict) and existing.get("command") == statusline:
+    existing.setdefault("refreshInterval", 30)
+
+# Status line: feeds session limit + context data to ClaudeBar. An existing
+# custom status line is kept and chained, so what you see doesn't change.
+current = settings.get("statusLine") or {}
+current_cmd = current.get("command") if isinstance(current, dict) else None
+if current_cmd != statusline:
+    if current_cmd:
+        with open(original_path, "w") as f:
+            f.write(current_cmd)
+        print("  existing status line kept (chained through ClaudeBar)")
+    new_status = dict(current) if isinstance(current, dict) else {}
+    new_status.update({"type": "command", "command": statusline})
+    new_status.setdefault("refreshInterval", 30)
+    settings["statusLine"] = new_status
+
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)
     f.write("\n")
-print("  hooks registered")
+print("  hooks and status line registered")
 PYEOF
 
 echo

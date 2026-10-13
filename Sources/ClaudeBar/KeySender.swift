@@ -37,7 +37,12 @@ enum KeySender {
             up?.post(tap: .cghidEventTap)
         }
         if pressReturn {
-            tap(returnKey)
+            // Claude Code treats a fast burst of keys as a paste, and a
+            // Return inside a paste becomes a newline instead of "send".
+            // A short pause makes the Return a separate keypress.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                KeySender.tap(KeySender.returnKey)
+            }
         }
     }
 }

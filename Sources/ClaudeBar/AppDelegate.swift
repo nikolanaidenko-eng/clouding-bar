@@ -8,7 +8,12 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let config = Config.load()
     private let usageTracker = UsageTracker()
-    private lazy var touchBarController = TouchBarController(config: config, usageTracker: usageTracker)
+    private let liveStatus = LiveStatus()
+    private lazy var touchBarController = TouchBarController(config: config,
+                                                             usageTracker: usageTracker,
+                                                             status: liveStatus)
+    /// Ticks the "resets in" countdown while nothing else is happening.
+    private var countdownTimer: Timer?
 
     private var socketServer: HookSocketServer?
     private var statusItem: NSStatusItem?
@@ -21,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpMenuBarItem()
+        liveStatus.load()
         KeySender.ensureTrusted()
 
         try? FileManager.default.createDirectory(at: Config.directory,
@@ -45,22 +51,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let frontmost = NSWorkspace.shared.frontmostApplication {
             terminalIsFrontmost = isTerminal(frontmost)
         }
+
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.touchBarController.updateStatus()
+        }
     }
 
     // MARK: - Hook events
 
     private func handleHookPayload(_ data: Data) {
+        // The socket carries two kinds of JSON: hook events (they have a
+        // hook_event_name) and status line snapshots (everything else).
         guard let event = try? JSONDecoder().decode(HookEvent.self, from: data) else {
+            if let status = try? JSONDecoder().decode(StatusEvent.self, from: data) {
+                handleStatus(status)
+            }
             return
         }
 
-        switch event.hookEventName {
-        case "SessionStart":
+        // Any event but SessionEnd proves its session is alive, so a session
+        // that started before ClaudeBar (e.g. after a reinstall) is picked up
+        // on its next prompt instead of being ignored until it restarts.
+        if event.hookEventName != "SessionEnd" {
             if let id = event.sessionId { activeSessions.insert(id) }
             if let transcript = event.transcriptPath {
                 usageTracker.watch(transcriptPath: transcript)
             }
+        }
 
+        switch event.hookEventName {
         case "SessionEnd":
             if let id = event.sessionId { activeSessions.remove(id) }
             if activeSessions.isEmpty { usageTracker.stop() }
@@ -80,6 +99,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             break
         }
 
+        refreshTouchBar()
+    }
+
+    private func handleStatus(_ status: StatusEvent) {
+        // A status line update proves a session is alive, even if we
+        // missed its SessionStart (e.g. ClaudeBar launched later).
+        if let id = status.sessionId { activeSessions.insert(id) }
+        if let transcript = status.transcriptPath {
+            usageTracker.watch(transcriptPath: transcript)
+        }
+        liveStatus.apply(status)
+        touchBarController.updateStatus()
         refreshTouchBar()
     }
 
