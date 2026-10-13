@@ -27,6 +27,16 @@ echo "Installing hook relay to $CLAUDEBAR_DIR"
 cp hooks/claudebar-relay.sh hooks/claudebar-statusline.sh "$CLAUDEBAR_DIR/"
 chmod +x "$CLAUDEBAR_DIR/claudebar-relay.sh" "$CLAUDEBAR_DIR/claudebar-statusline.sh"
 
+# VS Code extension wrapper + tap. Running Claude sessions may be using
+# them right now, so replace by rename instead of overwriting in place.
+replace() {
+  cp "$1" "$2.new" && chmod +x "$2.new" && mv -f "$2.new" "$2"
+}
+replace hooks/claudebar-wrapper.sh "$CLAUDEBAR_DIR/claudebar-wrapper.sh"
+if [ -f build/claudebar-tap ]; then
+  replace build/claudebar-tap "$CLAUDEBAR_DIR/claudebar-tap"
+fi
+
 if [ ! -f "$CLAUDEBAR_DIR/config.json" ]; then
   echo "Writing starter config to $CLAUDEBAR_DIR/config.json"
   cat > "$CLAUDEBAR_DIR/config.json" <<'EOF'

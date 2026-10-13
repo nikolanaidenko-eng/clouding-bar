@@ -2,6 +2,8 @@ APP = ClaudeBar
 BUNDLE = build/$(APP).app
 BINARY = build/$(APP)
 SOURCES = $(wildcard Sources/ClaudeBar/*.swift)
+TAP = build/claudebar-tap
+TAP_SOURCES = $(wildcard Sources/ClaudeBarTap/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the
 # binary with their own SDK's macOS version and it won't launch on older ones.
 TARGET = $(shell uname -m)-apple-macosx12.0
@@ -13,7 +15,7 @@ SIGN_IDENTITY = ClaudeBar Local Signing
 
 .PHONY: all build bundle install clean signing-identity
 
-all: bundle
+all: bundle $(TAP)
 
 # Plain swiftc keeps the build working even on minimal Command Line Tools
 # installs (some are missing SwiftPM's manifest module). `swift build`
@@ -39,7 +41,13 @@ bundle: build
 	fi
 	@echo "Built $(BUNDLE)"
 
-install: bundle
+# Helper for the VS Code extension's claudeProcessWrapper setting: copies
+# Claude's stdout through and reports the session limit to ClaudeBar.
+$(TAP): $(TAP_SOURCES)
+	mkdir -p build
+	swiftc -O -target $(TARGET) $(TAP_SOURCES) -o $(TAP)
+
+install: bundle $(TAP)
 	./install.sh
 
 signing-identity:
