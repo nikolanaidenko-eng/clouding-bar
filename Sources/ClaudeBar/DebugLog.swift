@@ -5,6 +5,8 @@ import ApplicationServices
 /// that "does nothing" can be told apart: no line = the tap never reached
 /// us; trusted=false = macOS is blocking the keystrokes.
 enum DebugLog {
+    /// Also written once at launch ("launch trusted=…"), so a rebuild that
+    /// lost the Accessibility permission shows up without pressing anything.
     static func tap(_ action: String) {
         let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
         let line = "\(Date()) \(action) trusted=\(AXIsProcessTrusted()) front=\(front)\n"

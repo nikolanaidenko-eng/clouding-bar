@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpMenuBarItem()
         liveStatus.load()
         KeySender.ensureTrusted()
+        DebugLog.tap("launch")
 
         try? FileManager.default.createDirectory(at: Config.directory,
                                                  withIntermediateDirectories: true)

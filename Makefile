@@ -9,9 +9,12 @@ TAP_SOURCES = $(wildcard Sources/ClaudeBarTap/*.swift)
 TARGET = $(shell uname -m)-apple-macosx12.0
 # A stable signing identity keeps the Accessibility permission across
 # rebuilds (ad-hoc signatures change every build, so macOS forgets it).
-# Created once by `make signing-identity`; ad-hoc is the fallback.
+# Preference: an "Apple Development" certificate from your keychain (added
+# in Xcode → Settings → Accounts), then the self-signed one created by
+# `make signing-identity`, then ad-hoc.
 SIGN_KEYCHAIN = $(HOME)/.claudebar/signing.keychain-db
 SIGN_IDENTITY = ClaudeBar Local Signing
+APPLE_DEV_ID = $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: /{print $$2; exit}')
 
 .PHONY: all build bundle install clean signing-identity
 
@@ -31,9 +34,13 @@ bundle: build
 	mkdir -p $(BUNDLE)/Contents/MacOS
 	cp packaging/Info.plist $(BUNDLE)/Contents/
 	cp $(BINARY) $(BUNDLE)/Contents/MacOS/
-	@if [ -f "$(SIGN_KEYCHAIN)" ]; then \
+	@# --timestamp=none: signing never talks to Apple's timestamp server.
+	@if [ -n "$(APPLE_DEV_ID)" ]; then \
+		codesign --force --timestamp=none --sign "$(APPLE_DEV_ID)" $(BUNDLE) && \
+		echo "Signed with Apple Development ($(APPLE_DEV_ID))"; \
+	elif [ -f "$(SIGN_KEYCHAIN)" ]; then \
 		security unlock-keychain -p "" "$(SIGN_KEYCHAIN)" && \
-		codesign --force --keychain "$(SIGN_KEYCHAIN)" --sign "$(SIGN_IDENTITY)" $(BUNDLE) && \
+		codesign --force --timestamp=none --keychain "$(SIGN_KEYCHAIN)" --sign "$(SIGN_IDENTITY)" $(BUNDLE) && \
 		echo "Signed with $(SIGN_IDENTITY)"; \
 	else \
 		codesign --force --sign - $(BUNDLE) 2>/dev/null || true; \
