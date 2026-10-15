@@ -99,6 +99,8 @@ struct Config: Equatable {
 
     // Floating widget
     var widget = true
+    /// The pill stays on screen; off: a thin line until you hover.
+    var pillAlwaysVisible = true
     /// What the pill shows besides the session limit: "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
     /// Where the pill was dragged: its top center in screen points.
@@ -167,6 +169,7 @@ struct Config: Equatable {
             config.profiles = v.mapValues(ButtonSpec.list)
         }
         if let v = obj["widget"] as? Bool { config.widget = v }
+        if let v = obj["pillAlwaysVisible"] as? Bool { config.pillAlwaysVisible = v }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)

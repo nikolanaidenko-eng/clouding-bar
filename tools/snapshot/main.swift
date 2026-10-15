@@ -131,7 +131,7 @@ widget("w-pill-request", .pill, size: NSSize(width: 400, height: 90)) {
 }
 widget("w-pill-listening", .pill, size: NSSize(width: 400, height: 90)) { $0.listening = true; $0.heard = "Перескажи последний ответ" }
 widget("w-panel", .panel)
-widget("w-permission", .panel, size: NSSize(width: 400, height: 420)) {
+widget("w-permission", .panel, size: NSSize(width: 480, height: 200)) {
     $0.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "npm run build && npm test")
 }
 widget("w-question", .panel) {

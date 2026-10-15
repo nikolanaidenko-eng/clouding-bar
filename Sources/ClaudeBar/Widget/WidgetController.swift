@@ -5,9 +5,10 @@ import SwiftUI
 /// The floating widget's window: a non-activating panel above other windows
 /// that never takes focus unless you click into it.
 ///
-///   strip ── hover 250 ms ──▶ pill ── 300 ms ──▶ panel
-///     ▲                                      │
-///     └────── 400 ms after the mouse leaves ─┘
+///   pill ── hover 300 ms ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
+///
+/// With "Keep the pill visible" off, a 4 pt line stands in for the pill at
+/// rest and wakes into it after a 250 ms hover.
 ///
 /// A request (permission, question) opens the card by itself and keeps it
 /// open until answered or until you've moused over it and left (not in Do
@@ -65,8 +66,11 @@ final class WidgetController: NSObject {
 
     func hide() {
         panel.orderOut(nil)
-        state.mode = .strip
+        state.mode = rest
     }
+
+    /// At rest: the pill (default), or a thin line if you'd rather.
+    private var rest: WidgetMode { model.config.pillAlwaysVisible ? .pill : .strip }
 
     /// Called after every model refresh.
     func update() {
@@ -84,15 +88,16 @@ final class WidgetController: NSObject {
                 }
             } else if pinned {
                 pinned = false
-                if !hovering { set(.strip) }
+                if !hovering { set(rest) }
             } else if state.mode == .panel && !hovering {
-                set(.strip)
+                set(rest)
             }
         }
+        state.rest = rest
         updateKeyAllowance()
-        // Show what's being heard while you dictate.
-        if model.listening && state.mode == .strip { set(.pill) }
-        if !model.listening && state.mode == .pill && !hovering && !pinned && model.request == nil {
+        // The pill also shows what's being heard while you dictate.
+        if state.mode == .strip && (rest == .pill || model.listening) { set(.pill) }
+        if rest == .strip && !model.listening && state.mode == .pill && !hovering && !pinned && model.request == nil {
             set(.strip)
         }
     }
@@ -130,7 +135,7 @@ final class WidgetController: NSObject {
             closeWork?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 guard let self, !self.hovering, !self.pinned, !self.model.listening else { return }
-                self.set(.strip)
+                self.set(self.rest)
             }
             closeWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)

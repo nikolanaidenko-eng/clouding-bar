@@ -6,7 +6,9 @@ import SwiftUI
 enum WidgetMode { case strip, pill, panel, sessions }
 
 final class WidgetState: ObservableObject {
-    @Published var mode: WidgetMode = .strip
+    @Published var mode: WidgetMode = .pill
+    /// What it collapses to: the pill, or the thin line.
+    var rest: WidgetMode = .pill
     /// Set by WidgetController: the pill hands its mouse-downs over for dragging.
     var pillMouseDown: ((NSEvent) -> Void)?
 }
@@ -275,6 +277,8 @@ struct PillView: View {
 
     var body: some View {
         content
+            .lineLimit(1)
+            .fixedSize() // numbers never wrap or squeeze
             .font(.system(size: 13).monospacedDigit())
             .foregroundColor(.cbText)
             .padding(.leading, 8)
@@ -358,12 +362,13 @@ struct PillDragHandle: NSViewRepresentable {
 struct PanelChrome<Content: View>: View {
     var padding = EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14)
     var spacing: CGFloat = 16
+    var width: CGFloat = 320
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) { content }
             .padding(padding)
-            .frame(width: 320)
+            .frame(width: width)
             .modifier(Glass(radius: 18))
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top))
                                         .combined(with: .offset(y: -6)),
@@ -428,7 +433,7 @@ struct MainPanel: View {
     var body: some View {
         PanelChrome {
             PanelHeader(activity: model.activity, title: model.statusTitle, subtitle: model.project,
-                        onCollapse: { withAnimation(.cb(0.22)) { state.mode = .strip } })
+                        onCollapse: { withAnimation(.cb(0.22)) { state.mode = state.rest } })
             MeterBlock(title: "Session", percent: model.sessionPercent,
                        caption: model.resetLong.map { "Resets in \($0)" })
             MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
@@ -531,39 +536,50 @@ struct RequestCardView: View {
 
     var body: some View {
         if let r = model.request {
-            PanelChrome(spacing: 14) {
-                if r.kind == .permission { permission(r) } else { question(r) }
+            if r.kind == .permission {
+                // Wider and lower than the mockup, at the owner's request.
+                PanelChrome(padding: EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12), spacing: 10, width: 420) {
+                    permission(r)
+                }
+            } else {
+                PanelChrome(spacing: 14) { question(r) }
             }
         }
     }
 
+    /// One line of header, the command, one row of buttons.
     @ViewBuilder private func permission(_ r: AppModel.RequestCard) -> some View {
-        PanelHeader(activity: .wait, title: "Needs your OK", subtitle: r.project, waiting: true,
-                    dnd: model.config.doNotDisturb)
-        VStack(alignment: .leading, spacing: 8) {
-            Text(r.verb == "Run" ? "Run in terminal" : r.verb).font(.system(size: 12)).foregroundColor(.cbSecondary)
-            Text(r.detail)
-                .font(.system(size: 12, design: .monospaced))
-                .lineSpacing(3)
-                .lineLimit(6)
-                .foregroundColor(.cbText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10).padding(.horizontal, 12)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.3)))
-                .textSelection(.enabled)
+        HStack(spacing: 8) {
+            MascotIcon(activity: .wait, size: 24).frame(width: 24, height: 24)
+            Text("Needs your OK").font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
+            Text([r.project, r.verb == "Run" ? "run in terminal" : r.verb.lowercased()]
+                    .compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
+            Spacer(minLength: 0)
+            PulseDot(still: model.config.doNotDisturb)
         }
-        VStack(spacing: 6) {
+        Text(r.detail)
+            .font(.system(size: 12, design: .monospaced))
+            .lineSpacing(2)
+            .lineLimit(3)
+            .foregroundColor(.cbText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8).padding(.horizontal, 10)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black.opacity(0.3)))
+            .textSelection(.enabled)
+        HStack(spacing: 6) {
             Button("Allow") { model.perform(.allow) }
-                .buttonStyle(WidgetButtonStyle(background: .cbAction, foreground: .white, weight: .semibold))
+                .buttonStyle(WidgetButtonStyle(background: .cbAction, foreground: .white, weight: .semibold,
+                                               height: 32, radius: 9))
                 .keyboardShortcut(.defaultAction)
-            HStack(spacing: 6) {
-                Button("Always allow") { model.perform(.always) }.buttonStyle(WidgetButtonStyle())
-                Button("Deny") { model.perform(.deny) }
-                    .buttonStyle(WidgetButtonStyle(foreground: .cbDeny))
-                    .keyboardShortcut(.cancelAction)
-            }
+                .help("Return")
+            Button("Always allow") { model.perform(.always) }
+                .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
+            Button("Deny") { model.perform(.deny) }
+                .buttonStyle(WidgetButtonStyle(foreground: .cbDeny, height: 32, radius: 9))
+                .keyboardShortcut(.cancelAction)
+                .help("Esc")
         }
-        footer(left: meters, right: "⏎ allow · esc deny")
     }
 
     @ViewBuilder private func question(_ r: AppModel.RequestCard) -> some View {

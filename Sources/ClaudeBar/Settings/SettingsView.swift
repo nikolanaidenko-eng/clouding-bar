@@ -159,8 +159,11 @@ struct GeneralTab: View {
                         get: { model.config.touchBar != "off" },
                         set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
                 }
-                SettingsRow(title: "Floating widget", hint: "A line under the menu bar that opens on hover") {
+                SettingsRow(title: "Floating widget", hint: "A pill at the top of the screen that opens on hover") {
                     CBSwitch(title: "Floating widget", on: binding("widget") { $0.widget })
+                }
+                SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
+                    CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
                 }
                 SettingsRow(title: "Widget position",
                             hint: model.config.widgetPosition == nil ? "Top center, under the menu bar" : "Where you dragged it",
