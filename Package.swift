@@ -10,6 +10,14 @@ let package = Package(
         .executableTarget(
             name: "ClaudeBar",
             path: "Sources/ClaudeBar"
-        )
+        ),
+        .executableTarget(
+            name: "ClaudeBarTap",
+            path: "Sources/ClaudeBarTap"
+        ),
+        .executableTarget(
+            name: "ClaudeBarHook",
+            path: "Sources/ClaudeBarHook"
+        ),
     ]
 )

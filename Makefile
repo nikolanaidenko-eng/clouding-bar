@@ -1,9 +1,11 @@
 APP = ClaudeBar
 BUNDLE = build/$(APP).app
 BINARY = build/$(APP)
-SOURCES = $(wildcard Sources/ClaudeBar/*.swift)
+SOURCES = $(wildcard Sources/ClaudeBar/*.swift Sources/ClaudeBar/*/*.swift)
 TAP = build/claudebar-tap
 TAP_SOURCES = $(wildcard Sources/ClaudeBarTap/*.swift)
+HOOK = build/claudebar-hook
+HOOK_SOURCES = $(wildcard Sources/ClaudeBarHook/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the
 # binary with their own SDK's macOS version and it won't launch on older ones.
 TARGET = $(shell uname -m)-apple-macosx12.0
@@ -16,9 +18,9 @@ SIGN_KEYCHAIN = $(HOME)/.claudebar/signing.keychain-db
 SIGN_IDENTITY = ClaudeBar Local Signing
 APPLE_DEV_ID = $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: /{print $$2; exit}')
 
-.PHONY: all build bundle install clean signing-identity
+.PHONY: all build bundle install clean signing-identity snapshots test
 
-all: bundle $(TAP)
+all: bundle $(TAP) $(HOOK)
 
 # Plain swiftc keeps the build working even on minimal Command Line Tools
 # installs (some are missing SwiftPM's manifest module). `swift build`
@@ -54,8 +56,28 @@ $(TAP): $(TAP_SOURCES)
 	mkdir -p build
 	swiftc -O -target $(TARGET) $(TAP_SOURCES) -o $(TAP)
 
-install: bundle $(TAP)
+# The hook command for every Claude Code hook event: forwards events to the
+# app and waits for answers to permissions and questions (docs/protocol.md).
+$(HOOK): $(HOOK_SOURCES)
+	mkdir -p build
+	swiftc -O -target $(TARGET) $(HOOK_SOURCES) -o $(HOOK)
+
+install: bundle $(TAP) $(HOOK) $(HOOK)
 	./install.sh
+
+# Checks for the core: session picked by window title, hook output, config.
+test:
+	mkdir -p build
+	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift) Sources/ClaudeBar/DebugLog.swift tools/coretest/main.swift -o build/coretest
+	rm -rf build/test-home && mkdir -p build/test-home
+	CLAUDEBAR_DIR=build/test-home ./build/coretest
+
+# The Touch Bar in every mode as PNGs (build/snapshots), to compare with
+# design/TB-*.dc.html. A separate tool; nothing here goes into the app.
+snapshots:
+	mkdir -p build
+	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift) tools/snapshot/main.swift -o build/tb-snapshot
+	./build/tb-snapshot build/snapshots
 
 signing-identity:
 	./packaging/make-signing-identity.sh "$(SIGN_KEYCHAIN)" "$(SIGN_IDENTITY)"
