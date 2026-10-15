@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget no session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1B1B1D}
+a{color:#64A8FF}a:hover{color:#8CBEFF}
+@keyframes sheetIn{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="width: 400px; height: 320px; box-sizing: border-box; background: #1B1B1D; padding: 20px; display: flex; flex-direction: column; align-items: flex-end; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <section aria-label="No active session" style="width: 320px; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 20px 16px 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
+    <dc-import name="Mascot" state="sleep" size="56" hint-size="56px,56px"></dc-import>
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center">
+      <span style="font-size: 13px; font-weight: 600">No Claude Code session</span>
+      <span style="font-size: 12px; color: #A1A1A6; line-height: 1.4">Start Claude Code in VS Code or Terminal.</span>
+    </div>
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 6px; border-top: 0.5px solid rgba(255,255,255,0.1); padding-top: 12px">
+      <div style="display: flex; justify-content: space-between; font-size: 12px"><span style="color: #A1A1A6">Session · 2 h ago</span><span style="font-variant-numeric: tabular-nums; color: #C7C7CC">20%</span></div>
+      <div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); overflow: hidden"><div style="width: 20%; height: 4px; border-radius: 2px; background: #8E8E93"></div></div>
+    </div>
+    <a href="Settings.dc.html" style="font-size: 12px; align-self: flex-start">Track Desktop and Cowork too…</a>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

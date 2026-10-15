@@ -1,0 +1,25 @@
+{"v":3,"createdOnFiles":{"v":1,"at":"2026-10-15T18:40:00Z"},"title":"Clouding Bar UI","launch":{"view":"canvas"},"pages":[],
+"boards":{
+"TB-Normal.dc.html":{"x":0,"y":0,"w":2170,"h":60,"title":"Touch Bar · normal (2x) · Tweaks: number of buttons"},
+"TB-Permission.dc.html":{"x":0,"y":180,"w":2170,"h":60,"title":"Touch Bar · permission (2x)"},
+"TB-Question.dc.html":{"x":0,"y":360,"w":2170,"h":60,"title":"Touch Bar · question (2x)"},
+"TB-Typing.dc.html":{"x":0,"y":540,"w":2170,"h":60,"title":"Touch Bar · typing an answer (2x, type in Play)","is_interactive":true},
+"TB-Context.dc.html":{"x":0,"y":720,"w":2170,"h":60,"title":"Touch Bar · context threshold (2x)"},
+"Main.dc.html":{"x":0,"y":1260,"w":400,"h":480,"title":"Widget · prototype (hover / click in Play)","is_interactive":true},
+"Widget-Collapsed.dc.html":{"x":480,"y":1260,"w":380,"h":240,"title":"Widget · collapsed pills (Tweaks: what stays visible)"},
+"Widget-Permission.dc.html":{"x":940,"y":1260,"w":400,"h":420,"title":"Widget · permission"},
+"Widget-Question.dc.html":{"x":1420,"y":1260,"w":400,"h":480,"title":"Widget · question + Other"},
+"Widget-Sessions.dc.html":{"x":1900,"y":1260,"w":400,"h":480,"title":"Widget · sessions (optional)"},
+"Widget-Empty.dc.html":{"x":2380,"y":1260,"w":400,"h":320,"title":"Widget · no session"},
+"Settings.dc.html":{"x":0,"y":2300,"w":560,"h":560,"title":"Settings · compact (all tabs work in Play)","is_interactive":true},
+"Mascot.dc.html":{"x":640,"y":2300,"w":120,"h":120,"title":"Mascot component"},
+"Mascot-Sheet.dc.html":{"x":840,"y":2300,"w":760,"h":280,"title":"Mascot · 3 states"},
+"Style.dc.html":{"x":1680,"y":2300,"w":760,"h":640,"title":"Palette · type · motion"}
+},
+"order":["TB-Normal.dc.html","TB-Permission.dc.html","TB-Question.dc.html","TB-Typing.dc.html","TB-Context.dc.html","Main.dc.html","Widget-Collapsed.dc.html","Widget-Permission.dc.html","Widget-Question.dc.html","Widget-Sessions.dc.html","Widget-Empty.dc.html","Settings.dc.html","Mascot.dc.html","Mascot-Sheet.dc.html","Style.dc.html"],
+"notes":{
+"tbTitle":{"x":0,"y":-300,"text":"Touch Bar — drawn at 2x (2170×60 px = 1085×30 pt)","kind":"title1","maxW":2170},
+"wTitle":{"x":0,"y":960,"text":"Floating widget","kind":"title1","maxW":2780},
+"sTitle":{"x":0,"y":2000,"text":"Settings, mascot, style","kind":"title1","maxW":2440}
+},
+"designSystems":[]}

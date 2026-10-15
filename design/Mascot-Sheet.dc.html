@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mascot states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1B1B1D}
+</style>
+</helmet>
+<div style="width: 760px; height: 280px; box-sizing: border-box; background: #1B1B1D; padding: 24px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <div style="border-radius: 16px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+    <dc-import name="Mascot" state="sleep" size="120" hint-size="120px,120px"></dc-import>
+    <span style="font-size: 13px; font-weight: 600">Sleeping</span>
+    <span style="font-size: 11px; color: #A1A1A6">Idle · slow breathing</span>
+  </div>
+  <div style="border-radius: 16px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+    <dc-import name="Mascot" state="work" size="120" hint-size="120px,120px"></dc-import>
+    <span style="font-size: 13px; font-weight: 600">Working</span>
+    <span style="font-size: 11px; color: #A1A1A6">Hops, blinks, typing dots</span>
+  </div>
+  <div style="border-radius: 16px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px">
+    <dc-import name="Mascot" state="wait" size="120" hint-size="120px,120px"></dc-import>
+    <span style="font-size: 13px; font-weight: 600">Waiting for you</span>
+    <span style="font-size: 11px; color: #A1A1A6">Sways, orange badge pulses</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":280}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

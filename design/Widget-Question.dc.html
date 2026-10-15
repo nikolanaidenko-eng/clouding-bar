@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget question</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1B1B1D}
+@keyframes sheetIn{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes rowIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="width: 400px; height: 480px; box-sizing: border-box; background: #1B1B1D; padding: 20px; display: flex; flex-direction: column; align-items: flex-end; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <section aria-label="Question from Claude" style="width: 320px; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 14px; display: flex; flex-direction: column; gap: 14px; transform-origin: top right; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <dc-import name="Mascot" state="wait" size="32" hint-size="32px,32px"></dc-import>
+      <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1">
+        <span style="font-size: 13px; font-weight: 600">Claude asks</span>
+        <span style="font-size: 12px; color: #A1A1A6">DiaRoute · 1 of 2</span>
+      </div>
+      <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #FF9F0A; animation: pulse 1.4s ease-in-out infinite"></span>
+    </div>
+    <div style="font-size: 14px; font-weight: 500; line-height: 1.35">Which storage should offline routes use?</div>
+    <div style="display: flex; flex-direction: column; border-radius: 12px; background: rgba(255,255,255,0.06); overflow: hidden">
+      <button style="min-height: 48px; border: none; border-bottom: 0.5px solid rgba(255,255,255,0.08); background: transparent; color: #F5F5F7; text-align: left; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; font-family: inherit; cursor: pointer; animation: rowIn 240ms 80ms both">
+        <span style="font-size: 13px">SQLite <span style="color: #A1A1A6">· recommended</span></span>
+        <span style="font-size: 11px; color: #A1A1A6">Queries by date and area</span>
+      </button>
+      <button style="min-height: 48px; border: none; border-bottom: 0.5px solid rgba(255,255,255,0.08); background: transparent; color: #F5F5F7; text-align: left; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; font-family: inherit; cursor: pointer; animation: rowIn 240ms 120ms both">
+        <span style="font-size: 13px">MMKV</span>
+        <span style="font-size: 11px; color: #A1A1A6">Fast key-value, small data</span>
+      </button>
+      <button style="min-height: 48px; border: none; border-bottom: 0.5px solid rgba(255,255,255,0.08); background: transparent; color: #F5F5F7; text-align: left; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; font-family: inherit; cursor: pointer; animation: rowIn 240ms 160ms both">
+        <span style="font-size: 13px">AsyncStorage</span>
+        <span style="font-size: 11px; color: #A1A1A6">Simplest, slowest</span>
+      </button>
+      <div style="padding: 8px 8px 8px 12px; display: flex; align-items: center; gap: 8px; animation: rowIn 240ms 200ms both">
+        <label for="other" style="font-size: 13px; color: #A1A1A6; flex-shrink: 0">Other</label>
+        <input id="other" type="text" value="WatermelonDB, sync later" style="flex-grow: 1; min-width: 0; height: 36px; box-sizing: border-box; border-radius: 9px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 10px; font-family: inherit; font-size: 13px">
+        <button aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: #0071E3; color: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="M6 11l6-6 6 6"></path></svg>
+        </button>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: #A1A1A6">1–3 to pick · hold the mic key to answer by voice</div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":480}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

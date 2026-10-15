@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1B1B1D}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes cellIn{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
+@keyframes chipIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div style="width: 560px; height: 560px; box-sizing: border-box; background: #232325; border: 0.5px solid rgba(255,255,255,0.12); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <header style="display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 0.5px solid rgba(255,255,255,0.08)">
+    <dc-import name="Mascot" state="sleep" size="26" hint-size="26px,26px"></dc-import>
+    <span style="font-size: 13px; font-weight: 600; flex-grow: 1">Clouding Bar</span>
+    <div role="tablist" aria-label="Settings sections" style="display: flex; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 2px">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+        <button role="tab" onClick="{{t.pick}}" style="height: 26px; border-radius: 6px; border: none; background: {{t.bg}}; color: #F5F5F7; padding: 0 12px; font-family: inherit; font-size: 12px; cursor: pointer; transition: background 180ms">{{t.label}}</button>
+      </sc-for>
+    </div>
+  </header>
+
+  <main style="flex-grow: 1; min-height: 0; padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+    <sc-if value="{{isGeneral}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 14px; animation: fadeUp 200ms both">
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
+          <sc-for list="{{general}}" as="g" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07)">
+              <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">{{g.title}}</span><span style="font-size: 11px; color: #A1A1A6">{{g.hint}}</span></span>
+              <button aria-label="{{g.title}}" onClick="{{g.toggle}}" style="width: 40px; height: 24px; border-radius: 12px; border: none; background: {{g.track}}; display: flex; align-items: center; justify-content: {{g.justify}}; padding: 0 2px; cursor: pointer"><span style="width: 20px; height: 20px; border-radius: 10px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3)"></span></button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px">
+          <span style="font-size: 13px; flex-grow: 1">Always show in pill</span>
+          <sc-for list="{{pill}}" as="p" hint-placeholder-count="3">
+            <button onClick="{{p.toggle}}" aria-pressed="{{p.pressed}}" style="height: 26px; border-radius: 13px; border: {{p.border}}; background: {{p.bg}}; color: #F5F5F7; padding: 0 10px; font-family: inherit; font-size: 12px; cursor: pointer; transition: background 160ms">{{p.label}}</button>
+          </sc-for>
+        </div>
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
+          <button onClick="{{toggleMore}}" style="min-height: 44px; border: none; background: transparent; color: #F5F5F7; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-family: inherit; font-size: 13px; cursor: pointer">More options<span style="color: #A1A1A6; display: flex; align-items: center; gap: 6px; font-size: 12px">{{moreHint}}<svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="transform: rotate({{chev}}); transition: transform 200ms"><path d="M9 6l6 6-6 6"></path></svg></span></button>
+          <sc-if value="{{moreOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 0.5px solid rgba(255,255,255,0.07); animation: fadeUp 200ms both">
+              <sc-for list="{{more}}" as="g" hint-placeholder-count="8">
+                <label style="display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; font-size: 12px; cursor: pointer">
+                  <button aria-label="{{g.title}}" onClick="{{g.toggle}}" style="width: 18px; height: 18px; border-radius: 5px; border: {{g.boxBorder}}; background: {{g.boxBg}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; font-size: 12px">{{g.mark}}</button>
+                  <span>{{g.title}} <span style="color: #A1A1A6">{{g.hint}}</span></span>
+                </label>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isButtons}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 12px; animation: fadeUp 200ms both">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <span style="font-size: 11px; color: #A1A1A6">Touch Bar preview · meters shrink as you add buttons</span>
+          <div style="height: 34px; box-sizing: border-box; border-radius: 8px; background: #000000; display: flex; align-items: center; gap: 5px; padding: 0 5px; overflow: hidden">
+            <span style="width: 36px; height: 24px; flex-shrink: 0; border-radius: 5px; background: #2C2C2E; display: flex; align-items: center; justify-content: center; font-size: 10px">esc</span>
+            <span aria-hidden="true" style="width: 14px; height: 12px; flex-shrink: 0; border-radius: 5px; background: #ECEAE5"></span>
+            <div style="flex: 1 1 0; min-width: 0; display: flex; gap: 10px; padding: 0 4px; transition: all 300ms">
+              <div style="flex: 3 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                <div style="display: flex; justify-content: space-between; font-size: 9px; white-space: nowrap"><span style="color: #A1A1A6; overflow: hidden">{{sLabel}}</span><span>42%{{sTimer}}</span></div>
+                <div style="height: 3px; border-radius: 2px; background: #2C2C2E"><div style="width: 42%; height: 3px; border-radius: 2px; background: #E5E5EA"></div></div>
+              </div>
+              <div style="flex: 2 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+                <div style="display: flex; justify-content: space-between; font-size: 9px; white-space: nowrap"><span style="color: #A1A1A6; overflow: hidden">{{cLabel}}</span><span>31%</span></div>
+                <div style="height: 3px; border-radius: 2px; background: #2C2C2E"><div style="width: 31%; height: 3px; border-radius: 2px; background: #E5E5EA"></div></div>
+              </div>
+            </div>
+            <sc-for list="{{chips}}" as="c" hint-placeholder-count="3">
+              <span style="height: 24px; max-width: 80px; flex-shrink: 0; box-sizing: border-box; border-radius: 5px; background: {{c.bg}}; padding: 0 7px; display: flex; align-items: center; font-size: {{c.fs}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: chipIn 200ms cubic-bezier(.2,.8,.2,1) both">{{c.label}}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
+          <sc-for list="{{buttons}}" as="b" hint-placeholder-count="3">
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07)">
+              <span style="font-size: 13px; width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.name}}</span>
+              <span style="font-size: 12px; color: #A1A1A6; flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.value}}</span>
+              <span style="font-size: 12px; color: #A1A1A6">{{b.key}}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{adding}}" hint-placeholder-val="{{ false }}">
+            <div style="display: flex; gap: 8px; padding: 8px 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07); animation: fadeUp 180ms both">
+              <label for="newName" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Button name</label>
+              <input id="newName" type="text" value="{{draft}}" onChange="{{onDraft}}" placeholder="Name" style="width: 120px; height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px">
+              <label for="newPhrase" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Phrase</label>
+              <input id="newPhrase" type="text" value="Review the last change for bugs" style="flex-grow: 1; min-width: 0; height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px">
+              <button onClick="{{commit}}" style="height: 30px; border-radius: 7px; border: none; background: #0071E3; color: #FFFFFF; padding: 0 12px; font-family: inherit; font-size: 12px; cursor: pointer">Add</button>
+            </div>
+          </sc-if>
+          <div style="display: flex; gap: 2px; padding: 2px 4px">
+            <button onClick="{{startAdd}}" aria-label="Add button" style="width: 36px; height: 30px; border-radius: 6px; border: none; background: transparent; color: #F5F5F7; font-size: 17px; cursor: pointer">+</button>
+            <button onClick="{{remove}}" aria-label="Remove last button" style="width: 36px; height: 30px; border-radius: 6px; border: none; background: transparent; color: #A1A1A6; font-size: 17px; cursor: pointer">−</button>
+            <span style="flex-grow: 1"></span>
+            <label style="font-size: 11px; color: #A1A1A6; display: flex; align-items: center; gap: 6px; padding-right: 6px">Profile<select style="height: 24px; border-radius: 6px; border: 0.5px solid rgba(255,255,255,0.18); background: #3A3A3C; color: #F5F5F7; font-family: inherit; font-size: 11px"><option>Default</option><option>DiaRoute</option></select></label>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isCowork}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 14px; animation: fadeUp 200ms both">
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); padding: 12px; display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+            <span style="display: flex; flex-direction: column; gap: 1px"><span style="font-size: 13px">Cowork status</span><span style="font-size: 11px; color: #A1A1A6">Claude saves context to a connected folder</span></span>
+            <div role="group" aria-label="Cowork status" style="display: flex; background: rgba(0,0,0,0.3); border-radius: 7px; padding: 2px">
+              <sc-for list="{{modes}}" as="m" hint-placeholder-count="3">
+                <button onClick="{{m.pick}}" style="height: 24px; border-radius: 5px; border: none; background: {{m.bg}}; color: #F5F5F7; padding: 0 9px; font-family: inherit; font-size: 11px; cursor: pointer">{{m.label}}</button>
+              </sc-for>
+            </div>
+          </div>
+          <span style="font-size: 11px; color: #A1A1A6">{{modeNote}}</span>
+        </div>
+        <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
+          <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px">
+            <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">Live limit via claude.ai</span><span style="font-size: 11px; color: #A1A1A6">Desktop and Cowork chats · Off</span></span>
+            <button onClick="{{toggleKey}}" style="height: 26px; border-radius: 6px; border: none; background: #3A3A3C; color: #F5F5F7; padding: 0 10px; font-family: inherit; font-size: 12px; cursor: pointer">{{keyBtn}}</button>
+          </div>
+          <sc-if value="{{keyOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="border-top: 0.5px solid rgba(255,255,255,0.07); padding: 12px; display: flex; flex-direction: column; gap: 10px; animation: fadeUp 200ms both">
+              <div style="display: flex; gap: 8px; align-items: flex-start">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9F0A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>
+                <span style="font-size: 11px; color: #D1D1D6; line-height: 1.5">Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.</span>
+              </div>
+              <div style="display: flex; gap: 8px">
+                <label for="key" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Session key</label>
+                <input id="key" type="password" value="sk-ant-sid01-xxxx" style="flex-grow: 1; height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px">
+                <button style="height: 30px; border-radius: 7px; border: none; background: #0071E3; color: #FFFFFF; padding: 0 12px; font-family: inherit; font-size: 12px; cursor: pointer">I understand, turn on</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isStats}}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; flex-direction: column; gap: 16px; animation: fadeUp 200ms both">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 20px; font-weight: 600; letter-spacing: -0.01em">Hit the limit twice this week</span>
+          <span style="font-size: 12px; color: #A1A1A6">Busiest: Tuesday and Thursday afternoons · sample data</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{grid}}" as="row" hint-placeholder-count="7">
+            <div style="display: flex; align-items: center; gap: 3px">
+              <span style="width: 26px; font-size: 10px; color: #A1A1A6">{{row.day}}</span>
+              <sc-for list="{{row.cells}}" as="c" hint-placeholder-count="24">
+                <span aria-hidden="true" style="width: 15px; height: 15px; border-radius: 4px; background: {{c.bg}}; animation: cellIn 260ms {{c.delay}} cubic-bezier(.2,.8,.2,1) both"></span>
+              </sc-for>
+            </div>
+          </sc-for>
+          <div style="display: flex; justify-content: space-between; padding-left: 29px; width: 408px; font-size: 10px; color: #A1A1A6"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px">
+            <span style="flex: 46 1 0; background: #E5E5EA"></span><span style="flex: 27 1 0; background: #AEAEB2"></span><span style="flex: 17 1 0; background: #636366"></span><span style="flex: 10 1 0; background: #3A3A3C"></span>
+          </div>
+          <div style="display: flex; gap: 16px; font-size: 11px; color: #A1A1A6; flex-wrap: wrap"><span><span style="color: #F5F5F7">DiaRoute</span> 46%</span><span><span style="color: #F5F5F7">bots</span> 27%</span><span><span style="color: #F5F5F7">agent-office</span> 17%</span><span>other 10%</span></div>
+        </div>
+      </div>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":560}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'general', mode: 'thresholds', more: false, key: false, adding: false, draft: '',
+      list: [ { name: 'caveman', value: 'Summarize your last reply in short bullets', key: '⌃⌥C' }, { name: 'compact', value: '/compact', key: '⌃⌥K' }, { name: 'office', value: 'vscode://nikola.agent-office/open', key: '' } ],
+      on: { pctx: true, preset: true, pcost: false, touchbar: true, widget: true, login: true, warn: true, sessions: false, dnd: false, cost: false, model: false, lines: false, git: false, agents: false } };
+  }
+  renderVals() {
+    const s = this.state;
+    const tabs = [['general','General'],['buttons','Buttons'],['cowork','Cowork'],['stats','Stats']].map(([id, label]) => ({
+      label, pick: () => this.setState({ tab: id }), bg: s.tab === id ? '#636366' : 'transparent' }));
+    const flip = (id) => () => this.setState({ on: Object.assign({}, s.on, { [id]: !s.on[id] }) });
+    const sw = (id, title, hint) => ({ title, hint, toggle: flip(id),
+      track: s.on[id] ? '#0A84FF' : '#48484A', justify: s.on[id] ? 'flex-end' : 'flex-start' });
+    const cb = (id, title, hint) => ({ title, hint, toggle: flip(id), mark: s.on[id] ? '✓' : '',
+      boxBg: s.on[id] ? '#0A84FF' : 'transparent', boxBorder: s.on[id] ? 'none' : '1px solid #636366' });
+    const general = [ sw('touchbar', 'Show on Touch Bar', 'Detected on this Mac'), sw('widget', 'Floating widget', 'A pill that opens on hover'), sw('login', 'Open at login', '') ];
+    const moreIds = [['warn','Context warning','80%'],['sessions','Sessions list',''],['dnd','Do not disturb',''],['cost','Cost','API'],['model','Model, effort',''],['lines','Lines changed',''],['git','Git, PR',''],['agents','Subagents','']];
+    const more = moreIds.map(([id, t, h]) => cb(id, t, h));
+    const onCount = moreIds.filter(([id]) => s.on[id]).length;
+    const pill = [['pctx','Context'],['preset','Reset time'],['pcost','API cost']].map(([id, label]) => ({ label, toggle: flip(id),
+      pressed: s.on[id] ? 'true' : 'false', bg: s.on[id] ? '#0A84FF' : 'transparent', border: s.on[id] ? 'none' : '1px solid #636366' }));
+
+    const pool = ['review', 'run tests', '/clear', 'commit', 'explain'];
+    const chipsSrc = s.list.map((b) => b.name).concat(s.adding ? [s.draft || 'New'] : []);
+    const chips = chipsSrc.map((label, i) => ({ label, fs: label.length > 10 ? '9px' : '11px', bg: s.adding && i === chipsSrc.length - 1 ? '#0A3D78' : '#2C2C2E' }));
+    const used = chipsSrc.reduce((a, l) => a + Math.min(80, 14 + l.length * 6.2) + 5, 0);
+    const avail = 512 - 10 - 36 - 14 - 10 - used;
+    const wide = avail >= 230, mid = avail >= 130;
+
+    const notes = { off: 'Cowork chats are not tracked.', thresholds: 'Saves at 50, 80, 90% and when a task is done. Almost free.', every: 'After every reply: about +5–15% usage, +1–3 s per reply.' };
+    const modes = [['off','Off'],['thresholds','Thresholds'],['every','Every reply']].map(([id, label]) => ({ label, pick: () => this.setState({ mode: id }), bg: s.mode === id ? '#636366' : 'transparent' }));
+
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const grid = days.map((day, d) => ({ day, cells: Array.from({ length: 24 }, (_, h) => {
+      const work = h >= 9 && h <= 22 && d < 6 ? 1 : 0;
+      const peak = (d === 1 || d === 3) && h >= 14 && h <= 17;
+      let v = work * (0.25 + 0.45 * Math.abs(Math.sin((h + 1) * (d + 2) * 0.7)));
+      if (d === 5) v *= 0.4;
+      const bg = peak && (h === 16 || h === 17) ? '#FF9F0A' : v < 0.05 ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,' + (0.12 + v * 0.7).toFixed(2) + ')';
+      return { bg, delay: (h * 12 + d * 8) + 'ms' };
+    }) }));
+
+    return { tabs, general, more, pill, moreOpen: s.more, chev: s.more ? '90deg' : '0deg', moreHint: onCount + ' on', toggleMore: () => this.setState({ more: !s.more }),
+      chips, buttons: s.list, sLabel: wide ? 'Session' : mid ? '5h' : '', cLabel: wide ? 'Context' : mid ? 'Ctx' : '', sTimer: mid ? ' · 1:23' : '',
+      adding: s.adding, draft: s.draft, onDraft: (e) => this.setState({ draft: e.target.value }),
+      startAdd: () => this.setState({ adding: true, draft: pool[(s.list.length + 2) % pool.length] }),
+      commit: () => this.setState({ adding: false, draft: '', list: s.list.concat([{ name: s.draft || 'New', value: 'Review the last change for bugs', key: '' }]) }),
+      remove: () => this.setState({ adding: false, list: s.list.slice(0, Math.max(0, s.list.length - 1)) }),
+      modes, modeNote: notes[s.mode], keyOpen: s.key, keyBtn: s.key ? 'Hide' : 'Set up…', toggleKey: () => this.setState({ key: !s.key }),
+      grid,
+      isGeneral: s.tab === 'general', isButtons: s.tab === 'buttons', isCowork: s.tab === 'cowork', isStats: s.tab === 'stats' };
+  }
+}
+</script>
+</body>
+</html>
