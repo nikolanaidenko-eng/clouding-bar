@@ -405,6 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func run(_ spec: ButtonSpec) {
+        widget.releaseKey() // keystrokes go to your editor, not the widget
         switch spec.type {
         case .phrase, .command:
             KeySender.type(spec.value, pressReturn: true)
@@ -645,6 +646,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rightOption.onEnd = { [weak self] in self?.voice.stop() }
         rightOption.start()
         voice.onPartial = { [weak self] text in self?.model.heard = text }
+        voice.onLog = { DebugLog.note("voice: \($0)") }
         voice.onMessage = { [weak self] message in
             guard let self else { return }
             DebugLog.note(message)
@@ -653,7 +655,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voice.onFinal = { [weak self] text in
             guard let self else { return }
-            if let text { self.deliverVoice(text) }
+            if let text {
+                self.deliverVoice(text)
+            } else if !self.voiceMessageShown {
+                DebugLog.note("voice: nothing recognized")
+                self.voiceMessageShown = true
+                self.model.heard = "Didn't catch that — hold right ⌥ and speak"
+            }
             if self.voiceMessageShown {
                 // Leave the message up long enough to read.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
@@ -688,8 +696,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if model.request?.kind == .question, widget.state.mode == .panel {
             model.otherDraft = model.otherDraft.isEmpty ? text : model.otherDraft + " " + text
         } else {
+            widget.releaseKey()
             KeySender.type(text)
         }
-        DebugLog.note("voice: \(text.count) characters")
+        DebugLog.note("voice: \(text.count) characters into " + (typing.isActive ? "the Touch Bar answer" : model.request?.kind == .question && widget.state.mode == .panel ? "the widget's Other field" : NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"))
     }
 }

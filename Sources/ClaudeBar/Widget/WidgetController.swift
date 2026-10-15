@@ -88,6 +88,7 @@ final class WidgetController: NSObject {
                 set(.strip)
             }
         }
+        updateKeyAllowance()
         // Show what's being heard while you dictate.
         if model.listening && state.mode == .strip { set(.pill) }
         if !model.listening && state.mode == .pill && !hovering && !pinned && model.request == nil {
@@ -132,7 +133,20 @@ final class WidgetController: NSObject {
     private func set(_ mode: WidgetMode) {
         guard state.mode != mode else { return }
         withAnimation(.cb(mode == .panel ? 0.28 : 0.22)) { state.mode = mode }
-        if mode == .strip, panel.isKeyWindow { panel.resignKey() }
+        updateKeyAllowance()
+    }
+
+    private func updateKeyAllowance() {
+        let wants = state.mode == .panel && model.request != nil
+        panel.allowsKey = wants
+        if !wants { releaseKey() }
+    }
+
+    /// Hands the keyboard back to the app in front, if the widget has it.
+    func releaseKey() {
+        guard panel.isKeyWindow else { return }
+        panel.orderOut(nil)
+        panel.orderFrontRegardless()
     }
 
     // MARK: Drag
@@ -226,10 +240,13 @@ final class WidgetController: NSObject {
     @objc private func screensChanged() { layout() }
 }
 
-/// Can take keyboard focus (the "Other" field, ⏎ / esc) once you click it,
-/// without activating the app.
+/// Takes the keyboard only while a request card is open (the "Other"
+/// field, ⏎ / esc), and without activating the app. Otherwise a click on
+/// the widget would leave your typing — and the buttons' keystrokes —
+/// going to the widget instead of your editor.
 final class WidgetPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    var allowsKey = false
+    override var canBecomeKey: Bool { allowsKey }
 }
 
 /// Reports the mouse entering and leaving the whole widget.

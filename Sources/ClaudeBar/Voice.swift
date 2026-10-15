@@ -10,6 +10,8 @@ final class VoiceInput {
     /// The final text, or nil if nothing was heard or it failed.
     var onFinal: ((String?) -> Void)?
     var onMessage: ((String) -> Void)?
+    /// Diagnostics for debug.log.
+    var onLog: ((String) -> Void)?
 
     private let engine = AVAudioEngine()
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -90,6 +92,7 @@ final class VoiceInput {
             onFinal?(nil)
             return
         }
+        onLog?("listening, \(recognizer.locale.identifier), " + (offline ? "on this Mac" : "Apple servers"))
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -97,22 +100,27 @@ final class VoiceInput {
                     self.best = result.bestTranscription.formattedString
                     self.onPartial?(self.best)
                     if result.isFinal { self.deliver() }
-                } else if error != nil, self.finishing {
-                    self.deliver()
+                } else if let error {
+                    self.onLog?("recognizer: \(error.localizedDescription)")
+                    if self.finishing { self.deliver() }
                 }
             }
         }
     }
 
-    /// Stops listening; the final text arrives through onFinal.
+    /// Stops listening; the final text arrives through onFinal. Keeps the
+    /// mic open a moment longer: the key often comes up with the last word.
     func stop() {
-        guard let request, !finishing else { return }
+        guard request != nil, !finishing else { return }
         finishing = true
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
-        request.endAudio()
-        // The last words can take a moment; don't wait forever.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.deliver() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, let request = self.request else { return }
+            self.engine.stop()
+            self.engine.inputNode.removeTap(onBus: 0)
+            request.endAudio()
+            // The last words can take a moment; don't wait forever.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.deliver() }
+        }
     }
 
     private func deliver() {
