@@ -534,6 +534,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.model.openAtLogin = LoginItem.isEnabled
         }
         model.voice = { [weak self] down in down ? self?.voiceBegin() : self?.voice.stop() }
+        model.voiceToggle = { [weak self] in
+            guard let self else { return }
+            if self.model.listening {
+                self.voice.stop()
+            } else {
+                // Tap-to-talk: ends by itself after a 2 s pause.
+                self.voiceBegin(stopAfterPause: 2)
+            }
+        }
         model.resetWidgetPosition = { [weak self] in self?.resetWidgetPosition() }
         model.openAtLogin = LoginItem.isEnabled
     }
@@ -678,9 +687,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func voiceBegin() {
+    private func voiceBegin(stopAfterPause: TimeInterval? = nil) {
         guard !voice.isRunning, !model.listening else { return }
-        DebugLog.tap("voice")
+        DebugLog.tap(stopAfterPause == nil ? "voice (hold ⌥)" : "voice (mic)")
+        voice.stopAfterPause = stopAfterPause
         model.listening = true
         model.heard = ""
         widget.update()

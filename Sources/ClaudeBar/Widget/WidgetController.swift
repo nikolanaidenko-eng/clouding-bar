@@ -5,7 +5,7 @@ import SwiftUI
 /// The floating widget's window: a non-activating panel above other windows
 /// that never takes focus unless you click into it.
 ///
-///   pill ── hover 300 ms ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
+///   pill ── hover 3 s (or a click) ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
 ///
 /// With "Keep the pill visible" off, a 4 pt line stands in for the pill at
 /// rest and wakes into it after a 250 ms hover.
@@ -95,8 +95,10 @@ final class WidgetController: NSObject {
         }
         state.rest = rest
         updateKeyAllowance()
-        // The pill also shows what's being heard while you dictate.
-        if state.mode == .strip && (rest == .pill || model.listening) { set(.pill) }
+        // While you dictate, the pill shows the words as they come, so an
+        // open panel folds away.
+        if model.listening && model.request == nil && state.mode != .pill { set(.pill) }
+        if state.mode == .strip && rest == .pill { set(.pill) }
         if rest == .strip && !model.listening && state.mode == .pill && !hovering && !pinned && model.request == nil {
             set(.strip)
         }
@@ -142,15 +144,15 @@ final class WidgetController: NSObject {
         }
     }
 
-    /// Pill → panel after 300 ms of hovering.
+    /// Pill → panel after 3 s with the mouse on it (a click opens it at once).
     private func scheduleOpen() {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.hovering, self.state.mode == .pill else { return }
+            guard let self, self.hovering, self.state.mode == .pill, !self.model.listening else { return }
             self.set(.panel)
         }
         openWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     private func set(_ mode: WidgetMode) {
@@ -175,6 +177,11 @@ final class WidgetController: NSObject {
     // MARK: Drag
 
     private func pillMouseDown(_ event: NSEvent) {
+        // While dictating, the pill is the stop button.
+        if model.listening {
+            model.voiceToggle()
+            return
+        }
         let start = NSEvent.mouseLocation
         let startAnchor = anchor
         var moved = false

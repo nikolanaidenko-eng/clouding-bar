@@ -167,10 +167,11 @@ struct WidgetButtonStyle: ButtonStyle {
 struct IconButtonStyle: ButtonStyle {
     var background = Color.clear
     var foreground = Color.cbSecondary
+    var size: CGFloat = 44
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundColor(foreground)
-            .frame(width: 44, height: 44)
+            .frame(width: size, height: size)
             .background(Circle().fill(background.opacity(configuration.isPressed ? 0.6 : 1)))
             .contentShape(Circle())
     }
@@ -281,8 +282,8 @@ struct PillView: View {
             .fixedSize() // numbers never wrap or squeeze
             .font(.system(size: 13).monospacedDigit())
             .foregroundColor(.cbText)
-            .padding(.leading, 8)
-            .padding(.trailing, 16)
+            .padding(.leading, 10)
+            .padding(.trailing, 20)
             .frame(height: 44)
             .modifier(Glass(radius: 22, border: model.request != nil ? Color.cbWarning.opacity(0.5) : .cbHairline))
             .overlay(PillDragHandle(state: state))
@@ -293,12 +294,14 @@ struct PillView: View {
 
     @ViewBuilder private var content: some View {
         if model.listening {
+            // The words as they come; the newest stay in view.
             HStack(spacing: 10) {
                 MascotIcon(activity: .work, size: 30).frame(width: 30, height: 30)
-                Icon(kind: .mic, size: 14, lineWidth: 1.8).foregroundColor(.cbAction)
+                Icon(kind: .mic, size: 15, lineWidth: 1.8).foregroundColor(.cbAction)
                 Text(model.heard.isEmpty ? "Listening…" : model.heard)
-                    .lineLimit(1).truncationMode(.head)
-                    .frame(maxWidth: 260, alignment: .leading)
+                    .foregroundColor(model.heard.isEmpty ? .cbSecondary : .cbText)
+                    .truncationMode(.head)
+                    .frame(width: 300, alignment: .leading)
             }
         } else if model.request != nil {
             HStack(spacing: 10) {
@@ -312,10 +315,10 @@ struct PillView: View {
                 Text(model.sessionPercent.map { "\(Int($0.rounded()))%" } ?? "—").foregroundColor(.cbSecondary)
             }
         } else {
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                HStack(spacing: 6) {
-                    MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.14)).frame(width: 28)
+                HStack(spacing: 8) {
+                    MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.14)).frame(width: 44)
                     Text(model.sessionPercent.map { "\(Int($0.rounded()))%" } ?? "—")
                 }
                 if model.config.pillShows.contains("context"), let c = model.contextPercent {
@@ -426,48 +429,55 @@ struct MeterBlock: View {
     }
 }
 
+/// The open widget, wide and low (the owner's request, 15.10): one header
+/// line, Session and Context side by side, the buttons and the mic in a row.
 struct MainPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
 
     var body: some View {
-        PanelChrome {
-            PanelHeader(activity: model.activity, title: model.statusTitle, subtitle: model.project,
-                        onCollapse: { withAnimation(.cb(0.22)) { state.mode = state.rest } })
-            MeterBlock(title: "Session", percent: model.sessionPercent,
-                       caption: model.resetLong.map { "Resets in \($0)" })
-            MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
-            if !model.buttons.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-                    ForEach(Array(model.buttons.enumerated()), id: \.offset) { i, b in
-                        Button(b.label) { model.perform(.button(i)) }
-                            .buttonStyle(WidgetButtonStyle())
-                            .lineLimit(1)
-                    }
+        PanelChrome(padding: EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 8), spacing: 10, width: 420) {
+            HStack(spacing: 8) {
+                MascotIcon(activity: model.activity, size: 24).frame(width: 24, height: 24)
+                Text(model.statusTitle).font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
+                if let project = model.project {
+                    Text(project).font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
                 }
-            }
-            HStack(spacing: 6) {
+                Spacer(minLength: 0)
                 if model.config.sessionsList {
                     Button {
                         withAnimation(.cb(0.26)) { state.mode = .sessions }
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 4) {
                             Text("\(model.sessions.count) session\(model.sessions.count == 1 ? "" : "s")")
-                            Icon(kind: .chevronRight, size: 12, lineWidth: 2.2)
+                            Icon(kind: .chevronRight, size: 11, lineWidth: 2.2)
                         }
                         .font(.system(size: 12))
                         .foregroundColor(.cbSecondary)
-                        .padding(.horizontal, 6)
-                        .frame(height: 44)
+                        .frame(height: 28)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer(minLength: 0)
+                Button { withAnimation(.cb(0.22)) { state.mode = state.rest } } label: { Icon(kind: .chevronUp, size: 14) }
+                    .buttonStyle(IconButtonStyle(size: 30))
+                    .accessibilityLabel("Collapse")
+            }
+            HStack(alignment: .top, spacing: 16) {
+                MeterBlock(title: "Session", percent: model.sessionPercent,
+                           caption: model.resetLong.map { "Resets in \($0)" })
+                MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
+            }
+            .padding(.trailing, 4)
+            HStack(spacing: 6) {
+                ForEach(Array(model.buttons.enumerated()), id: \.offset) { i, b in
+                    Button(b.label) { model.perform(.button(i)) }
+                        .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
+                        .lineLimit(1)
+                }
                 MicButton(model: model)
             }
-            .padding(.top, 10)
-            .overlay(Rectangle().fill(Color.white.opacity(0.1)).frame(height: 0.5), alignment: .top)
+            .padding(.trailing, 4)
         }
     }
 
@@ -477,22 +487,18 @@ struct MainPanel: View {
     }
 }
 
-/// Hold to talk.
+/// Tap to dictate: the panel folds into the pill, which shows the words as
+/// they come. It stops by itself after a pause, or tap the pill.
 struct MicButton: View {
     @ObservedObject var model: AppModel
-    @State private var down = false
 
     var body: some View {
-        Icon(kind: .mic, size: 18, lineWidth: 1.8)
-            .foregroundColor(model.listening ? .white : .cbText)
-            .frame(width: 44, height: 44)
-            .background(Circle().fill(model.listening ? Color.cbAction : Color.white.opacity(0.1)))
-            .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { _ in if !down { down = true; model.voice(true) } }
-                .onEnded { _ in down = false; model.voice(false) })
-            .accessibilityLabel("Hold to talk")
-            .accessibilityAddTraits(.isButton)
+        Button { model.voiceToggle() } label: {
+            Icon(kind: .mic, size: 16, lineWidth: 1.8)
+        }
+        .buttonStyle(IconButtonStyle(background: model.listening ? .cbAction : Color.white.opacity(0.1),
+                                     foreground: model.listening ? .white : .cbText, size: 32))
+        .accessibilityLabel("Dictate")
     }
 }
 

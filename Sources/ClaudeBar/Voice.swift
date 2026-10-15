@@ -18,6 +18,10 @@ final class VoiceInput {
     private var task: SFSpeechRecognitionTask?
     private var best = ""
     private var finishing = false
+    private var silence: DispatchWorkItem?
+
+    /// Stop by itself after a pause (tap-to-talk); nil: only stop() stops it.
+    var stopAfterPause: TimeInterval?
 
     var isRunning: Bool { request != nil }
 
@@ -93,12 +97,14 @@ final class VoiceInput {
             return
         }
         onLog?("listening, \(recognizer.locale.identifier), " + (offline ? "on this Mac" : "Apple servers"))
+        armSilence(stopAfterPause.map { _ in 6 })
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let result {
                     self.best = result.bestTranscription.formattedString
                     self.onPartial?(self.best)
+                    self.armSilence(self.stopAfterPause)
                     if result.isFinal { self.deliver() }
                 } else if let error {
                     self.onLog?("recognizer: \(error.localizedDescription)")
@@ -106,6 +112,16 @@ final class VoiceInput {
                 }
             }
         }
+    }
+
+    /// Tap-to-talk ends after a pause in speech; if nothing is said at all,
+    /// after a longer one.
+    private func armSilence(_ pause: TimeInterval?) {
+        silence?.cancel()
+        guard let pause, !finishing else { return }
+        let work = DispatchWorkItem { [weak self] in self?.stop() }
+        silence = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + pause, execute: work)
     }
 
     /// Stops listening; the final text arrives through onFinal. Keeps the
@@ -131,6 +147,8 @@ final class VoiceInput {
     }
 
     private func cleanUp() {
+        silence?.cancel()
+        silence = nil
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
         task?.cancel()

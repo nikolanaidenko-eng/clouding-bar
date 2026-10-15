@@ -69,6 +69,7 @@ final class AppModel: ObservableObject {
     var setConfig: (String, Any) -> Void = { _, _ in }
     var setOpenAtLogin: (Bool) -> Void = { _ in }
     var voice: (Bool) -> Void = { _ in }
+    var voiceToggle: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
     var statusTitle: String {
