@@ -5,7 +5,7 @@ import SwiftUI
 /// The floating widget's window: a non-activating panel above other windows
 /// that never takes focus unless you click into it.
 ///
-///   strip  ── hover ──▶ pill ── 300 ms ──▶ panel
+///   strip ── hover 250 ms ──▶ pill ── 300 ms ──▶ panel
 ///     ▲                                      │
 ///     └────── 400 ms after the mouse leaves ─┘
 ///
@@ -18,6 +18,7 @@ final class WidgetController: NSObject {
 
     private var panel: WidgetPanel!
     private var host: HoverHostingView<WidgetView>!
+    private var wakeWork: DispatchWorkItem?
     private var openWork: DispatchWorkItem?
     private var closeWork: DispatchWorkItem?
     private var hovering = false
@@ -107,17 +108,23 @@ final class WidgetController: NSObject {
         hovering = inside
         if inside {
             closeWork?.cancel()
-            if state.mode == .strip { set(.pill) }
-            if state.mode == .pill {
-                openWork?.cancel()
+            if state.mode == .strip {
+                // Only a deliberate hover wakes it: the mouse crosses the top
+                // of the screen on its way to the menu bar or a title bar.
+                wakeWork?.cancel()
                 let work = DispatchWorkItem { [weak self] in
-                    guard let self, self.hovering, self.state.mode == .pill else { return }
-                    self.set(.panel)
+                    guard let self, self.hovering, self.state.mode == .strip,
+                          NSEvent.pressedMouseButtons == 0 else { return }
+                    self.set(.pill)
+                    self.scheduleOpen()
                 }
-                openWork = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+                wakeWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            } else if state.mode == .pill {
+                scheduleOpen()
             }
         } else {
+            wakeWork?.cancel()
             openWork?.cancel()
             if pinned && state.mode == .panel { pinned = false } // seen it; normal rules from now on
             closeWork?.cancel()
@@ -128,6 +135,17 @@ final class WidgetController: NSObject {
             closeWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
         }
+    }
+
+    /// Pill → panel after 300 ms of hovering.
+    private func scheduleOpen() {
+        openWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.hovering, self.state.mode == .pill else { return }
+            self.set(.panel)
+        }
+        openWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     private func set(_ mode: WidgetMode) {

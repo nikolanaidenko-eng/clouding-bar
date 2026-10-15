@@ -249,7 +249,8 @@ struct StripView: View {
                 .opacity(dim ? 0.35 : 1)
             Spacer(minLength: 0)
         }
-        .frame(width: 88, height: 10)
+        // Barely bigger than the line itself, so it isn't in the way.
+        .frame(width: 72, height: 6)
         .contentShape(Rectangle())
         .onAppear(perform: pulseIfNeeded)
         .onChange(of: waiting) { _ in pulseIfNeeded() }
