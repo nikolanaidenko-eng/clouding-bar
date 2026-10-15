@@ -16,6 +16,8 @@ struct BarModel: Equatable {
     var resetCountdown: String?
     var contextPercent: Double?
     var buttons: [ButtonSpec] = []
+    /// Do not disturb: nothing pulses.
+    var quiet = false
 }
 
 enum BarAction {
@@ -91,7 +93,7 @@ final class BarView: NSView {
 
     /// What decides the set of subviews; values change without a rebuild.
     private static func structureKey(_ m: BarModel) -> String {
-        let buttons = m.buttons.map(\.label).joined(separator: "\u{1}")
+        let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
         switch m.mode {
         case .normal: return "normal|\(buttons)"
         case .contextWarning: return "context"
@@ -137,7 +139,7 @@ final class BarView: NSView {
             [compact, later].forEach { b in animate(b) { $0.slideIn() } }
 
         case let .permission(verb, detail):
-            let message = MessageView(verb: verb, detail: detail, monospaced: true)
+            let message = MessageView(verb: verb, detail: detail, monospaced: true, quiet: model.quiet)
             add(message, .flex(weight: 1, min: 120))
             animate(message) { $0.slideIn() }
             let allow = BarButton("Allow", style: .primary) { [weak self] in self?.onAction?(.allow) }
@@ -149,7 +151,7 @@ final class BarView: NSView {
             [allow, always, deny].forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
 
         case let .question(text, options, multi, picked):
-            let message = MessageView(verb: nil, detail: text, monospaced: false)
+            let message = MessageView(verb: nil, detail: text, monospaced: false, quiet: model.quiet)
             add(message, .flex(weight: 1, min: 120))
             animate(message) { $0.slideIn() }
             var group: [NSView] = []
@@ -373,7 +375,7 @@ private final class MessageView: NSView {
     private let verbLabel: NSTextField?
     private let detailLabel: NSTextField
 
-    init(verb: String?, detail: String, monospaced: Bool) {
+    init(verb: String?, detail: String, monospaced: Bool, quiet: Bool) {
         verbLabel = verb.map { v in
             let l = NSTextField(labelWithString: v)
             l.font = .systemFont(ofSize: Palette.buttonFont)
@@ -392,7 +394,7 @@ private final class MessageView: NSView {
         dot.backgroundColor = Palette.warning.cgColor
         dot.cornerRadius = 3
         layer?.addSublayer(dot)
-        dot.pulse(low: 0.35, period: 1.4)
+        if !quiet { dot.pulse(low: 0.35, period: 1.4) }
         if let verbLabel { addSubview(verbLabel) }
         addSubview(detailLabel)
         setAccessibilityElement(true)

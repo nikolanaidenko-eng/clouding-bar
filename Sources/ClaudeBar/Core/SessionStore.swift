@@ -47,6 +47,7 @@ final class SessionStore {
         if let p = m.contextUsedPercent { session.statusContextPercent = p }
         if let size = m.contextWindowSize { session.contextWindowSize = size }
         if let model = m.modelId { session.model = model }
+        if let cost = m.costUSD { session.costUSD = cost }
 
         if let event = m.event {
             session.lastEvent = now
@@ -148,6 +149,8 @@ final class SessionStore {
             for u in updates {
                 guard let s = self.sessions[u.sessionId] else { continue }
                 if let t = u.contextTokens { s.contextTokens = t }
+                s.tokensIn = u.tokensIn
+                s.tokensOut = u.tokensOut
                 if let m = u.model { s.model = m }
                 s.transcriptChanged = u.modified
                 if u.interrupted == true && s.activity == .work {

@@ -91,10 +91,11 @@ Claude's own UI got the request.
     `PreToolUse` passes at once.
 - **Everywhere else** (terminal, scripts): Claude may wait on the hook.
   - The bar takes questions from `PreToolUse` and permissions as usual.
-  - It holds them only while the bar is showing, for `questionHoldSeconds`
-    (15, renewed while you interact).
+  - It holds them only while the Touch Bar or the floating widget is
+    showing, for `questionHoldSeconds` (15, renewed while you interact).
   - Otherwise it passes at once.
-- When the bar is hidden, it passes everything that can block. The same
+- When both the bar and the widget are hidden, it passes everything that
+  can block. The same
   happens on esc, when the hold runs out, and when Claude moves on (`Stop`,
   `UserPromptSubmit`, `SessionEnd`, or `PostToolUse` of the same tool).
 

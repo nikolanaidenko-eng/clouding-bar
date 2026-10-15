@@ -1,0 +1,193 @@
+import AppKit
+import AVFoundation
+import Speech
+
+/// Speech to text with Apple's recognizer. On this Mac's own model when the
+/// language has one (no audio leaves the Mac); on Apple's servers only if
+/// the settings allow it for a language without one.
+final class VoiceInput {
+    var onPartial: ((String) -> Void)?
+    /// The final text, or nil if nothing was heard or it failed.
+    var onFinal: ((String?) -> Void)?
+    var onMessage: ((String) -> Void)?
+
+    private let engine = AVAudioEngine()
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private var best = ""
+    private var finishing = false
+
+    var isRunning: Bool { request != nil }
+
+    /// Can this language be recognized offline on this Mac?
+    static func worksOffline(_ language: String) -> Bool {
+        SFSpeechRecognizer(locale: Locale(identifier: language))?.supportsOnDeviceRecognition ?? false
+    }
+
+    /// Languages offered in Settings: what the recognizer knows, sorted.
+    static var languages: [String] {
+        SFSpeechRecognizer.supportedLocales().map(\.identifier)
+            .map { $0.replacingOccurrences(of: "_", with: "-") }
+            .sorted()
+    }
+
+    func start(language: String, allowServer: Bool) {
+        guard request == nil else { return }
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: language)) else {
+            onMessage?("Voice: \(language) isn't supported")
+            onFinal?(nil)
+            return
+        }
+        let offline = recognizer.supportsOnDeviceRecognition
+        guard offline || allowServer else {
+            onMessage?("Voice: \(language) isn't available offline. Allow Apple servers in Settings to use it.")
+            onFinal?(nil)
+            return
+        }
+        authorize { [weak self] ok in
+            guard let self else { return }
+            guard ok else {
+                self.onMessage?("Voice: allow Microphone and Speech Recognition for Clouding Bar in System Settings → Privacy")
+                self.onFinal?(nil)
+                return
+            }
+            self.begin(recognizer, offline: offline)
+        }
+    }
+
+    private func authorize(_ done: @escaping (Bool) -> Void) {
+        SFSpeechRecognizer.requestAuthorization { status in
+            guard status == .authorized else {
+                DispatchQueue.main.async { done(false) }
+                return
+            }
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                DispatchQueue.main.async { done(granted) }
+            }
+        }
+    }
+
+    private func begin(_ recognizer: SFSpeechRecognizer, offline: Bool) {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = offline
+        self.request = request
+        best = ""
+        finishing = false
+
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            request.append(buffer)
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+        } catch {
+            cleanUp()
+            onMessage?("Voice: no microphone (\(error.localizedDescription))")
+            onFinal?(nil)
+            return
+        }
+        task = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let result {
+                    self.best = result.bestTranscription.formattedString
+                    self.onPartial?(self.best)
+                    if result.isFinal { self.deliver() }
+                } else if error != nil, self.finishing {
+                    self.deliver()
+                }
+            }
+        }
+    }
+
+    /// Stops listening; the final text arrives through onFinal.
+    func stop() {
+        guard let request, !finishing else { return }
+        finishing = true
+        engine.stop()
+        engine.inputNode.removeTap(onBus: 0)
+        request.endAudio()
+        // The last words can take a moment; don't wait forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.deliver() }
+    }
+
+    private func deliver() {
+        guard request != nil else { return }
+        let text = best.trimmingCharacters(in: .whitespacesAndNewlines)
+        cleanUp()
+        onFinal?(text.isEmpty ? nil : text)
+    }
+
+    private func cleanUp() {
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        task?.cancel()
+        task = nil
+        request = nil
+        finishing = false
+    }
+}
+
+/// Hold-to-talk on the right Option key: fires only when it's pressed on
+/// its own and held at least 0.3 s, so ⌥-shortcuts and ⌥-letters still work.
+final class RightOptionHold {
+    var onStart: (() -> Void)?
+    var onEnd: (() -> Void)?
+
+    private static let rightOption: UInt16 = 61
+    private var monitors: [Any] = []
+    private var pending: DispatchWorkItem?
+    private var holding = false
+
+    func start() {
+        let handler: (NSEvent) -> Void = { [weak self] in self?.handle($0) }
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: handler) {
+            monitors.append(m)
+        }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown], handler: { event in
+            handler(event)
+            return event
+        }) {
+            monitors.append(m)
+        }
+    }
+
+    private func handle(_ event: NSEvent) {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .function, .numericPad])
+        if event.type == .flagsChanged && event.keyCode == Self.rightOption {
+            if flags == .option {
+                // Pressed alone: wait 0.3 s before it counts.
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.pending = nil
+                    self.holding = true
+                    self.onStart?()
+                }
+                pending = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+            } else if !flags.contains(.option) {
+                release()
+            }
+            return
+        }
+        // Anything else before the 0.3 s are up makes it a shortcut.
+        if pending != nil {
+            pending?.cancel()
+            pending = nil
+        }
+    }
+
+    private func release() {
+        pending?.cancel()
+        pending = nil
+        if holding {
+            holding = false
+            onEnd?()
+        }
+    }
+}

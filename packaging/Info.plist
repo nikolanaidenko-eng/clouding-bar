@@ -20,6 +20,10 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hold the right Option key to dictate to Claude.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turns what you dictate into text for Claude. On this Mac when the language allows it.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
 </dict>

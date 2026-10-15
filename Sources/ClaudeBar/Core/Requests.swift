@@ -4,6 +4,7 @@ import Foundation
 struct QuestionItem {
     let text: String
     let options: [String]
+    let descriptions: [String]
     let multiSelect: Bool
 }
 
@@ -18,6 +19,7 @@ struct QuestionItem {
 final class PendingRequest {
     enum Kind { case permission, question }
 
+    let id = UUID()
     let kind: Kind
     /// Came from PermissionRequest (else PreToolUse).
     let viaPermission: Bool
@@ -53,8 +55,11 @@ final class PendingRequest {
             let list = toolInput["questions"] as? [[String: Any]] ?? []
             questions = list.compactMap { q in
                 guard let text = q["question"] as? String else { return nil }
-                let options = (q["options"] as? [[String: Any]] ?? []).compactMap { $0["label"] as? String }
-                return QuestionItem(text: text, options: options, multiSelect: q["multiSelect"] as? Bool ?? false)
+                let raw = (q["options"] as? [[String: Any]] ?? []).filter { $0["label"] is String }
+                return QuestionItem(text: text,
+                                    options: raw.map { $0["label"] as! String },
+                                    descriptions: raw.map { $0["description"] as? String ?? "" },
+                                    multiSelect: q["multiSelect"] as? Bool ?? false)
             }
             if questions.isEmpty { return nil }
         }

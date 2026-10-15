@@ -76,7 +76,7 @@ test:
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.
 snapshots:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift) tools/snapshot/main.swift -o build/tb-snapshot
+	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift Sources/ClaudeBar/Widget/*.swift Sources/ClaudeBar/Settings/*.swift) Sources/ClaudeBar/AppModel.swift Sources/ClaudeBar/Voice.swift tools/snapshot/main.swift -o build/tb-snapshot
 	./build/tb-snapshot build/snapshots
 
 signing-identity:

@@ -51,4 +51,8 @@ struct Inbound {
     }
 
     var modelId: String? { (raw["model"] as? [String: Any])?["id"] as? String }
+
+    var costUSD: Double? {
+        ((raw["cost"] as? [String: Any])?["total_cost_usd"] as? NSNumber)?.doubleValue
+    }
 }

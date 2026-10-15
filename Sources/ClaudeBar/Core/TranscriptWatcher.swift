@@ -13,6 +13,9 @@ final class TranscriptWatcher {
         /// The latest entry is "[Request interrupted by user]".
         var interrupted: Bool?
         var modified: Date
+        /// Session totals: fresh input (incl. cache writes) and output.
+        var tokensIn = 0
+        var tokensOut = 0
     }
 
     private struct State {
@@ -20,14 +23,16 @@ final class TranscriptWatcher {
         var offset: UInt64
         var size: UInt64 = 0
         var mtime: Date?
+        var tokensIn = 0
+        var tokensOut = 0
     }
 
     private let queue = DispatchQueue(label: "claudebar.transcripts", qos: .utility)
     private var states: [String: State] = [:]  // touched only on `queue`
 
-    /// A long session's transcript runs to many MB; the latest reply is
-    /// all we need, so a first look reads only the tail.
-    private static let firstReadLimit: UInt64 = 4 << 20
+    /// Read in slices, so a long session's transcript (many MB) never
+    /// sits in memory whole.
+    private static let chunk = 8 << 20
 
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
     private static let interruptMark = Data("[Request interrupted by user".utf8)
@@ -57,33 +62,39 @@ final class TranscriptWatcher {
         if state.path != path { state = State(path: path, offset: UInt64.max) }
         if state.offset != UInt64.max && size == state.size && mtime == state.mtime { return nil }
 
-        var skipFirstLine = false
         if state.offset == UInt64.max || size < state.offset {
-            // First look (or the file was rewritten): start near the end.
-            state.offset = size > Self.firstReadLimit ? size - Self.firstReadLimit : 0
-            skipFirstLine = state.offset > 0
+            // First look, or the file was rewritten: read it all once.
+            state = State(path: path, offset: 0)
         }
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
         handle.seek(toFileOffset: state.offset)
-        var data = handle.readDataToEndOfFile()
         state.size = size
         state.mtime = mtime
 
-        if skipFirstLine, let nl = data.firstIndex(of: 0x0A) {
-            state.offset += UInt64(data.distance(from: data.startIndex, to: nl) + 1)
-            data = data[data.index(after: nl)...]
-        }
-        // Only whole lines: the last one may still be being written.
-        guard let lastNewline = data.lastIndex(of: 0x0A) else {
-            states[id] = state
-            return nil
-        }
-        let complete = data[data.startIndex...lastNewline]
-        state.offset += UInt64(complete.count)
-        states[id] = state
-
         var update = Update(sessionId: id, modified: mtime ?? Date())
+        var carry = Data()
+        var sawLines = false
+        while true {
+            let data = handle.readData(ofLength: Self.chunk)
+            if data.isEmpty { break }
+            carry.append(data)
+            // Only whole lines: the last one may still be being written.
+            guard let lastNewline = carry.lastIndex(of: 0x0A) else { continue }
+            let complete = carry[carry.startIndex...lastNewline]
+            state.offset += UInt64(complete.count)
+            scan(complete, into: &update, state: &state)
+            carry = Data(carry[carry.index(after: lastNewline)...])
+            sawLines = true
+        }
+        states[id] = state
+        guard sawLines else { return nil }
+        update.tokensIn = state.tokensIn
+        update.tokensOut = state.tokensOut
+        return update
+    }
+
+    private func scan(_ complete: Data, into update: inout Update, state: inout State) {
         for line in complete.split(separator: 0x0A) {
             let isAssistant = line.range(of: Self.assistantMark) != nil
             let isInterrupt = !isAssistant && line.range(of: Self.interruptMark) != nil
@@ -103,11 +114,12 @@ final class TranscriptWatcher {
             let cacheWrite = (usage["cache_creation_input_tokens"] as? NSNumber)?.intValue ?? 0
             let cacheRead = (usage["cache_read_input_tokens"] as? NSNumber)?.intValue ?? 0
             update.contextTokens = input + cacheWrite + cacheRead
+            state.tokensIn += input + cacheWrite
+            state.tokensOut += (usage["output_tokens"] as? NSNumber)?.intValue ?? 0
             if let model = (obj["requestedModel"] as? String) ?? (message["model"] as? String) {
                 update.model = model
             }
             update.interrupted = false
         }
-        return update
     }
 }

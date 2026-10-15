@@ -7,6 +7,8 @@ import AppKit
 ///    go back to Claude's own UI the moment the bar can't answer them
 ///  - the Touch Bar takes over while an app from terminalBundleIDs is in
 ///    front and a Claude Code session is alive
+///  - the floating widget and the settings window read AppModel, which
+///    refresh() fills from the same state
 ///  - a menu bar item for status and quitting
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var config = Config.load()
@@ -30,6 +32,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ticks = 0
     private var refreshQueued = false
     private var lastActiveId: String?
+    /// A session whose request was picked in the widget's sessions list.
+    private var preferredRequestSession: String?
+
+    private let model = AppModel()
+    private lazy var widget = WidgetController(model: model)
+    private lazy var settings = SettingsWindow(model: model)
+    private let voice = VoiceInput()
+    private let rightOption = RightOptionHold()
+    private var voiceMessageShown = false
+    private var voiceOfflineCache: (language: String, offline: Bool)?
+    private var shownCardId: UUID?
 
     // MARK: - Launch
 
@@ -61,6 +74,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         typing.onChange = { [weak self] text in self?.typingChanged(text) }
         typing.onSubmit = { [weak self] _ in self?.perform(.send) }
         typing.onCancel = { [weak self] in self?.stopTyping() }
+
+        setUpModel()
+        setUpVoice()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.everySecond() }
         RunLoop.main.add(timer, forMode: .common)
@@ -112,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // and briefly. A question's PermissionRequest comes after its
             // PreToolUse was already handled.
             let blocking = request.kind == .permission || !request.viaPermission
-            hold = blocking && barShouldShow ? config.questionHoldSeconds : 0
+            hold = blocking && canShowRequests ? config.questionHoldSeconds : 0
         }
         guard hold > 0 else {
             DebugLog.note("\(what) (\(request.viaPermission ? "PermissionRequest" : "PreToolUse")) → Claude")
@@ -206,6 +222,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return !store.alive.isEmpty
     }
 
+    /// Somewhere a request can be answered: the Touch Bar or the widget.
+    private var canShowRequests: Bool {
+        barShouldShow || (config.widget && widget.isVisible)
+    }
+
     // MARK: - What the bar shows
 
     private func setNeedsRefresh() {
@@ -216,55 +237,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         refreshQueued = false
-        guard barShouldShow else {
-            // Claude may be waiting on these; a hidden bar can't answer them.
-            for r in requests where !r.hostAnswersInParallel {
-                finish(r, (r.kind == .question ? "question" : "permission") + " → Claude (bar hidden)")
-            }
-            touchBar.hide()
-            return
-        }
-
         let active = store.activeSession(windowTitle: frontTitle)
         if active?.id != lastActiveId {
             lastActiveId = active?.id
             DebugLog.note("active session: \(active?.projectName ?? "none") (\(active?.id.prefix(8) ?? "-"))")
         }
-        var model = BarModel()
-        model.buttons = config.effectiveButtons
-        model.sessionPercent = store.account.sessionPercent
-        model.resetCountdown = store.account.resetCountdown
-        model.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
-        model.activity = activity(of: active)
+
+        if config.widget { widget.show() } else { widget.hide() }
+        updateModel(active: active)
+        widget.update()
+
+        guard barShouldShow else {
+            if typingFor != nil { stopTyping() }
+            if !canShowRequests {
+                // Claude may be waiting on these, and nothing can answer them.
+                for r in requests where !r.hostAnswersInParallel {
+                    finish(r, (r.kind == .question ? "question" : "permission") + " → Claude (bar and widget hidden)")
+                }
+            }
+            touchBar.hide()
+            return
+        }
+
+        var bar = BarModel()
+        bar.buttons = currentButtons(active)
+        bar.sessionPercent = store.account.sessionPercent
+        bar.resetCountdown = store.account.resetCountdown
+        bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
+        bar.activity = activity(of: active)
+        bar.quiet = config.doNotDisturb
 
         if let request = currentRequest(active: active) {
-            model.activity = .wait
+            bar.activity = .wait
             switch request.kind {
             case .permission:
                 let s = request.summary
-                model.mode = .permission(verb: s.verb, detail: s.detail)
+                bar.mode = .permission(verb: s.verb, detail: s.detail)
             case .question:
                 if typingFor === request {
-                    model.mode = .typing(text: typingText)
+                    bar.mode = .typing(text: typingText)
                 } else if let q = request.current {
-                    model.mode = .question(text: q.text, options: q.options,
-                                           multiSelect: q.multiSelect, picked: request.picked)
+                    bar.mode = .question(text: q.text, options: q.options,
+                                         multiSelect: q.multiSelect, picked: request.picked)
                 }
             }
-        } else if let active, let percent = model.contextPercent {
+        } else if let active, let percent = bar.contextPercent {
             if percent < config.contextWarnPercent {
                 active.contextSnoozedUntil = nil // warn again next time it fills up
-            } else if percent >= (active.contextSnoozedUntil ?? 0) {
-                model.mode = .contextWarning
+            } else if config.contextWarning && !config.doNotDisturb
+                        && percent >= (active.contextSnoozedUntil ?? 0) {
+                bar.mode = .contextWarning
             }
         }
-        touchBar.show(model)
+        touchBar.show(bar)
+    }
+
+    private func currentButtons(_ active: Session?) -> [ButtonSpec] {
+        config.buttons(for: active?.projectName)
     }
 
     /// The request the bar shows: the one being typed, else the active
     /// session's oldest, else the oldest of all.
     private func currentRequest(active: Session?) -> PendingRequest? {
         if let typingFor { return typingFor }
+        if let id = preferredRequestSession, let r = requests.first(where: { $0.sessionId == id }) { return r }
         return requests.first { $0.sessionId == active?.id } ?? requests.first
     }
 
@@ -291,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
         case let .button(i):
-            let buttons = config.effectiveButtons
+            let buttons = currentButtons(active)
             guard buttons.indices.contains(i) else { return }
             let spec = buttons[i]
             DebugLog.tap("button \(spec.label)")
@@ -428,6 +464,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         touchBarToggleItem.action = #selector(toggleTouchBar)
         menu.addItem(touchBarToggleItem)
         menu.addItem(.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        let resetItem = NSMenuItem(title: "Reset Widget Position", action: #selector(resetWidgetPosition), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+        menu.addItem(.separator())
         let reload = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "")
         reload.target = self
         menu.addItem(reload)
@@ -455,6 +498,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    @objc private func openSettings() {
+        model.openAtLogin = LoginItem.isEnabled
+        settings.show()
+    }
+
+    @objc private func resetWidgetPosition() {
+        setConfig("widgetPosition", NSNull())
+        widget.resetPosition()
+    }
+
     @objc private func reloadConfig() {
         config = Config.load()
         refresh()
@@ -462,5 +515,181 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openConfigFolder() {
         NSWorkspace.shared.open(Config.directory)
+    }
+
+    // MARK: - Widget and settings
+
+    private func setUpModel() {
+        model.perform = { [weak self] in self?.perform($0) }
+        model.answerText = { [weak self] in self?.answerTyped($0) }
+        model.openSession = { [weak self] in self?.openSession($0) }
+        model.showRequest = { [weak self] id in
+            self?.preferredRequestSession = id
+            self?.refresh()
+        }
+        model.setConfig = { [weak self] key, value in self?.setConfig(key, value) }
+        model.setOpenAtLogin = { [weak self] on in
+            LoginItem.set(on)
+            self?.model.openAtLogin = LoginItem.isEnabled
+        }
+        model.voice = { [weak self] down in down ? self?.voiceBegin() : self?.voice.stop() }
+        model.resetWidgetPosition = { [weak self] in self?.resetWidgetPosition() }
+        model.openAtLogin = LoginItem.isEnabled
+    }
+
+    private func setConfig(_ key: String, _ value: Any) {
+        Config.save(key, value)
+        config = Config.load()
+        DebugLog.note("setting \(key) changed")
+        refresh()
+    }
+
+    /// Fills AppModel; only what changed is assigned, so SwiftUI redraws
+    /// only what it must.
+    private func updateModel(active: Session?) {
+        let m = model
+        func set<T: Equatable>(_ key: ReferenceWritableKeyPath<AppModel, T>, _ value: T) {
+            if m[keyPath: key] != value { m[keyPath: key] = value }
+        }
+        let request = currentRequest(active: active)
+        let alive = store.alive
+        set(\.config, config)
+        set(\.touchBarPresent, touchBarPresent)
+        set(\.hasNotch, WidgetController.hasNotch(NSScreen.screens.first))
+        set(\.hasSession, !alive.isEmpty)
+        set(\.activity, request != nil ? .wait : activity(of: active))
+        set(\.project, active?.projectName)
+        set(\.sessionPercent, store.account.sessionPercent)
+        set(\.resetShort, store.account.resetCountdown)
+        set(\.resetLong, store.account.resetLong)
+        set(\.limitAge, store.account.updatedAt.map { AppModel.ago($0) })
+        set(\.contextPercent, active?.contextPercent(windowOverride: config.contextWindowSize))
+        set(\.tokensIn, active?.tokensIn)
+        set(\.tokensOut, active?.tokensOut)
+        set(\.cost, active?.costUSD)
+        set(\.buttons, currentButtons(active))
+        set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
+
+        let waitingIds = Set(requests.compactMap(\.sessionId))
+        let rows = alive.map { s -> AppModel.SessionRow in
+            let waiting = waitingIds.contains(s.id) || s.waitingNotice
+            let status = waiting ? "Needs your OK"
+                : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
+                : "Idle · \(AppModel.duration(since: s.lastSeen))"
+            return AppModel.SessionRow(id: s.id, name: s.projectName ?? "Claude", status: status,
+                                       activity: waiting ? .wait : s.activity,
+                                       context: s.contextPercent(windowOverride: config.contextWindowSize),
+                                       waiting: waiting)
+        }
+        .sorted { a, b in a.waiting != b.waiting ? a.waiting : a.name < b.name }
+        set(\.sessions, rows)
+
+        let card = request.map(card(for:))
+        if card?.id != shownCardId {
+            shownCardId = card?.id
+            m.otherDraft = ""
+        }
+        set(\.request, card)
+
+        if voiceOfflineCache?.language != config.voiceLanguage {
+            voiceOfflineCache = (config.voiceLanguage, VoiceInput.worksOffline(config.voiceLanguage))
+        }
+        set(\.voiceOffline, voiceOfflineCache?.offline ?? true)
+    }
+
+    private func card(for r: PendingRequest) -> AppModel.RequestCard {
+        let project = r.sessionId.flatMap { store.sessions[$0]?.projectName }
+        var card = AppModel.RequestCard(id: r.id, kind: r.kind == .permission ? .permission : .question, project: project)
+        if r.kind == .permission {
+            let s = r.summary
+            card.verb = s.verb
+            // The widget has room for the whole command.
+            card.detail = r.toolName == "Bash" ? (r.toolInput["command"] as? String ?? s.detail) : s.detail
+        } else if let q = r.current {
+            card.question = q.text
+            card.options = q.options
+            card.descriptions = q.descriptions
+            card.multiSelect = q.multiSelect
+            card.picked = r.picked
+            card.index = r.index
+            card.count = r.questions.count
+        }
+        return card
+    }
+
+    /// "Other" answered in the widget.
+    private func answerTyped(_ text: String) {
+        let active = store.activeSession(windowTitle: frontTitle)
+        guard let request = currentRequest(active: active), request.kind == .question else { return }
+        DebugLog.tap("widget: send typed answer")
+        var answer = text
+        if let q = request.current, q.multiSelect, !request.picked.isEmpty {
+            answer = (request.picked.sorted().map { q.options[$0] } + [text]).joined(separator: ", ")
+        }
+        model.otherDraft = ""
+        advance(request, with: answer)
+    }
+
+    private func openSession(_ id: String) {
+        guard let cwd = store.sessions[id]?.cwd,
+              let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "vscode://file" + path) else { NSSound.beep(); return }
+        DebugLog.tap("open session \(store.sessions[id]?.projectName ?? id)")
+        NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Voice
+
+    private func setUpVoice() {
+        rightOption.onStart = { [weak self] in self?.voiceBegin() }
+        rightOption.onEnd = { [weak self] in self?.voice.stop() }
+        rightOption.start()
+        voice.onPartial = { [weak self] text in self?.model.heard = text }
+        voice.onMessage = { [weak self] message in
+            guard let self else { return }
+            DebugLog.note(message)
+            self.voiceMessageShown = true
+            self.model.heard = message
+        }
+        voice.onFinal = { [weak self] text in
+            guard let self else { return }
+            if let text { self.deliverVoice(text) }
+            if self.voiceMessageShown {
+                // Leave the message up long enough to read.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    self.voiceMessageShown = false
+                    self.model.listening = false
+                    self.model.heard = ""
+                    self.widget.update()
+                }
+            } else {
+                self.model.listening = false
+                self.model.heard = ""
+                self.widget.update()
+            }
+        }
+    }
+
+    private func voiceBegin() {
+        guard !voice.isRunning, !model.listening else { return }
+        DebugLog.tap("voice")
+        model.listening = true
+        model.heard = ""
+        widget.update()
+        if let request = typingFor ?? currentRequest(active: nil), request.kind == .question { extendHold(request) }
+        voice.start(language: config.voiceLanguage, allowServer: config.voiceAllowServer)
+    }
+
+    /// Dictated text goes where you'd type it: the bar's answer field, the
+    /// widget's "Other" field, or else the app in front — without Enter.
+    private func deliverVoice(_ text: String) {
+        if typing.isActive {
+            typing.insert(text)
+        } else if model.request?.kind == .question, widget.state.mode == .panel {
+            model.otherDraft = model.otherDraft.isEmpty ? text : model.otherDraft + " " + text
+        } else {
+            KeySender.type(text)
+        }
+        DebugLog.note("voice: \(text.count) characters")
     }
 }

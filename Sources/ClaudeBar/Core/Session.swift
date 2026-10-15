@@ -17,7 +17,11 @@ final class Session {
     var claudePid: Int32?
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT)
     var entrypoint: String?
-    var activity: Activity = .sleep
+    var activity: Activity = .sleep {
+        didSet { if activity != oldValue { activitySince = Date() } }
+    }
+    /// When the current activity began ("Working · 2 min").
+    var activitySince = Date()
     /// A Notification said Claude is waiting for you.
     var waitingNotice = false
     var lastEvent: Date
@@ -31,6 +35,11 @@ final class Session {
     var statusContextPercent: Double?
     /// "Later" on the context warning: stay quiet until this percent.
     var contextSnoozedUntil: Double?
+    /// Session totals from the transcript (input includes cache writes).
+    var tokensIn: Int?
+    var tokensOut: Int?
+    /// API cost so far, from the status line (terminal sessions only).
+    var costUSD: Double?
 
     init(id: String, now: Date = Date()) {
         self.id = id
@@ -102,6 +111,8 @@ final class Session {
 final class Account {
     var sessionPercent: Double?
     var resetsAt: Date?
+    /// When the limit was last reported ("Session · 2 h ago").
+    var updatedAt: Date?
 
     private static var fileURL: URL {
         Config.directory.appendingPathComponent("last-status.json")
@@ -110,6 +121,7 @@ final class Account {
     private struct Snapshot: Codable {
         var sessionPercent: Double?
         var sessionResetsAt: Date?
+        var updatedAt: Date?
     }
 
     func load() {
@@ -117,11 +129,12 @@ final class Account {
               let snap = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         sessionPercent = snap.sessionPercent
         resetsAt = snap.sessionResetsAt
+        updatedAt = snap.updatedAt
         expireIfNeeded()
     }
 
     private func save() {
-        let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt)
+        let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt, updatedAt: updatedAt)
         if let data = try? JSONEncoder().encode(snap) {
             try? data.write(to: Self.fileURL, options: .atomic)
         }
@@ -130,6 +143,7 @@ final class Account {
     func apply(used: Double?, resetsAt reset: Double?) {
         if let used { sessionPercent = used }
         if let reset { resetsAt = Date(timeIntervalSince1970: reset) }
+        updatedAt = Date()
         save()
     }
 
@@ -141,6 +155,13 @@ final class Account {
         resetsAt = nil
         save()
         return true
+    }
+
+    /// "1 h 23 min" until the window resets.
+    var resetLong: String? {
+        guard let r = resetsAt else { return nil }
+        let minutes = max(0, Int(r.timeIntervalSinceNow) / 60)
+        return minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) min" : "\(minutes) min"
     }
 
     /// "1:23" (hours:minutes) until the window resets.

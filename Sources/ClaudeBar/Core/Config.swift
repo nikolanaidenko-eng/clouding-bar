@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// One button on the bar. The type says what a tap does:
 ///   phrase  — types the text into Claude and presses Return
@@ -12,9 +13,36 @@ struct ButtonSpec: Codable, Equatable {
     var value: String
 }
 
+extension ButtonSpec {
+    /// A sensible type for a value as it's being typed; the settings
+    /// window lets you pick another.
+    static func guessType(_ value: String) -> Kind {
+        let v = value.trimmingCharacters(in: .whitespaces)
+        if v.contains("://") { return .link }
+        if v.hasPrefix("/") { return .command }
+        let keyNames: Set<String> = ["esc", "escape", "return", "enter", "tab", "space", "delete", "up", "down", "left", "right"]
+        let parts = v.lowercased().split(separator: "+").map(String.init)
+        let mods: Set<String> = ["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift"]
+        if keyNames.contains(v.lowercased()) || (parts.count > 1 && parts.dropLast().allSatisfy(mods.contains)) {
+            return .key
+        }
+        return .phrase
+    }
+
+    static func list(_ raw: [[String: Any]]) -> [ButtonSpec] {
+        raw.compactMap { b in
+            guard let label = b["label"] as? String, let value = b["value"] as? String else { return nil }
+            let kind = (b["type"] as? String).flatMap(Kind.init) ?? guessType(value)
+            return ButtonSpec(label: label, type: kind, value: value)
+        }
+    }
+
+    var dictionary: [String: String] { ["label": label, "type": type.rawValue, "value": value] }
+}
+
 /// User-editable settings, loaded from ~/.claudebar/config.json.
 /// Everything has a default, so the file and every key in it are optional.
-struct Config {
+struct Config: Equatable {
     /// Apps that count as "where Claude Code runs". The Touch Bar only
     /// takes over while one of these is frontmost.
     var terminalBundleIDs: [String] = [
@@ -66,6 +94,32 @@ struct Config {
     /// Older key: slash commands as extra buttons.
     var skills: [String] = []
 
+    /// Button sets per project (the active session's folder name).
+    var profiles: [String: [ButtonSpec]] = [:]
+
+    // Floating widget
+    var widget = true
+    /// What the pill shows besides the session limit: "context", "reset", "cost".
+    var pillShows: [String] = ["context", "reset"]
+    /// Where the pill was dragged: its top center in screen points.
+    /// Unset: top center of the screen, right under the menu bar.
+    var widgetPosition: CGPoint?
+    /// On Macs with a notch: hang the widget from the notch.
+    var widgetAtNotch = false
+    var sessionsList = false
+    var doNotDisturb = false
+    var contextWarning = true
+
+    // Voice: hold the right Option key alone, or the widget's mic.
+    var voiceLanguage = Config.defaultVoiceLanguage
+    /// Recognition on Apple's servers, for languages this Mac can't do
+    /// offline. Off unless you turn it on.
+    var voiceAllowServer = false
+
+    static var defaultVoiceLanguage: String {
+        Locale.preferredLanguages.first?.hasPrefix("ru") == true ? "ru-RU" : "en-US"
+    }
+
     /// ~/.claudebar (CLAUDEBAR_DIR overrides it, for the tests).
     static var directory: URL {
         if let dir = ProcessInfo.processInfo.environment["CLAUDEBAR_DIR"] {
@@ -79,6 +133,12 @@ struct Config {
 
     static var socketPath: String {
         directory.appendingPathComponent("claudebar.sock").path
+    }
+
+    /// The buttons for a project: its profile, else the main list.
+    func buttons(for project: String?) -> [ButtonSpec] {
+        if let project, let list = profiles[project] { return list }
+        return effectiveButtons
     }
 
     /// The buttons to show: the configured list, or the defaults.
@@ -102,13 +162,21 @@ struct Config {
             return config
         }
         if let v = obj["terminalBundleIDs"] as? [String] { config.terminalBundleIDs = v }
-        if let v = obj["buttons"] as? [[String: Any]] {
-            config.buttons = v.compactMap { b in
-                guard let label = b["label"] as? String, let value = b["value"] as? String else { return nil }
-                let kind = (b["type"] as? String).flatMap(ButtonSpec.Kind.init) ?? .phrase
-                return ButtonSpec(label: label, type: kind, value: value)
-            }
+        if let v = obj["buttons"] as? [[String: Any]] { config.buttons = ButtonSpec.list(v) }
+        if let v = obj["profiles"] as? [String: [[String: Any]]] {
+            config.profiles = v.mapValues(ButtonSpec.list)
         }
+        if let v = obj["widget"] as? Bool { config.widget = v }
+        if let v = obj["pillShows"] as? [String] { config.pillShows = v }
+        if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
+            config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)
+        }
+        if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
+        if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }
+        if let v = obj["doNotDisturb"] as? Bool { config.doNotDisturb = v }
+        if let v = obj["contextWarning"] as? Bool { config.contextWarning = v }
+        if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
+        if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }
         if let v = obj["summaryPrompt"] as? String { config.summaryPrompt = v }
         if let v = obj["compactCommand"] as? String { config.compactCommand = v }
         if let v = obj["officeURL"] as? String { config.officeURL = v }
@@ -124,13 +192,14 @@ struct Config {
     }
 
     /// Sets one key in config.json, keeping everything else in the file.
+    /// NSNull removes the key.
     static func save(_ key: String, _ value: Any) {
         var obj: [String: Any] = [:]
         if let data = try? Data(contentsOf: fileURL),
            let existing = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
             obj = existing
         }
-        obj[key] = value
+        obj[key] = value is NSNull ? nil : value
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: fileURL, options: .atomic)
         }

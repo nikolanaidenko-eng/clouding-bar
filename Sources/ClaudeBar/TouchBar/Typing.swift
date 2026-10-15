@@ -119,6 +119,14 @@ final class TypingInput: NSObject, NSTextFieldDelegate {
         field.stringValue = ""
     }
 
+    /// Adds dictated text at the end of the answer.
+    func insert(_ text: String) {
+        guard isActive else { return }
+        let current = field.stringValue
+        field.stringValue = current.isEmpty || current.hasSuffix(" ") ? current + text : current + " " + text
+        onChange?(field.stringValue)
+    }
+
     /// The system's dictation into the field (it asks to turn dictation on
     /// if it's off).
     func startDictation() {
