@@ -91,7 +91,8 @@ final class Session {
         if let pid = claudePid, pid > 1 {
             return kill(pid, 0) == 0 || errno == EPERM
         }
-        return now.timeIntervalSince(lastSeen) < 12 * 3600
+        // Cowork reports only now and then; without news for 3 hours it's over.
+        return now.timeIntervalSince(lastSeen) < (entrypoint == "cowork" ? 3 : 12) * 3600
     }
 
     // MARK: Persistence

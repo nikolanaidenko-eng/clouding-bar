@@ -72,6 +72,12 @@ final class AppModel: ObservableObject {
     }
     @Published var queue: [QueueItem] = []
 
+    // Cowork tab
+    @Published var coworkLast: String?
+    @Published var coworkMessage: String?
+    @Published var hasLiveKey = false
+    @Published var liveLimitState = "Off"
+
     @Published var listening = false
     @Published var heard = ""
     /// What's typed in the widget's "Other" field.
@@ -93,6 +99,10 @@ final class AppModel: ObservableObject {
     var insertTemplate: (String) -> Void = { _ in }
     var takeScreenshot: () -> Void = {}
     var changeModel: () -> Void = {}
+    var chooseCoworkFolder: () -> Void = {}
+    var makeCoworkPlugin: () -> Void = {}
+    var saveLiveKey: (String) -> Void = { _ in }
+    var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
     var statusTitle: String {

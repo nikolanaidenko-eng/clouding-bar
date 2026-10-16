@@ -158,11 +158,15 @@ widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }
-for tab in ["general", "buttons", "stats"] {
+for tab in ["general", "buttons", "cowork", "stats"] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.knownProjects = ["DiaRoute", "bots"]
     if tab == "general" { m.voiceOffline = false; m.config.voiceLanguage = "uk-UA" }
+    if tab == "cowork" {
+        m.config.coworkMode = "thresholds"; m.config.coworkFolder = NSHomeDirectory() + "/Documents/Cowork"
+        m.coworkLast = "4 min ago · DiaRoute 31%"
+    }
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
     renderView(host, size: NSSize(width: 560, height: 560), name: "s-\(tab)")
 }

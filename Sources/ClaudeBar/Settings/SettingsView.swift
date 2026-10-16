@@ -18,7 +18,7 @@ struct SettingsView: View {
                 Text("Clouding Bar").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 HStack(spacing: 0) {
-                    ForEach([("general", "General"), ("buttons", "Buttons"), ("stats", "Stats")], id: \.0) { id, label in
+                    ForEach([("general", "General"), ("buttons", "Buttons"), ("cowork", "Cowork"), ("stats", "Stats")], id: \.0) { id, label in
                         Button(label) { withAnimation(.easeOut(duration: 0.18)) { tab = id } }
                             .buttonStyle(.plain)
                             .font(.system(size: 12))
@@ -40,6 +40,7 @@ struct SettingsView: View {
                     switch tab {
                     case "general": GeneralTab(model: model)
                     case "buttons": ButtonsTab(model: model)
+                    case "cowork": CoworkTab(model: model)
                     default: StatsTab()
                     }
                 }
@@ -659,6 +660,113 @@ struct ShortcutField: NSViewRepresentable {
             layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
             layer?.borderColor = (recording ? NSColor(hex: 0x0A84FF) : NSColor.white.withAlphaComponent(0.18)).cgColor
             setAccessibilityLabel("Shortcut: " + (combo.map(HotKeys.display) ?? "none"))
+        }
+    }
+}
+
+// MARK: - Cowork
+
+struct CoworkTab: View {
+    @ObservedObject var model: AppModel
+    @State private var keyOpen = false
+    @State private var key = ""
+
+    private let notes = [
+        "off": "Cowork chats are not tracked.",
+        "thresholds": "Saves at 50, 80, 90% and when a task is done. Almost free.",
+        "every": "After every reply: about +5–15% usage, +1–3 s per reply.",
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Cowork status").font(.system(size: 13))
+                        Text("Claude saves context to a connected folder").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    }
+                    Spacer()
+                    HStack(spacing: 0) {
+                        ForEach([("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")], id: \.0) { id, label in
+                            Button(label) { model.setConfig("coworkMode", id) }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11))
+                                .padding(.horizontal, 9)
+                                .frame(height: 24)
+                                .background(RoundedRectangle(cornerRadius: 5)
+                                    .fill(model.config.coworkMode == id ? Color(hex: 0x636366) : .clear))
+                                .accessibilityAddTraits(model.config.coworkMode == id ? .isSelected : [])
+                        }
+                    }
+                    .padding(2)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.3)))
+                }
+                Text(notes[model.config.coworkMode] ?? "").font(.system(size: 11)).foregroundColor(.cbSecondary)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.05)))
+
+            if model.config.coworkMode != "off" {
+                SettingsGroup {
+                    SettingsRow(title: "Connected folder",
+                                hint: model.config.coworkFolder.map { ($0 as NSString).abbreviatingWithTildeInPath }
+                                    ?? "The folder you connected in Cowork") {
+                        Button("Choose…") { model.chooseCoworkFolder() }
+                    }
+                    SettingsRow(title: "Plugin",
+                                hint: "Upload it in Claude Desktop → Settings → Plugins. Make it again after changing the mode.") {
+                        Button("Make plugin") { model.makeCoworkPlugin() }
+                            .disabled(model.config.coworkFolder == nil)
+                    }
+                    SettingsRow(title: "Last status", hint: model.coworkLast ?? "None yet", divider: model.coworkMessage != nil) {
+                        EmptyView()
+                    }
+                    if let message = model.coworkMessage {
+                        Text(message).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                }
+            }
+
+            SettingsGroup {
+                SettingsRow(title: "Live limit via claude.ai",
+                            hint: "Desktop and Cowork chats · \(model.liveLimitState)", divider: keyOpen) {
+                    if model.hasLiveKey {
+                        Button("Remove key") { model.removeLiveKey(); keyOpen = false }
+                    } else {
+                        Button(keyOpen ? "Hide" : "Set up…") { withAnimation(.easeOut(duration: 0.2)) { keyOpen.toggle() } }
+                    }
+                }
+                if keyOpen && !model.hasLiveKey {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
+                            Text("Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.")
+                                .font(.system(size: 11)).foregroundColor(Color(hex: 0xD1D1D6)).lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        HStack(spacing: 8) {
+                            SecureField("sessionKey", text: $key)
+                                .textFieldStyle(.plain).font(.system(size: 12))
+                                .padding(.horizontal, 8).frame(height: 30)
+                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
+                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+                            Button("I understand, turn on") {
+                                model.saveLiveKey(key)
+                                key = ""
+                                keyOpen = false
+                            }
+                            .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
+                            .padding(.horizontal, 12).frame(height: 30)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.cbAction))
+                            .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                    .padding(12)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+            }
         }
     }
 }

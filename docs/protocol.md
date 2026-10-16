@@ -132,6 +132,21 @@ Question answered via `PreToolUse`:
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"questions":[…],"answers":{…}}}}
 ```
 
+## Cowork status file
+
+Cowork's hooks run away from this Mac. The `clouding-bar-cowork` plugin
+(made in Settings → Cowork) works around that:
+- its Stop hook works out the context fill;
+- when it's time to report, it asks Claude to write one line to
+  `.clouding-bar/cowork-status.json` in a folder connected to Cowork.
+
+```json
+{"v":1,"t":1792100000,"session":"…","project":"DiaRoute","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5"}
+```
+
+The app reads the file every 2 s. It shows the line as a session
+`cowork-<session>`, which ends after 3 hours without news.
+
 ## Files in `~/.claudebar`
 
 | file | what |
@@ -141,3 +156,7 @@ Question answered via `PreToolUse`:
 | `last-status.json` | last 5-hour limit |
 | `debug.log` | one line per tap (`trusted=`, front app) and what happened to each request |
 | `backups/` | `settings.json` as it was before each install changed it |
+| `queue.json` | the task queue |
+| `limit-history.jsonl` | the 5-hour limit over time, for Stats |
+| `stats-cache.json` | per-transcript hour totals, for Stats |
+| `shots/` | screenshots taken from the widget |

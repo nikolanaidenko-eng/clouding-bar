@@ -85,6 +85,23 @@ final class SessionStore {
         pollTranscripts()
     }
 
+    /// A status line from the Cowork plugin: a session of its own, with the
+    /// context numbers the plugin worked out.
+    func apply(cowork s: Cowork.Status) {
+        let id = "cowork-" + s.session
+        let session = sessions[id] ?? Session(id: id, now: s.time)
+        sessions[id] = session
+        session.cwd = "/" + (s.project ?? "Cowork")
+        session.entrypoint = "cowork"
+        session.contextTokens = s.contextTokens
+        session.contextWindowSize = s.contextWindow
+        session.model = s.model
+        session.lastEvent = s.time
+        session.activity = .sleep
+        scheduleSave()
+        onChange?()
+    }
+
     // MARK: Queries
 
     var alive: [Session] {

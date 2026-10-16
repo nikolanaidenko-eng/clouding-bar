@@ -136,6 +136,11 @@ struct Config: Equatable {
     /// Small metrics in the widget: "model", "lines", "git", "agents", "cost".
     var metrics: [String] = []
 
+    /// Cowork status through the plugin: "off", "thresholds", "every".
+    var coworkMode = "off"
+    /// The Mac folder connected in Cowork, where the status file lands.
+    var coworkFolder: String?
+
     // Voice: hold the right Option key alone, or the widget's mic.
     var voiceLanguage = Config.defaultVoiceLanguage
     /// Recognition on Apple's servers, for languages this Mac can't do
@@ -208,6 +213,8 @@ struct Config: Equatable {
         if let v = obj["templates"] as? [String] { config.templates = v }
         if let v = obj["screenshot"] as? Bool { config.screenshot = v }
         if let v = obj["metrics"] as? [String] { config.metrics = v }
+        if let v = obj["coworkMode"] as? String { config.coworkMode = v }
+        if let v = obj["coworkFolder"] as? String { config.coworkFolder = v }
         if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
         if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }
         if let v = obj["summaryPrompt"] as? String { config.summaryPrompt = v }

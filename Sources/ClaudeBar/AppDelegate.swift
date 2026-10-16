@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var queue: [AppModel.QueueItem] = []
     private var queueSentAt: Date?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
+    private let liveLimit = ClaudeAILimit()
+    private var coworkSeen: Date?
 
     // MARK: - Launch
 
@@ -83,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpModel()
         setUpVoice()
         loadQueue()
+        setUpCowork()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.everySecond() }
         RunLoop.main.add(timer, forMode: .common)
@@ -187,7 +190,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.setNeedsRefresh()
             }
         }
-        if ticks % 2 == 0 { store.pollTranscripts() }
+        if ticks % 2 == 0 {
+            store.pollTranscripts()
+            readCowork()
+        }
         if ticks % 10 == 0 {
             let gone = Set(store.prune())
             for r in requests where r.sessionId.map(gone.contains) ?? false { finish(r, "session gone → dropped") }
@@ -679,7 +685,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func openSession(_ id: String) {
-        guard let cwd = store.sessions[id]?.cwd,
+        guard store.sessions[id]?.entrypoint != "cowork", let cwd = store.sessions[id]?.cwd,
               let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "vscode://file" + path) else { NSSound.beep(); return }
         DebugLog.tap("open session \(store.sessions[id]?.projectName ?? id)")
@@ -864,6 +870,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.widget.releaseKey()
             KeySender.type(path + " ")
             DebugLog.note("screenshot → path typed")
+        }
+    }
+
+    // MARK: - Cowork and the claude.ai limit
+
+    private func setUpCowork() {
+        model.chooseCoworkFolder = { [weak self] in
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Use This Folder"
+            panel.message = "Pick the folder you connected in Cowork"
+            NSApp.activate(ignoringOtherApps: true)
+            if panel.runModal() == .OK, let url = panel.url {
+                self?.setConfig("coworkFolder", url.path)
+            }
+        }
+        model.makeCoworkPlugin = { [weak self] in
+            guard let self else { return }
+            guard let folder = self.config.coworkFolder, self.config.coworkMode != "off" else {
+                self.model.coworkMessage = "Pick a mode and the connected folder first."
+                return
+            }
+            do {
+                let zip = try Cowork.makePlugin(mode: self.config.coworkMode, folder: folder)
+                NSWorkspace.shared.activateFileViewerSelecting([zip])
+                self.model.coworkMessage = "Saved to Downloads. Upload clouding-bar-cowork.zip in Claude Desktop → Settings → Plugins."
+                DebugLog.note("cowork plugin made (\(self.config.coworkMode))")
+            } catch {
+                self.model.coworkMessage = "Couldn't make it: \(error.localizedDescription)"
+            }
+        }
+        liveLimit.onUpdate = { [weak self] percent, resets in
+            self?.store.account.apply(used: percent, resetsAt: resets)
+            self?.setNeedsRefresh()
+        }
+        liveLimit.onState = { [weak self] state in
+            self?.model.liveLimitState = state
+            DebugLog.note("claude.ai limit: \(state)")
+        }
+        model.saveLiveKey = { [weak self] key in
+            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, ClaudeAILimit.saveKey(trimmed) else { return }
+            DebugLog.tap("claude.ai limit on")
+            self?.model.hasLiveKey = true
+            self?.model.liveLimitState = "Checking…"
+            self?.liveLimit.start()
+        }
+        model.removeLiveKey = { [weak self] in
+            ClaudeAILimit.deleteKey()
+            self?.liveLimit.stop()
+            self?.model.hasLiveKey = false
+            self?.model.liveLimitState = "Off"
+            DebugLog.tap("claude.ai limit off, key removed")
+        }
+        model.hasLiveKey = ClaudeAILimit.hasKey
+        if model.hasLiveKey {
+            model.liveLimitState = "Checking…"
+            liveLimit.start()
+        }
+    }
+
+    /// Picks up a new status line from the Cowork plugin.
+    private func readCowork() {
+        guard config.coworkMode != "off", let folder = config.coworkFolder else { return }
+        let url = Cowork.statusURL(folder: folder)
+        guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        else { return }
+        if mtime != coworkSeen, let status = Cowork.read(folder: folder) {
+            coworkSeen = mtime
+            store.apply(cowork: status)
+            DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens")
+        }
+        if let s = Cowork.read(folder: folder) {
+            let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())
+            model.coworkLast = "\(AppModel.ago(s.time)) · \(s.project ?? "Cowork") \(pct)%"
         }
     }
 }
