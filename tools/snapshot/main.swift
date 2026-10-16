@@ -77,7 +77,7 @@ func renderView(_ view: NSView, size: NSSize, name: String) {
     window.contentView = backdrop
     backdrop.layoutSubtreeIfNeeded()
     backdrop.displayIfNeeded()
-    RunLoop.main.run(until: Date().addingTimeInterval(1.2)) // let appear animations finish
+    RunLoop.main.run(until: Date().addingTimeInterval(name == "s-stats" ? 4 : 1.2)) // animations, stats
     let scale: CGFloat = 2
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -144,11 +144,21 @@ widget("w-question", .panel) {
     $0.request = card
     $0.otherDraft = "WatermelonDB, sync later"
 }
+widget("w-panel-extras", .panel, size: NSSize(width: 480, height: 330)) {
+    $0.config.metrics = ["model", "lines", "git", "agents"]
+    $0.config.templatesEnabled = true
+    $0.config.screenshot = true
+    $0.config.taskQueue = true
+    $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"
+    $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
+    $0.queue = [.init(text: "Run the tests and fix what fails", sessionId: nil, project: nil),
+                .init(text: "Update the README", sessionId: nil, project: nil)]
+}
 widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }
-for tab in ["general", "buttons"] {
+for tab in ["general", "buttons", "stats"] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.knownProjects = ["DiaRoute", "bots"]

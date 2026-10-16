@@ -434,6 +434,7 @@ struct MeterBlock: View {
 struct MainPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    @State private var queueDraft = ""
 
     var body: some View {
         PanelChrome(padding: EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 8), spacing: 10, width: 420) {
@@ -469,16 +470,107 @@ struct MainPanel: View {
                 MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
             }
             .padding(.trailing, 4)
+            if !metricItems.isEmpty {
+                HStack(spacing: 12) { ForEach(Array(metricItems.enumerated()), id: \.offset) { $0.element } }
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundColor(.cbSecondary)
+            }
             HStack(spacing: 6) {
                 ForEach(Array(model.buttons.enumerated()), id: \.offset) { i, b in
                     Button(b.label) { model.perform(.button(i)) }
                         .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
                         .lineLimit(1)
                 }
+                if model.config.templatesEnabled && !model.config.templates.isEmpty {
+                    Menu {
+                        ForEach(model.config.templates, id: \.self) { t in
+                            Button(t) { model.insertTemplate(t) }
+                        }
+                    } label: {
+                        Image(systemName: "text.bubble").font(.system(size: 14))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(Color.white.opacity(0.1)))
+                    .help("Templates")
+                    .accessibilityLabel("Templates")
+                }
+                if model.config.screenshot {
+                    Button { model.takeScreenshot() } label: { Image(systemName: "camera.viewfinder").font(.system(size: 14)) }
+                        .buttonStyle(IconButtonStyle(background: Color.white.opacity(0.1), foreground: .cbText, size: 32))
+                        .help("Screenshot an area; its path goes to Claude")
+                        .accessibilityLabel("Screenshot")
+                }
                 MicButton(model: model)
             }
             .padding(.trailing, 4)
+            if model.config.taskQueue { queueView }
         }
+    }
+
+    /// Model · effort, ±lines, branch, subagents, cost — whichever are on.
+    private var metricItems: [AnyView] {
+        let on = Set(model.config.metrics)
+        var items: [AnyView] = []
+        if on.contains("model"), let name = model.modelName {
+            items.append(AnyView(Button { model.changeModel() } label: {
+                Text(name + (model.effort.map { " · \($0)" } ?? ""))
+            }
+            .buttonStyle(.plain)
+            .help("Change the model (/model)")))
+        }
+        if on.contains("lines") {
+            items.append(AnyView(Text("+\(model.linesAdded) −\(model.linesRemoved)")))
+        }
+        if on.contains("git"), let b = model.branch {
+            items.append(AnyView(HStack(spacing: 3) { Image(systemName: "arrow.triangle.branch"); Text(b).lineLimit(1) }))
+        }
+        if on.contains("agents") {
+            items.append(AnyView(Text("\(model.agents) subagent\(model.agents == 1 ? "" : "s")")))
+        }
+        if on.contains("cost"), model.isAPI, let c = model.cost {
+            items.append(AnyView(Text(String(format: "$%.2f", c))))
+        }
+        return items
+    }
+
+    /// Requests that go out one by one after each reply.
+    private var queueView: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(model.queue.prefix(4).enumerated()), id: \.element.id) { i, item in
+                HStack(spacing: 6) {
+                    Text("\(i + 1).").foregroundColor(.cbSecondary)
+                    Text(item.text).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                        .buttonStyle(.plain).foregroundColor(.cbSecondary)
+                        .accessibilityLabel("Remove from queue")
+                }
+                .font(.system(size: 12))
+            }
+            if model.queue.count > 4 {
+                Text("+\(model.queue.count - 4) more").font(.system(size: 11)).foregroundColor(.cbSecondary)
+            }
+            HStack(spacing: 6) {
+                TextField("Queue a request for after this reply", text: $queueDraft)
+                    .textFieldStyle(.plain).font(.system(size: 12))
+                    .padding(.horizontal, 8).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+                    .onSubmit(addToQueue)
+                Button(action: addToQueue) { Image(systemName: "plus").font(.system(size: 11, weight: .semibold)) }
+                    .buttonStyle(IconButtonStyle(background: Color.white.opacity(0.1), foreground: .cbText, size: 28))
+                    .accessibilityLabel("Add to queue")
+            }
+        }
+        .padding(.trailing, 4)
+    }
+
+    private func addToQueue() {
+        let text = queueDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        model.addToQueue(text)
+        queueDraft = ""
     }
 
     private var tokens: String? {

@@ -27,6 +27,7 @@ struct Inbound {
     /// Added by claudebar-hook.
     var claudePid: Int32? { (raw["claude_pid"] as? NSNumber).map { Int32(truncatingIfNeeded: $0.intValue) } }
     var entrypoint: String? { raw["claude_entrypoint"] as? String }
+    var effort: String? { raw["claude_effort"] as? String }
 
     /// A message the sender waits on for an answer.
     var isRequest: Bool {

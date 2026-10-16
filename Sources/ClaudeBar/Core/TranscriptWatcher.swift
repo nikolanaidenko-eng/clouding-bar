@@ -16,6 +16,8 @@ final class TranscriptWatcher {
         /// Session totals: fresh input (incl. cache writes) and output.
         var tokensIn = 0
         var tokensOut = 0
+        var linesAdded = 0
+        var linesRemoved = 0
     }
 
     private struct State {
@@ -25,6 +27,8 @@ final class TranscriptWatcher {
         var mtime: Date?
         var tokensIn = 0
         var tokensOut = 0
+        var linesAdded = 0
+        var linesRemoved = 0
     }
 
     private let queue = DispatchQueue(label: "claudebar.transcripts", qos: .utility)
@@ -36,6 +40,7 @@ final class TranscriptWatcher {
 
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
     private static let interruptMark = Data("[Request interrupted by user".utf8)
+    private static let editMark = Data(#""toolUseResult""#.utf8)
 
     /// Reads what was appended since the last poll. `completion` runs on
     /// the main queue with one update per transcript that changed.
@@ -91,13 +96,33 @@ final class TranscriptWatcher {
         guard sawLines else { return nil }
         update.tokensIn = state.tokensIn
         update.tokensOut = state.tokensOut
+        update.linesAdded = state.linesAdded
+        update.linesRemoved = state.linesRemoved
         return update
+    }
+
+    /// ±lines from an edit's result: the diff hunks, or a new file's lines.
+    private func countLines(_ result: [String: Any], into state: inout State) {
+        if let hunks = result["structuredPatch"] as? [[String: Any]], !hunks.isEmpty {
+            for hunk in hunks {
+                for l in hunk["lines"] as? [String] ?? [] {
+                    if l.hasPrefix("+") { state.linesAdded += 1 } else if l.hasPrefix("-") { state.linesRemoved += 1 }
+                }
+            }
+        } else if result["type"] as? String == "create", let content = result["content"] as? String {
+            state.linesAdded += content.split(separator: "\n", omittingEmptySubsequences: false).count
+        }
     }
 
     private func scan(_ complete: Data, into update: inout Update, state: inout State) {
         for line in complete.split(separator: 0x0A) {
             let isAssistant = line.range(of: Self.assistantMark) != nil
             let isInterrupt = !isAssistant && line.range(of: Self.interruptMark) != nil
+            if !isAssistant, line.range(of: Self.editMark) != nil,
+               let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+               let result = obj["toolUseResult"] as? [String: Any] {
+                countLines(result, into: &state)
+            }
             guard isAssistant || isInterrupt,
                   let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any] else { continue }
             if obj["isSidechain"] as? Bool == true { continue }

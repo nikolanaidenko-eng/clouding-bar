@@ -40,6 +40,31 @@ final class Session {
     var tokensOut: Int?
     /// API cost so far, from the status line (terminal sessions only).
     var costUSD: Double?
+    /// Reasoning effort (CLAUDE_EFFORT), e.g. "xhigh".
+    var effort: String?
+    /// Lines added and removed by Claude's edits in this session.
+    var linesAdded = 0
+    var linesRemoved = 0
+    /// Subagents running right now.
+    var runningAgents = 0
+
+    /// "Opus 5.5 1M", from "claude-opus-5-5[1m]".
+    var modelName: String? {
+        guard var m = model, !m.isEmpty else { return nil }
+        let big = m.contains("[1m]")
+        m = m.replacingOccurrences(of: "[1m]", with: "").replacingOccurrences(of: "claude-", with: "")
+        var words: [String] = []
+        for part in m.split(separator: "-").map(String.init) {
+            if let last = words.last, Int(part) != nil, part.count <= 2, last.first?.isNumber == true, !last.contains(".") {
+                words[words.count - 1] = last + "." + part  // 5-5 → 5.5
+            } else if part.count >= 8, Int(part) != nil {
+                continue // a date stamp
+            } else {
+                words.append(part.prefix(1).uppercased() + part.dropFirst())
+            }
+        }
+        return words.joined(separator: " ") + (big ? " 1M" : "")
+    }
 
     init(id: String, now: Date = Date()) {
         self.id = id
@@ -145,6 +170,7 @@ final class Account {
         if let reset { resetsAt = Date(timeIntervalSince1970: reset) }
         updatedAt = Date()
         save()
+        if let used { LimitHistory.record(used) }
     }
 
     /// Once the window has reset, the old number means nothing.

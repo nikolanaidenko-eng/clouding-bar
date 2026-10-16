@@ -58,6 +58,9 @@ if let pid = claudePID() { event["claude_pid"] = Int(pid) }
 if let entry = ProcessInfo.processInfo.environment["CLAUDE_CODE_ENTRYPOINT"] {
     event["claude_entrypoint"] = entry
 }
+if let effort = ProcessInfo.processInfo.environment["CLAUDE_EFFORT"] {
+    event["claude_effort"] = effort
+}
 
 let eventName = event["hook_event_name"] as? String
 let isPermission = eventName == "PermissionRequest"

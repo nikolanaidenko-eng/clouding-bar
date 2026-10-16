@@ -68,7 +68,7 @@ install: bundle $(TAP) $(HOOK) $(HOOK)
 # Checks for the core: session picked by window title, hook output, config.
 test:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift) Sources/ClaudeBar/DebugLog.swift tools/coretest/main.swift -o build/coretest
+	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift) Sources/ClaudeBar/DebugLog.swift Sources/ClaudeBar/HotKeys.swift Sources/ClaudeBar/KeySender.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home
 	CLAUDEBAR_DIR=build/test-home ./build/coretest
 
@@ -76,7 +76,7 @@ test:
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.
 snapshots:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift Sources/ClaudeBar/Widget/*.swift Sources/ClaudeBar/Settings/*.swift) Sources/ClaudeBar/AppModel.swift Sources/ClaudeBar/Voice.swift tools/snapshot/main.swift -o build/tb-snapshot
+	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift Sources/ClaudeBar/Widget/*.swift Sources/ClaudeBar/Settings/*.swift) Sources/ClaudeBar/AppModel.swift Sources/ClaudeBar/Voice.swift Sources/ClaudeBar/HotKeys.swift Sources/ClaudeBar/KeySender.swift Sources/ClaudeBar/DebugLog.swift tools/snapshot/main.swift -o build/tb-snapshot
 	./build/tb-snapshot build/snapshots
 
 signing-identity:

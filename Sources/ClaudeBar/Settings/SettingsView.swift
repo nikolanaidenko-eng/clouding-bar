@@ -18,7 +18,7 @@ struct SettingsView: View {
                 Text("Clouding Bar").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 HStack(spacing: 0) {
-                    ForEach([("general", "General"), ("buttons", "Buttons")], id: \.0) { id, label in
+                    ForEach([("general", "General"), ("buttons", "Buttons"), ("stats", "Stats")], id: \.0) { id, label in
                         Button(label) { withAnimation(.easeOut(duration: 0.18)) { tab = id } }
                             .buttonStyle(.plain)
                             .font(.system(size: 12))
@@ -37,7 +37,11 @@ struct SettingsView: View {
 
             ScrollView {
                 Group {
-                    if tab == "general" { GeneralTab(model: model) } else { ButtonsTab(model: model) }
+                    switch tab {
+                    case "general": GeneralTab(model: model)
+                    case "buttons": ButtonsTab(model: model)
+                    default: StatsTab()
+                    }
                 }
                 .padding(18)
                 .transition(.opacity.combined(with: .offset(y: 6)))
@@ -217,8 +221,18 @@ struct GeneralTab: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 0), GridItem(.flexible(), spacing: 0)], spacing: 0) {
                         CBCheckbox(title: "Context warning", hint: "\(Int(model.config.contextWarnPercent))%",
                                    on: binding("contextWarning") { $0.contextWarning })
+                        CBCheckbox(title: "Auto-compact", hint: "at the warning",
+                                   on: binding("autoCompact") { $0.autoCompact })
                         CBCheckbox(title: "Sessions list", on: binding("sessionsList") { $0.sessionsList })
                         CBCheckbox(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
+                        CBCheckbox(title: "Task queue", on: binding("taskQueue") { $0.taskQueue })
+                        CBCheckbox(title: "Templates", on: binding("templatesEnabled") { $0.templatesEnabled })
+                        CBCheckbox(title: "Screenshot", hint: "button", on: binding("screenshot") { $0.screenshot })
+                        metric("cost", "Cost", hint: "API")
+                        metric("model", "Model, effort")
+                        metric("lines", "Lines changed")
+                        metric("git", "Git branch")
+                        metric("agents", "Subagents")
                     }
                     .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .top)
                     .transition(.opacity.combined(with: .offset(y: 6)))
@@ -228,7 +242,19 @@ struct GeneralTab: View {
     }
 
     private var moreOnCount: Int {
-        [model.config.contextWarning, model.config.sessionsList, model.config.doNotDisturb].filter { $0 }.count
+        let c = model.config
+        return [c.contextWarning, c.autoCompact, c.sessionsList, c.doNotDisturb, c.taskQueue, c.templatesEnabled,
+                c.screenshot].filter { $0 }.count + c.metrics.count
+    }
+
+    private func metric(_ id: String, _ title: String, hint: String = "") -> some View {
+        CBCheckbox(title: title, hint: hint, on: Binding(
+            get: { model.config.metrics.contains(id) },
+            set: { on in
+                var list = model.config.metrics.filter { $0 != id }
+                if on { list.append(id) }
+                model.setConfig("metrics", list)
+            }))
     }
 }
 
@@ -280,6 +306,8 @@ struct ButtonsTab: View {
     @State private var draftType: ButtonSpec.Kind = .phrase
     /// The type follows the value until you pick one yourself.
     @State private var typePicked = false
+    @State private var draftHotkey: String?
+    @State private var newTemplate = ""
 
     private var list: [ButtonSpec] {
         profile.isEmpty ? model.config.effectiveButtons : (model.config.profiles[profile] ?? model.config.effectiveButtons)
@@ -299,7 +327,8 @@ struct ButtonsTab: View {
                             Text(b.label).font(.system(size: 13)).lineLimit(1).frame(width: 90, alignment: .leading)
                             Text(b.value).font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
                             Spacer(minLength: 0)
-                            Text(b.type.rawValue).font(.system(size: 12)).foregroundColor(.cbSecondary)
+                            Text(b.type.rawValue + (b.hotkey.map { " · " + HotKeys.display($0) } ?? ""))
+                                .font(.system(size: 12)).foregroundColor(.cbSecondary)
                         }
                         .padding(.horizontal, 12)
                         .frame(minHeight: 40)
@@ -327,6 +356,7 @@ struct ButtonsTab: View {
                 }
                 .padding(.horizontal, 4).padding(.vertical, 2)
             }
+            templatesSection
             if !profile.isEmpty {
                 Text(model.config.profiles[profile] == nil
                      ? "\(profile) uses the default buttons. Change one here to give it its own set."
@@ -337,7 +367,52 @@ struct ButtonsTab: View {
         .onChange(of: profile) { _ in editing = false; selected = nil }
     }
 
+    /// Template phrases: typed into Claude without Enter, with {project},
+    /// {branch}, {clipboard} and {date} filled in.
+    private var templatesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(model.config.templatesEnabled ? "Templates · {project} {branch} {clipboard} {date}"
+                 : "Templates · turn on in General → More options")
+                .font(.system(size: 11)).foregroundColor(.cbSecondary)
+            SettingsGroup {
+                ForEach(Array(model.config.templates.enumerated()), id: \.offset) { i, t in
+                    HStack {
+                        Text(t).font(.system(size: 12)).lineLimit(1)
+                        Spacer(minLength: 0)
+                        Button("−") {
+                            var list = model.config.templates
+                            list.remove(at: i)
+                            model.setConfig("templates", list)
+                        }
+                        .buttonStyle(.plain).foregroundColor(.cbSecondary)
+                        .accessibilityLabel("Remove template")
+                    }
+                    .padding(.horizontal, 12).frame(minHeight: 34)
+                    .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+                }
+                HStack(spacing: 8) {
+                    TextField("New template", text: $newTemplate)
+                        .textFieldStyle(.plain).font(.system(size: 12))
+                        .padding(.horizontal, 8).frame(height: 28)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
+                        .onSubmit(addTemplate)
+                    Button("Add", action: addTemplate).buttonStyle(.plain).font(.system(size: 12))
+                        .disabled(newTemplate.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+            }
+        }
+    }
+
+    private func addTemplate() {
+        let t = newTemplate.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        model.setConfig("templates", model.config.templates + [t])
+        newTemplate = ""
+    }
+
     private var editor: some View {
+        VStack(spacing: 8) {
         HStack(spacing: 8) {
             TextField("Name", text: $draftName)
                 .textFieldStyle(.plain).font(.system(size: 12))
@@ -345,13 +420,14 @@ struct ButtonsTab: View {
                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
             Picker("", selection: Binding(get: { draftType }, set: { draftType = $0; typePicked = true })) {
-                Text("phrase").tag(ButtonSpec.Kind.phrase)
-                Text("command").tag(ButtonSpec.Kind.command)
-                Text("key").tag(ButtonSpec.Kind.key)
-                Text("link").tag(ButtonSpec.Kind.link)
+                ForEach(ButtonSpec.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
-            .labelsHidden().frame(width: 96)
+            .labelsHidden().frame(width: 110)
             .accessibilityLabel("Type")
+            ShortcutField(combo: $draftHotkey).frame(width: 120, height: 30)
+            Spacer(minLength: 0)
+        }
+        HStack(spacing: 8) {
             TextField(placeholder, text: $draftValue)
                 .textFieldStyle(.plain).font(.system(size: 12))
                 .padding(.horizontal, 8).frame(height: 30)
@@ -362,7 +438,9 @@ struct ButtonsTab: View {
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
                 .padding(.horizontal, 12).frame(height: 30)
                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.cbAction))
-                .disabled(draftName.trimmingCharacters(in: .whitespaces).isEmpty || draftValue.isEmpty)
+                .disabled(draftName.trimmingCharacters(in: .whitespaces).isEmpty
+                          || (draftValue.isEmpty && draftType != .screenshot))
+        }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
@@ -375,6 +453,7 @@ struct ButtonsTab: View {
         case .command: return "/command"
         case .key: return "esc, cmd+k, shift+tab…"
         case .link: return "vscode://… or https://…"
+        case .screenshot: return "Nothing needed: it picks an area of the screen"
         }
     }
 
@@ -388,6 +467,7 @@ struct ButtonsTab: View {
         draftValue = ""
         draftType = .phrase
         typePicked = false
+        draftHotkey = nil
         withAnimation(.easeOut(duration: 0.18)) { editing = true }
     }
 
@@ -396,12 +476,14 @@ struct ButtonsTab: View {
         draftName = list[i].label
         draftValue = list[i].value
         draftType = list[i].type
+        draftHotkey = list[i].hotkey
         typePicked = true
         withAnimation(.easeOut(duration: 0.18)) { editing = true }
     }
 
     private func commit() {
-        let spec = ButtonSpec(label: draftName.trimmingCharacters(in: .whitespaces), type: draftType, value: draftValue)
+        let spec = ButtonSpec(label: draftName.trimmingCharacters(in: .whitespaces), type: draftType,
+                              value: draftValue, hotkey: draftHotkey)
         var buttons = list
         if let i = selected, buttons.indices.contains(i) { buttons[i] = spec } else { buttons.append(spec) }
         save(buttons)
@@ -490,6 +572,93 @@ struct TouchBarPreview: View {
                 }
             }
             .frame(height: 3)
+        }
+    }
+}
+
+/// Click, then press a shortcut (with ⌃, ⌥, ⇧ or ⌘). Esc cancels,
+/// Delete clears it.
+struct ShortcutField: NSViewRepresentable {
+    @Binding var combo: String?
+
+    func makeNSView(context: Context) -> RecorderView {
+        let v = RecorderView()
+        v.onChange = { combo = $0 }
+        return v
+    }
+
+    func updateNSView(_ view: RecorderView, context: Context) {
+        view.onChange = { combo = $0 }
+        view.combo = combo
+    }
+
+    final class RecorderView: NSView {
+        var combo: String? { didSet { update() } }
+        var onChange: ((String?) -> Void)?
+        private let label = NSTextField(labelWithString: "")
+        private var recording = false { didSet { update() } }
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.cornerRadius = 7
+            layer?.borderWidth = 0.5
+            label.font = .systemFont(ofSize: 12)
+            label.alignment = .center
+            label.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(label)
+            NSLayoutConstraint.activate([
+                label.centerYAnchor.constraint(equalTo: centerYAnchor),
+                label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
+                label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+            ])
+            setAccessibilityRole(.button)
+            update()
+        }
+
+        required init?(coder: NSCoder) { fatalError("not used") }
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.makeFirstResponder(self)
+            recording = true
+        }
+
+        override func resignFirstResponder() -> Bool {
+            recording = false
+            return true
+        }
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            guard recording else { return false }
+            keyDown(with: event)
+            return true
+        }
+
+        override func keyDown(with event: NSEvent) {
+            guard recording else { return super.keyDown(with: event) }
+            switch event.keyCode {
+            case 53: // esc
+                window?.makeFirstResponder(nil)
+            case 51, 117: // delete
+                combo = nil
+                onChange?(nil)
+                window?.makeFirstResponder(nil)
+            default:
+                guard let c = HotKeys.combo(from: event) else { NSSound.beep(); return }
+                combo = c
+                onChange?(c)
+                window?.makeFirstResponder(nil)
+            }
+        }
+
+        private func update() {
+            label.stringValue = recording ? "Press keys…" : combo.map(HotKeys.display) ?? "Shortcut"
+            label.textColor = recording || combo != nil ? NSColor(hex: 0xF5F5F7) : NSColor(hex: 0xA1A1A6)
+            layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
+            layer?.borderColor = (recording ? NSColor(hex: 0x0A84FF) : NSColor.white.withAlphaComponent(0.18)).cgColor
+            setAccessibilityLabel("Shortcut: " + (combo.map(HotKeys.display) ?? "none"))
         }
     }
 }

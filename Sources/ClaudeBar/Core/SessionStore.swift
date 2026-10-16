@@ -48,9 +48,18 @@ final class SessionStore {
         if let size = m.contextWindowSize { session.contextWindowSize = size }
         if let model = m.modelId { session.model = model }
         if let cost = m.costUSD { session.costUSD = cost }
+        if let effort = m.effort { session.effort = effort }
 
         if let event = m.event {
             session.lastEvent = now
+            // Subagents: the Agent (formerly Task) tool runs one.
+            if m.toolName == "Agent" || m.toolName == "Task" {
+                if event == "PreToolUse" { session.runningAgents += 1 }
+                if event == "PostToolUse" || event == "PostToolUseFailure" {
+                    session.runningAgents = max(0, session.runningAgents - 1)
+                }
+            }
+            if event == "Stop" || event == "SessionStart" { session.runningAgents = 0 }
             switch event {
             case "SessionStart", "Stop":
                 session.activity = .sleep
@@ -92,6 +101,11 @@ final class SessionStore {
             return match
         }
         return candidates.max { $0.lastSeen < $1.lastSeen }
+    }
+
+    /// The session the frontmost window shows, with no fallback.
+    func session(inWindow title: String?) -> Session? {
+        title.flatMap { Self.bestMatch(title: $0, in: alive) }
     }
 
     private static func bestMatch(title: String, in sessions: [Session]) -> Session? {
@@ -151,10 +165,13 @@ final class SessionStore {
                 if let t = u.contextTokens { s.contextTokens = t }
                 s.tokensIn = u.tokensIn
                 s.tokensOut = u.tokensOut
+                s.linesAdded = u.linesAdded
+                s.linesRemoved = u.linesRemoved
                 if let m = u.model { s.model = m }
                 s.transcriptChanged = u.modified
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
+                    s.runningAgents = 0
                 }
             }
             self.scheduleSave()

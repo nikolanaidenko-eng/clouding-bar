@@ -162,7 +162,8 @@ final class WidgetController: NSObject {
     }
 
     private func updateKeyAllowance() {
-        let wants = state.mode == .panel && model.request != nil
+        // The queue's text field needs the keyboard too.
+        let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue)
         panel.allowsKey = wants
         if !wants { releaseKey() }
     }

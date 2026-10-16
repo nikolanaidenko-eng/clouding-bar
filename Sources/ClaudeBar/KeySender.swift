@@ -73,6 +73,15 @@ extension KeySender {
         return true
     }
 
+    static func keyCode(for name: String) -> CGKeyCode? { keyCodes[name.lowercased()] }
+
+    /// The short name for a key code ("k", "esc", "up"), for recorded shortcuts.
+    static func keyName(for code: UInt16) -> String? {
+        let preferred = ["esc", "return", "tab", "space", "delete", "left", "right", "down", "up", "home", "end", "pageup", "pagedown"]
+        for name in preferred where keyCodes[name] == CGKeyCode(code) { return name }
+        return keyCodes.first { $0.value == CGKeyCode(code) && $0.key.count == 1 }?.key
+    }
+
     private static let keyCodes: [String: CGKeyCode] = {
         var map: [String: CGKeyCode] = [
             "esc": 53, "escape": 53, "return": 36, "enter": 36, "tab": 48, "space": 49,

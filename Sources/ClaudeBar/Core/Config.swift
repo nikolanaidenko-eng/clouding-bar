@@ -6,11 +6,14 @@ import CoreGraphics
 ///   command — the same, for slash commands ("/compact")
 ///   key     — presses a key or shortcut ("esc", "cmd+k", "shift+tab")
 ///   link    — opens a URL ("vscode://…", "https://…")
+///   screenshot — pick an area of the screen; its file path goes to Claude
 struct ButtonSpec: Codable, Equatable {
-    enum Kind: String, Codable { case phrase, command, key, link }
+    enum Kind: String, Codable, CaseIterable { case phrase, command, key, link, screenshot }
     var label: String
     var type: Kind
     var value: String
+    /// A global shortcut for it, like "ctrl+opt+c".
+    var hotkey: String? = nil
 }
 
 extension ButtonSpec {
@@ -33,11 +36,16 @@ extension ButtonSpec {
         raw.compactMap { b in
             guard let label = b["label"] as? String, let value = b["value"] as? String else { return nil }
             let kind = (b["type"] as? String).flatMap(Kind.init) ?? guessType(value)
-            return ButtonSpec(label: label, type: kind, value: value)
+            let hotkey = (b["hotkey"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return ButtonSpec(label: label, type: kind, value: value, hotkey: hotkey)
         }
     }
 
-    var dictionary: [String: String] { ["label": label, "type": type.rawValue, "value": value] }
+    var dictionary: [String: String] {
+        var d = ["label": label, "type": type.rawValue, "value": value]
+        if let hotkey { d["hotkey"] = hotkey }
+        return d
+    }
 }
 
 /// User-editable settings, loaded from ~/.claudebar/config.json.
@@ -111,6 +119,22 @@ struct Config: Equatable {
     var sessionsList = false
     var doNotDisturb = false
     var contextWarning = true
+    /// Type /compact by itself at the warning (when Claude is idle and its
+    /// window is in front) instead of asking.
+    var autoCompact = false
+    /// Requests queued in the widget go out one by one after each reply.
+    var taskQueue = false
+    /// Template phrases in the widget and the menu.
+    var templatesEnabled = false
+    var templates = [
+        "Продолжай",
+        "Проверь последние изменения в {project} на ошибки",
+        "Закоммить изменения в ветке {branch}",
+    ]
+    /// The widget's screenshot button.
+    var screenshot = false
+    /// Small metrics in the widget: "model", "lines", "git", "agents", "cost".
+    var metrics: [String] = []
 
     // Voice: hold the right Option key alone, or the widget's mic.
     var voiceLanguage = Config.defaultVoiceLanguage
@@ -178,6 +202,12 @@ struct Config: Equatable {
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }
         if let v = obj["doNotDisturb"] as? Bool { config.doNotDisturb = v }
         if let v = obj["contextWarning"] as? Bool { config.contextWarning = v }
+        if let v = obj["autoCompact"] as? Bool { config.autoCompact = v }
+        if let v = obj["taskQueue"] as? Bool { config.taskQueue = v }
+        if let v = obj["templatesEnabled"] as? Bool { config.templatesEnabled = v }
+        if let v = obj["templates"] as? [String] { config.templates = v }
+        if let v = obj["screenshot"] as? Bool { config.screenshot = v }
+        if let v = obj["metrics"] as? [String] { config.metrics = v }
         if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
         if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }
         if let v = obj["summaryPrompt"] as? String { config.summaryPrompt = v }

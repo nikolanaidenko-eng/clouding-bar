@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let touchBarStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
+    private let templatesItem = NSMenuItem(title: "Templates", action: nil, keyEquivalent: "")
 
     private var requests: [PendingRequest] = []
     /// The question whose "Other…" answer is being typed.
@@ -43,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var voiceMessageShown = false
     private var voiceOfflineCache: (language: String, offline: Bool)?
     private var shownCardId: UUID?
+    private let hotKeys = HotKeys()
+    private var queue: [AppModel.QueueItem] = []
+    private var queueSentAt: Date?
+    private var branchCache: [String: (branch: String?, at: Date)] = [:]
 
     // MARK: - Launch
 
@@ -77,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         setUpModel()
         setUpVoice()
+        loadQueue()
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.everySecond() }
         RunLoop.main.add(timer, forMode: .common)
@@ -246,6 +252,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if config.widget { widget.show() } else { widget.hide() }
         updateModel(active: active)
         widget.update()
+        updateHotKeys(active)
+        dispatchQueue()
 
         guard barShouldShow else {
             if typingFor != nil { stopTyping() }
@@ -284,9 +292,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if let active, let percent = bar.contextPercent {
             if percent < config.contextWarnPercent {
                 active.contextSnoozedUntil = nil // warn again next time it fills up
-            } else if config.contextWarning && !config.doNotDisturb
-                        && percent >= (active.contextSnoozedUntil ?? 0) {
-                bar.mode = .contextWarning
+            } else if percent >= (active.contextSnoozedUntil ?? 0) {
+                if config.autoCompact {
+                    autoCompact(active)
+                } else if config.contextWarning && !config.doNotDisturb {
+                    bar.mode = .contextWarning
+                }
             }
         }
         touchBar.show(bar)
@@ -407,6 +418,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func run(_ spec: ButtonSpec) {
         widget.releaseKey() // keystrokes go to your editor, not the widget
         switch spec.type {
+        case .screenshot:
+            takeScreenshot()
         case .phrase, .command:
             KeySender.type(spec.value, pressReturn: true)
         case .key:
@@ -464,6 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         touchBarToggleItem.target = self
         touchBarToggleItem.action = #selector(toggleTouchBar)
         menu.addItem(touchBarToggleItem)
+        menu.addItem(templatesItem)
         menu.addItem(.separator())
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -489,6 +503,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         touchBarPresent = TouchBarDetector.hasTouchBar
         touchBarStatusItem.title = touchBarPresent ? "Touch Bar: found" : "Touch Bar: not found"
         touchBarToggleItem.state = touchBarEnabled ? .on : .off
+        // Template phrases, typed into the app in front without Enter.
+        templatesItem.isHidden = !config.templatesEnabled || config.templates.isEmpty
+        let sub = NSMenu()
+        for t in config.templates {
+            let item = NSMenuItem(title: t, action: #selector(menuTemplate(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = t
+            sub.addItem(item)
+        }
+        templatesItem.submenu = sub
+    }
+
+    @objc private func menuTemplate(_ sender: NSMenuItem) {
+        guard let t = sender.representedObject as? String else { return }
+        // Let the menu close and focus return to the app in front first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.insertTemplate(t) }
     }
 
     @objc private func toggleTouchBar() {
@@ -577,6 +607,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.tokensIn, active?.tokensIn)
         set(\.tokensOut, active?.tokensOut)
         set(\.cost, active?.costUSD)
+        set(\.modelName, active?.modelName)
+        set(\.effort, active?.effort)
+        set(\.linesAdded, active?.linesAdded ?? 0)
+        set(\.linesRemoved, active?.linesRemoved ?? 0)
+        set(\.branch, config.metrics.contains("git") ? active?.cwd.flatMap(branch(at:)) : nil)
+        set(\.agents, active?.runningAgents ?? 0)
+        set(\.isAPI, store.account.sessionPercent == nil && active?.costUSD != nil)
+        set(\.queue, queue)
         set(\.buttons, currentButtons(active))
         set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
 
@@ -710,5 +748,122 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             KeySender.type(text)
         }
         DebugLog.note("voice: \(text.count) characters into " + (typing.isActive ? "the Touch Bar answer" : model.request?.kind == .question && widget.state.mode == .panel ? "the widget's Other field" : NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"))
+    }
+
+    // MARK: - Stage 3: hotkeys, templates, queue, auto-compact, screenshot
+
+    /// Global shortcuts for the buttons the bar shows now.
+    private func updateHotKeys(_ active: Session?) {
+        let shortcuts = currentButtons(active).compactMap { spec -> (combo: String, action: () -> Void)? in
+            guard let combo = spec.hotkey else { return nil }
+            return (combo, { [weak self] in
+                DebugLog.tap("hotkey \(spec.label)")
+                self?.run(spec)
+            })
+        }
+        hotKeys.set(shortcuts)
+    }
+
+    /// {project}, {branch}, {clipboard}, {date} filled in.
+    private func expand(_ template: String) -> String {
+        let active = store.activeSession(windowTitle: frontTitle)
+        let date = DateFormatter()
+        date.dateFormat = "yyyy-MM-dd"
+        return template
+            .replacingOccurrences(of: "{project}", with: active?.projectName ?? "")
+            .replacingOccurrences(of: "{branch}", with: active?.cwd.flatMap(branch(at:)) ?? "")
+            .replacingOccurrences(of: "{clipboard}", with: NSPasteboard.general.string(forType: .string) ?? "")
+            .replacingOccurrences(of: "{date}", with: date.string(from: Date()))
+    }
+
+    private func insertTemplate(_ template: String) {
+        DebugLog.tap("template")
+        widget.releaseKey()
+        KeySender.type(expand(template)) // no Enter: read it over first
+    }
+
+    private func branch(at cwd: String) -> String? {
+        if let c = branchCache[cwd], Date().timeIntervalSince(c.at) < 5 { return c.branch }
+        let b = Git.branch(at: cwd)
+        branchCache[cwd] = (b, Date())
+        return b
+    }
+
+    /// Context over the threshold, Claude idle, its window in front: /compact.
+    private func autoCompact(_ session: Session) {
+        guard session.activity == .sleep, !session.waitingNotice,
+              !requests.contains(where: { $0.sessionId == session.id }),
+              store.session(inWindow: frontTitle)?.id == session.id,
+              Date().timeIntervalSince(session.activitySince) > 2 else { return }
+        session.contextSnoozedUntil = 101 // until it drops below the threshold
+        DebugLog.note("auto-compact \(session.projectName ?? session.id)")
+        widget.releaseKey()
+        KeySender.type(config.compactCommand, pressReturn: true)
+    }
+
+    private var queueURL: URL { Config.directory.appendingPathComponent("queue.json") }
+
+    private func loadQueue() {
+        if let data = try? Data(contentsOf: queueURL),
+           let items = try? JSONDecoder().decode([AppModel.QueueItem].self, from: data) {
+            queue = items
+        }
+        model.addToQueue = { [weak self] text in
+            guard let self else { return }
+            let active = self.store.activeSession(windowTitle: self.frontTitle)
+            self.queue.append(.init(text: text, sessionId: active?.id, project: active?.projectName))
+            DebugLog.tap("queue add (\(self.queue.count))")
+            self.saveQueue()
+            self.refresh()
+        }
+        model.removeFromQueue = { [weak self] id in
+            self?.queue.removeAll { $0.id == id }
+            self?.saveQueue()
+            self?.refresh()
+        }
+        model.insertTemplate = { [weak self] in self?.insertTemplate($0) }
+        model.takeScreenshot = { [weak self] in self?.takeScreenshot() }
+        model.changeModel = { [weak self] in
+            DebugLog.tap("change model")
+            self?.widget.releaseKey()
+            KeySender.type("/model", pressReturn: true)
+        }
+    }
+
+    private func saveQueue() {
+        if let data = try? JSONEncoder().encode(queue) { try? data.write(to: queueURL, options: .atomic) }
+    }
+
+    /// Sends the next queued request once its session has finished a
+    /// reply and its window is in front (it's typed, like a button).
+    private func dispatchQueue() {
+        guard config.taskQueue, let next = queue.first else { return }
+        guard let session = next.sessionId.flatMap({ store.sessions[$0] }) else {
+            queue.removeFirst() // its session is gone
+            saveQueue()
+            return
+        }
+        guard session.activity == .sleep, !session.waitingNotice,
+              !requests.contains(where: { $0.sessionId == session.id }),
+              store.session(inWindow: frontTitle)?.id == session.id,
+              Date().timeIntervalSince(session.activitySince) > 1.5,
+              Date().timeIntervalSince(queueSentAt ?? .distantPast) > 10 else { return }
+        queue.removeFirst()
+        saveQueue()
+        queueSentAt = Date()
+        DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
+        widget.releaseKey()
+        KeySender.type(next.text, pressReturn: true)
+    }
+
+    private func takeScreenshot() {
+        DebugLog.tap("screenshot")
+        widget.releaseKey()
+        Screenshot.take { [weak self] path in
+            guard let path else { return } // cancelled
+            self?.widget.releaseKey()
+            KeySender.type(path + " ")
+            DebugLog.note("screenshot → path typed")
+        }
     }
 }

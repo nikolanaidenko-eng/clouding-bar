@@ -54,6 +54,24 @@ final class AppModel: ObservableObject {
     /// Projects seen in sessions, for the profile picker.
     @Published var knownProjects: [String] = []
 
+    // Small metrics (each shown only when picked in Settings)
+    @Published var modelName: String?
+    @Published var effort: String?
+    @Published var linesAdded = 0
+    @Published var linesRemoved = 0
+    @Published var branch: String?
+    @Published var agents = 0
+    /// Paying per token (no subscription limit seen): cost makes sense.
+    @Published var isAPI = false
+
+    struct QueueItem: Identifiable, Equatable, Codable {
+        var id = UUID()
+        let text: String
+        let sessionId: String?
+        let project: String?
+    }
+    @Published var queue: [QueueItem] = []
+
     @Published var listening = false
     @Published var heard = ""
     /// What's typed in the widget's "Other" field.
@@ -70,6 +88,11 @@ final class AppModel: ObservableObject {
     var setOpenAtLogin: (Bool) -> Void = { _ in }
     var voice: (Bool) -> Void = { _ in }
     var voiceToggle: () -> Void = {}
+    var addToQueue: (String) -> Void = { _ in }
+    var removeFromQueue: (UUID) -> Void = { _ in }
+    var insertTemplate: (String) -> Void = { _ in }
+    var takeScreenshot: () -> Void = {}
+    var changeModel: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
     var statusTitle: String {
