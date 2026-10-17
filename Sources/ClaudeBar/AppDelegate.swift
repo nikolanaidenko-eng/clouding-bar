@@ -723,11 +723,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// conversation (two can share a window). Only if no window shows the
     /// project does it open one — in a new window, never in place of yours.
     private func openSession(_ id: String) {
-        guard let session = store.sessions[id], session.entrypoint != "cowork", let cwd = session.cwd else {
-            NSSound.beep()
+        guard let session = store.sessions[id] else { NSSound.beep(); return }
+        DebugLog.tap("open session \(session.projectName ?? id)")
+        if session.entrypoint == "cowork" {
+            // Cowork lives in the Claude desktop app; it has no link to one task.
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.anthropic.claudefordesktop").first {
+                app.activate(options: [])
+            } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            }
             return
         }
-        DebugLog.tap("open session \(session.projectName ?? id)")
+        guard let cwd = session.cwd else { NSSound.beep(); return }
         let raised = session.projectName.map(raiseVSCodeWindow(showing:)) ?? false
         if !raised {
             guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),

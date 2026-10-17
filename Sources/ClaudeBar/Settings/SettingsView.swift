@@ -619,39 +619,55 @@ struct ShortcutField: NSViewRepresentable {
 
         required init?(coder: NSCoder) { fatalError("not used") }
 
-        override var acceptsFirstResponder: Bool { true }
+        private var monitor: Any?
 
+        /// A click starts recording. Keys are caught by a local monitor, so
+        /// nothing else in the window (SwiftUI, the Edit menu) gets them first.
         override func mouseDown(with event: NSEvent) {
-            window?.makeFirstResponder(self)
+            recording ? stop() : start()
+        }
+
+        private func start() {
             recording = true
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown]) { [weak self] e in
+                guard let self else { return e }
+                if e.type == .leftMouseDown {
+                    // A click anywhere else ends recording; on us, mouseDown does.
+                    if e.window !== self.window || !self.bounds.contains(self.convert(e.locationInWindow, from: nil)) {
+                        self.stop()
+                    }
+                    return e
+                }
+                self.capture(e)
+                return nil
+            }
         }
 
-        override func resignFirstResponder() -> Bool {
+        private func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
             recording = false
-            return true
         }
 
-        override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            guard recording else { return false }
-            keyDown(with: event)
-            return true
-        }
-
-        override func keyDown(with event: NSEvent) {
-            guard recording else { return super.keyDown(with: event) }
+        private func capture(_ event: NSEvent) {
             switch event.keyCode {
-            case 53: // esc
-                window?.makeFirstResponder(nil)
-            case 51, 117: // delete
+            case 53: // esc: keep what was there
+                stop()
+            case 51, 117: // delete: no shortcut
                 combo = nil
                 onChange?(nil)
-                window?.makeFirstResponder(nil)
+                stop()
             default:
-                guard let c = HotKeys.combo(from: event) else { NSSound.beep(); return }
+                guard let c = HotKeys.combo(from: event) else { NSSound.beep(); return } // needs ⌃, ⌥, ⇧ or ⌘
                 combo = c
                 onChange?(c)
-                window?.makeFirstResponder(nil)
+                stop()
             }
+        }
+
+        override func viewWillMove(toWindow newWindow: NSWindow?) {
+            if newWindow == nil { stop() }
+            super.viewWillMove(toWindow: newWindow)
         }
 
         private func update() {

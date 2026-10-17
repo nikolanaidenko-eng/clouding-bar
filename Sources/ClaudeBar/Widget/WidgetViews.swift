@@ -821,7 +821,7 @@ struct SessionsPanel: View {
             }
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Text("Click to open its VS Code window · % = context")
+            Text("Click to open its conversation · % = context")
                 .font(.system(size: 11)).foregroundColor(.cbSecondary).padding(.horizontal, 2)
         }
         .foregroundColor(.cbText)
