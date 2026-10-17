@@ -662,9 +662,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let waitingIds = Set(requests.compactMap(\.sessionId))
         let rows = alive.map { s -> AppModel.SessionRow in
             let waiting = waitingIds.contains(s.id) || s.waitingNotice
-            let status = waiting ? "Needs your OK"
+            let state = waiting ? "Needs your OK"
                 : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
                 : "Idle · \(AppModel.duration(since: s.lastSeen))"
+            // Where it runs, under its name: "Cowork · Idle · 12 min".
+            let source: String
+            switch s.entrypoint {
+            case "cowork": source = "Cowork"
+            case "claude-vscode": source = "VS Code"
+            case "cli": source = "Terminal"
+            case "claude-desktop": source = "Desktop"
+            default: source = "Claude Code"
+            }
+            let status = source + " · " + state
             return AppModel.SessionRow(id: s.id, name: s.projectName ?? "Claude", status: status,
                                        activity: waiting ? .wait : s.activity,
                                        context: s.contextPercent(windowOverride: config.contextWindowSize),
