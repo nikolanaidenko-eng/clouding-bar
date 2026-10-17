@@ -708,15 +708,15 @@ struct CoworkTab: View {
 
             if model.config.coworkMode != "off" {
                 SettingsGroup {
-                    SettingsRow(title: "Connected folder",
-                                hint: model.config.coworkFolder.map { ($0 as NSString).abbreviatingWithTildeInPath }
-                                    ?? "The folder you connected in Cowork") {
-                        Button("Choose…") { model.chooseCoworkFolder() }
-                    }
                     SettingsRow(title: "Plugin",
                                 hint: "Upload it in Claude Desktop → Settings → Plugins. Make it again after changing the mode.") {
                         Button("Make plugin") { model.makeCoworkPlugin() }
-                            .disabled(model.config.coworkFolder == nil)
+                    }
+                    SettingsRow(title: "Folders",
+                                hint: model.coworkFolders.isEmpty
+                                    ? "Connect a folder to a Cowork task; it's found by itself"
+                                    : "Watching " + model.coworkFolders.joined(separator: ", ")) {
+                        Button("Add…") { model.chooseCoworkFolder() }
                     }
                     SettingsRow(title: "Last status", hint: model.coworkLast ?? "None yet", divider: model.coworkMessage != nil) {
                         EmptyView()

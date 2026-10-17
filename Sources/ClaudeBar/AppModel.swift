@@ -74,6 +74,8 @@ final class AppModel: ObservableObject {
 
     // Cowork tab
     @Published var coworkLast: String?
+    /// Folder names being watched for Cowork's status.
+    @Published var coworkFolders: [String] = []
     @Published var coworkMessage: String?
     @Published var hasLiveKey = false
     @Published var liveLimitState = "Off"

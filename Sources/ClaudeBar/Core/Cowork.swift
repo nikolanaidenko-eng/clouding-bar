@@ -33,10 +33,33 @@ enum Cowork {
                       time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date())
     }
 
+    /// Folders connected to Cowork, from Claude Desktop's own settings
+    /// (its "spaces"), so nobody has to pick them by hand.
+    static func connectedFolders() -> [String] {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
+        var found = Set<String>()
+        let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil,
+                                                    options: [.skipsHiddenFiles])
+        while let url = walker?.nextObject() as? URL {
+            if walker!.level > 3 { walker!.skipDescendants(); continue }
+            guard url.lastPathComponent == "spaces.json",
+                  let data = try? Data(contentsOf: url),
+                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let spaces = o["spaces"] as? [[String: Any]] else { continue }
+            for space in spaces {
+                for f in space["folders"] as? [[String: Any]] ?? [] {
+                    if let path = f["path"] as? String, FileManager.default.fileExists(atPath: path) { found.insert(path) }
+                }
+            }
+        }
+        return found.sorted()
+    }
+
     /// Writes the plugin (folder and .zip) into ~/Downloads for upload in
-    /// Claude Desktop. The mode and folder name are baked in: hooks in
-    /// Cowork can't read anything on this Mac. Returns the .zip.
-    static func makePlugin(mode: String, folder: String,
+    /// Claude Desktop. Only the mode is baked in (hooks in Cowork can't read
+    /// this Mac); it works with whatever folder a task has. Returns the .zip.
+    static func makePlugin(mode: String,
                            into downloads: URL = FileManager.default.homeDirectoryForCurrentUser
                                .appendingPathComponent("Downloads")) throws -> URL {
         let root = downloads.appendingPathComponent("clouding-bar-cowork")
@@ -60,18 +83,9 @@ enum Cowork {
                                    options: [.prettyPrinted, .sortedKeys])
             .write(to: root.appendingPathComponent("hooks/hooks.json"))
 
-        // The status file lives in a folder of its own that git ignores, so
-        // it never shows up in the project's commits.
-        let ours = URL(fileURLWithPath: folder).appendingPathComponent(".clouding-bar")
-        try? fm.createDirectory(at: ours, withIntermediateDirectories: true)
-        try? "*\n".write(to: ours.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
-
-        let folderName = URL(fileURLWithPath: folder).lastPathComponent
-        let script = statusScript
-            .replacingOccurrences(of: "@MODE@", with: mode)
-            .replacingOccurrences(of: "@FOLDER@", with: folderName.replacingOccurrences(of: "\"", with: ""))
+        let script = statusScript.replacingOccurrences(of: "@MODE@", with: mode)
         try script.write(to: root.appendingPathComponent("hooks/status.py"), atomically: true, encoding: .utf8)
-        try readme(mode: mode, folder: folderName).write(to: root.appendingPathComponent("README.md"),
+        try readme(mode: mode).write(to: root.appendingPathComponent("README.md"),
                                                          atomically: true, encoding: .utf8)
 
         // Zip it the system's way (no external tool).
@@ -88,13 +102,14 @@ enum Cowork {
         return zip
     }
 
-    private static func readme(mode: String, folder: String) -> String {
+    private static func readme(mode: String) -> String {
         """
         # Clouding Bar for Cowork
 
         After a reply, this plugin's Stop hook works out how full the context is and asks Claude
-        to write one line of JSON to `.clouding-bar/cowork-status.json` in the connected folder
-        "\(folder)". Clouding Bar on your Mac reads it from there.
+        to write one line of JSON to `.clouding-bar/cowork-status.json` in the folder connected to
+        the task (with a `.gitignore`, so it never gets committed). Clouding Bar on your Mac finds
+        the folders you connect in Claude Desktop and reads it from there.
 
         Mode: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "at 50, 80 and 90% context and when a turn of a minute or more ends")
 
@@ -112,7 +127,6 @@ enum Cowork {
     import json, os, sys, time
 
     MODE = "@MODE@"          # "thresholds" or "every"
-    FOLDER = "@FOLDER@"      # the connected folder Clouding Bar watches
 
     try:
         d = json.load(sys.stdin)
@@ -184,11 +198,20 @@ enum Cowork {
         "project": os.path.basename((d.get("cwd") or "").rstrip("/")) or None,
         "context_tokens": tokens, "context_window": window, "model": model,
     }
+    # Folders this task has, if they're visible here; Claude knows them anyway.
+    mounts = []
+    for base in (os.path.expanduser("~/mnt"), "/mnt"):
+        try:
+            mounts += [os.path.join(base, n) for n in sorted(os.listdir(base)) if not n.startswith(".")]
+        except Exception:
+            pass
+    where = " (connected here: %s)" % ", ".join(mounts[:5]) if mounts else ""
     reason = (
-        "Clouding Bar status update. Using your file tool for the connected folder \"%s\", "
-        "write exactly this one line to .clouding-bar/cowork-status.json there (create the "
-        ".clouding-bar folder if needed, replace the file). Don't mention it, then stop:\n%s"
-        % (FOLDER, json.dumps(status))
+        "Clouding Bar status update. If a folder from the user's computer is connected to this task%s, "
+        "write exactly this one line to .clouding-bar/cowork-status.json in it (the first such folder; "
+        "create .clouding-bar if needed and put a .gitignore containing * in it; replace the file). "
+        "If no folder is connected, skip it. Don't mention any of this, then stop:\n%s"
+        % (where, json.dumps(status))
     )
     print(json.dumps({"decision": "block", "reason": reason}))
     """#

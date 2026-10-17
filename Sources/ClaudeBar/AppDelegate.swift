@@ -49,7 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var queueSentAt: Date?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
-    private var coworkSeen: Date?
+    private var coworkSeen: [String: Date] = [:]
+    private var coworkFolders: (list: [String], at: Date) = ([], .distantPast)
 
     // MARK: - Launch
 
@@ -955,12 +956,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.makeCoworkPlugin = { [weak self] in
             guard let self else { return }
-            guard let folder = self.config.coworkFolder, self.config.coworkMode != "off" else {
-                self.model.coworkMessage = "Pick a mode and the connected folder first."
+            guard self.config.coworkMode != "off" else {
+                self.model.coworkMessage = "Pick Thresholds or Every reply first."
                 return
             }
             do {
-                let zip = try Cowork.makePlugin(mode: self.config.coworkMode, folder: folder)
+                let zip = try Cowork.makePlugin(mode: self.config.coworkMode)
                 NSWorkspace.shared.activateFileViewerSelecting([zip])
                 self.model.coworkMessage = "Saved to Downloads. Upload clouding-bar-cowork.zip in Claude Desktop → Settings → Plugins."
                 DebugLog.note("cowork plugin made (\(self.config.coworkMode))")
@@ -998,18 +999,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Picks up a new status line from the Cowork plugin.
-    private func readCowork() {
-        guard config.coworkMode != "off", let folder = config.coworkFolder else { return }
-        let url = Cowork.statusURL(folder: folder)
-        guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        else { return }
-        if mtime != coworkSeen, let status = Cowork.read(folder: folder) {
-            coworkSeen = mtime
-            store.apply(cowork: status)
-            DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens")
+    /// Every folder that may hold Cowork's status: the ones connected in
+    /// Claude Desktop (looked up every minute) plus one picked by hand.
+    private var watchedCoworkFolders: [String] {
+        if Date().timeIntervalSince(coworkFolders.at) > 60 {
+            coworkFolders = (Cowork.connectedFolders(), Date())
         }
-        if let s = Cowork.read(folder: folder) {
+        var list = coworkFolders.list
+        if let extra = config.coworkFolder, !list.contains(extra) { list.append(extra) }
+        return list
+    }
+
+    /// Picks up new status lines from the Cowork plugin.
+    private func readCowork() {
+        guard config.coworkMode != "off" else { return }
+        let folders = watchedCoworkFolders
+        model.coworkFolders = folders.map { URL(fileURLWithPath: $0).lastPathComponent }
+        var newest: Cowork.Status?
+        for folder in folders {
+            let url = Cowork.statusURL(folder: folder)
+            guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                  let status = Cowork.read(folder: folder) else { continue }
+            if mtime != coworkSeen[folder] {
+                coworkSeen[folder] = mtime
+                store.apply(cowork: status)
+                DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens")
+            }
+            if newest == nil || status.time > newest!.time { newest = status }
+        }
+        if let s = newest {
             let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())
             model.coworkLast = "\(AppModel.ago(s.time)) · \(s.project ?? "Cowork") \(pct)%"
         }
