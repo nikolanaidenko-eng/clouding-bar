@@ -719,19 +719,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         advance(request, with: answer)
     }
 
-    /// Brings that session's VS Code window to the front. Only if no window
-    /// shows the project does it open one — in a new window, never in place
-    /// of the one you're in.
+    /// Brings that session's VS Code window to the front, then its own
+    /// conversation (two can share a window). Only if no window shows the
+    /// project does it open one — in a new window, never in place of yours.
     private func openSession(_ id: String) {
         guard let session = store.sessions[id], session.entrypoint != "cowork", let cwd = session.cwd else {
             NSSound.beep()
             return
         }
         DebugLog.tap("open session \(session.projectName ?? id)")
-        if let name = session.projectName, raiseVSCodeWindow(showing: name) { return }
-        guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "vscode://file" + path + "?windowId=_blank") else { NSSound.beep(); return }
-        NSWorkspace.shared.open(url)
+        let raised = session.projectName.map(raiseVSCodeWindow(showing:)) ?? false
+        if !raised {
+            guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+                  let url = URL(string: "vscode://file" + path + "?windowId=_blank") else { NSSound.beep(); return }
+            NSWorkspace.shared.open(url)
+        }
+        // The Claude extension opens a conversation by its id.
+        guard session.entrypoint == "claude-vscode",
+              let url = URL(string: "vscode://anthropic.claude-code/open?session=\(id)") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (raised ? 0.3 : 2.5)) {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// Finds the VS Code window whose title names the project and raises it.
@@ -1020,12 +1028,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let url = Cowork.statusURL(folder: folder)
             guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
                   let status = Cowork.read(folder: folder) else { continue }
+            // Inside Cowork's machine the folder name means nothing; the Mac
+            // folder the status landed in is the project.
+            let named = Cowork.Status(session: status.session, project: URL(fileURLWithPath: folder).lastPathComponent,
+                                      contextTokens: status.contextTokens, contextWindow: status.contextWindow,
+                                      model: status.model, time: status.time)
             if mtime != coworkSeen[folder] {
                 coworkSeen[folder] = mtime
-                store.apply(cowork: status)
+                store.apply(cowork: named)
                 DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens")
             }
-            if newest == nil || status.time > newest!.time { newest = status }
+            if newest == nil || named.time > newest!.time { newest = named }
         }
         if let s = newest {
             let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())
