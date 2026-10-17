@@ -93,6 +93,9 @@ body{margin:0;background:#1B1B1D}
             <div style="display: flex; gap: 8px; padding: 8px 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07); animation: fadeUp 180ms both">
               <label for="newName" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Button name</label>
               <input id="newName" type="text" value="{{draft}}" onChange="{{onDraft}}" placeholder="Name" style="width: 120px; height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px">
+              <label for="newType" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Type</label>
+              <select id="newType" style="height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px"><option>phrase</option><option>command</option><option>key</option><option>link</option><option>screenshot</option></select>
+              <button aria-label="Record a shortcut" style="height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px; cursor: pointer; color: #A1A1A6">Shortcut</button>
               <label for="newPhrase" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Phrase</label>
               <input id="newPhrase" type="text" value="Review the last change for bugs" style="flex-grow: 1; min-width: 0; height: 30px; box-sizing: border-box; border-radius: 7px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #F5F5F7; padding: 0 8px; font-family: inherit; font-size: 12px">
               <button onClick="{{commit}}" style="height: 30px; border-radius: 7px; border: none; background: #0071E3; color: #FFFFFF; padding: 0 12px; font-family: inherit; font-size: 12px; cursor: pointer">Add</button>
@@ -121,6 +124,21 @@ body{margin:0;background:#1B1B1D}
           </div>
           <span style="font-size: 11px; color: #A1A1A6">{{modeNote}}</span>
         </div>
+        <sc-if value="{{coworkOn}}" hint-placeholder-val="{{ true }}">
+          <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07)">
+              <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">Plugin</span><span style="font-size: 11px; color: #A1A1A6">Upload it in Claude Desktop → Settings → Plugins. Works with any folder.</span></span>
+              <button style="height: 26px; border-radius: 6px; border: none; background: #3A3A3C; color: #F5F5F7; padding: 0 10px; font-family: inherit; font-size: 12px; cursor: pointer">Make plugin</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px; border-bottom: 0.5px solid rgba(255,255,255,0.07)">
+              <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">Folders</span><span style="font-size: 11px; color: #A1A1A6">Watching 24H. Only tasks with a connected folder can report their context.</span></span>
+              <button style="height: 26px; border-radius: 6px; border: none; background: #3A3A3C; color: #F5F5F7; padding: 0 10px; font-family: inherit; font-size: 12px; cursor: pointer">Add…</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px">
+              <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">Last status</span><span style="font-size: 11px; color: #A1A1A6">4 min ago · 24H 31%</span></span>
+            </div>
+          </div>
+        </sc-if>
         <div style="border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column">
           <div style="display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 0 12px">
             <span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 13px">Live limit via claude.ai</span><span style="font-size: 11px; color: #A1A1A6">Desktop and Cowork chats · Off</span></span>
@@ -176,8 +194,8 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = { tab: 'general', mode: 'thresholds', more: false, key: false, adding: false, draft: '',
-      list: [ { name: 'caveman', value: 'Summarize your last reply in short bullets', key: '⌃⌥C' }, { name: 'compact', value: '/compact', key: '⌃⌥K' }, { name: 'office', value: 'vscode://nikola.agent-office/open', key: '' } ],
-      on: { pctx: true, preset: true, pcost: false, touchbar: true, widget: true, login: true, warn: true, sessions: false, dnd: false, cost: false, model: false, lines: false, git: false, agents: false } };
+      list: [ { name: 'caveman', value: 'Summarize your last reply in short bullets', key: 'phrase · ⌃⌥C' }, { name: 'compact', value: '/compact', key: 'command · ⌃⌥K' }, { name: 'office', value: 'vscode://nikola.agent-office/open', key: 'link' } ],
+      on: { pctx: true, preset: true, pcost: false, touchbar: true, widget: true, pill: true, login: true, autocompact: false, queue: false, templates: false, shot: false, warn: true, sessions: false, dnd: false, cost: false, model: false, lines: false, git: false, agents: false } };
   }
   renderVals() {
     const s = this.state;
@@ -188,8 +206,8 @@ class Component extends DCLogic {
       track: s.on[id] ? '#0A84FF' : '#48484A', justify: s.on[id] ? 'flex-end' : 'flex-start' });
     const cb = (id, title, hint) => ({ title, hint, toggle: flip(id), mark: s.on[id] ? '✓' : '',
       boxBg: s.on[id] ? '#0A84FF' : 'transparent', boxBorder: s.on[id] ? 'none' : '1px solid #636366' });
-    const general = [ sw('touchbar', 'Show on Touch Bar', 'Detected on this Mac'), sw('widget', 'Floating widget', 'A pill that opens on hover'), sw('login', 'Open at login', '') ];
-    const moreIds = [['warn','Context warning','80%'],['sessions','Sessions list',''],['dnd','Do not disturb',''],['cost','Cost','API'],['model','Model, effort',''],['lines','Lines changed',''],['git','Git, PR',''],['agents','Subagents','']];
+    const general = [ sw('touchbar', 'Show on Touch Bar', 'Detected on this Mac'), sw('widget', 'Floating widget', 'A pill at the top of the screen that opens on hover'), sw('pill', 'Keep the pill visible', 'Off: a thin line until you hover it'), sw('login', 'Open at login', '') ];
+    const moreIds = [['warn','Context warning','80%'],['autocompact','Auto-compact','at the warning'],['sessions','Sessions list',''],['dnd','Do not disturb',''],['queue','Task queue',''],['templates','Templates',''],['shot','Screenshot','button'],['cost','Cost','API'],['model','Model, effort',''],['lines','Lines changed',''],['git','Git branch',''],['agents','Subagents','']];
     const more = moreIds.map(([id, t, h]) => cb(id, t, h));
     const onCount = moreIds.filter(([id]) => s.on[id]).length;
     const pill = [['pctx','Context'],['preset','Reset time'],['pcost','API cost']].map(([id, label]) => ({ label, toggle: flip(id),
@@ -219,9 +237,9 @@ class Component extends DCLogic {
       chips, buttons: s.list, sLabel: wide ? 'Session' : mid ? '5h' : '', cLabel: wide ? 'Context' : mid ? 'Ctx' : '', sTimer: mid ? ' · 1:23' : '',
       adding: s.adding, draft: s.draft, onDraft: (e) => this.setState({ draft: e.target.value }),
       startAdd: () => this.setState({ adding: true, draft: pool[(s.list.length + 2) % pool.length] }),
-      commit: () => this.setState({ adding: false, draft: '', list: s.list.concat([{ name: s.draft || 'New', value: 'Review the last change for bugs', key: '' }]) }),
+      commit: () => this.setState({ adding: false, draft: '', list: s.list.concat([{ name: s.draft || 'New', value: 'Review the last change for bugs', key: 'phrase' }]) }),
       remove: () => this.setState({ adding: false, list: s.list.slice(0, Math.max(0, s.list.length - 1)) }),
-      modes, modeNote: notes[s.mode], keyOpen: s.key, keyBtn: s.key ? 'Hide' : 'Set up…', toggleKey: () => this.setState({ key: !s.key }),
+      modes, modeNote: notes[s.mode], coworkOn: s.mode !== 'off', keyOpen: s.key, keyBtn: s.key ? 'Hide' : 'Set up…', toggleKey: () => this.setState({ key: !s.key }),
       grid,
       isGeneral: s.tab === 'general', isButtons: s.tab === 'buttons', isCowork: s.tab === 'cowork', isStats: s.tab === 'stats' };
   }

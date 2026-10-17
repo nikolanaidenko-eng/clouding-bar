@@ -14,32 +14,24 @@ body{margin:0;background:#1B1B1D}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 </style>
 </helmet>
-<div style="width: 400px; height: 420px; box-sizing: border-box; background: #1B1B1D; padding: 20px; display: flex; flex-direction: column; align-items: flex-end; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
-  <section aria-label="Permission request" style="width: 320px; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 14px; display: flex; flex-direction: column; gap: 14px; transform-origin: top right; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
-    <div style="display: flex; align-items: center; gap: 10px">
-      <dc-import name="Mascot" state="wait" size="32" hint-size="32px,32px"></dc-import>
-      <div style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1">
-        <span style="font-size: 13px; font-weight: 600">Needs your OK</span>
-        <span style="font-size: 12px; color: #A1A1A6">DiaRoute</span>
-      </div>
+<div style="width: 480px; height: 200px; box-sizing: border-box; background: #1B1B1D; padding: 20px 30px; display: flex; flex-direction: column; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <section aria-label="Permission request" style="width: 420px; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 10px; transform-origin: top center; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <dc-import name="Mascot" state="wait" size="24" hint-size="24px,24px"></dc-import>
+      <span style="font-size: 13px; font-weight: 600">Needs your OK</span>
+      <span style="font-size: 12px; color: #A1A1A6; flex-grow: 1">DiaRoute · run in terminal</span>
       <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 4px; background: #FF9F0A; animation: pulse 1.4s ease-in-out infinite"></span>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 8px">
-      <span style="font-size: 12px; color: #A1A1A6">Run in terminal</span>
-      <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px 12px">npm run build &amp;&amp; npm test</div>
+    <div style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.4; background: rgba(0,0,0,0.3); border-radius: 9px; padding: 8px 10px">npm run build &amp;&amp; npm test</div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px">
+      <button title="Return" style="height: 32px; border-radius: 9px; border: none; background: #0071E3; color: #FFFFFF; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Allow</button>
+      <button style="height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">Always allow</button>
+      <button title="Esc" style="height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #FF6961; font-family: inherit; font-size: 13px; cursor: pointer">Deny</button>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 6px">
-      <button style="height: 44px; border-radius: 12px; border: none; background: #0071E3; color: #FFFFFF; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Allow</button>
-      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
-        <button style="height: 44px; border-radius: 12px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">Always allow</button>
-        <button style="height: 44px; border-radius: 12px; border: none; background: rgba(255,255,255,0.08); color: #FF6961; font-family: inherit; font-size: 13px; cursor: pointer">Deny</button>
-      </div>
-    </div>
-    <div style="display: flex; justify-content: space-between; font-size: 11px; color: #A1A1A6; font-variant-numeric: tabular-nums"><span>Session 42% · Context 31%</span><span>⏎ allow · esc deny</span></div>
   </section>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":400,"height":420}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":480,"height":200}}'>
 class Component extends DCLogic {
   renderVals() { return {}; }
 }

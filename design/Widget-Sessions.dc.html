@@ -34,7 +34,7 @@ body{margin:0;background:#1B1B1D}
         </button>
       </sc-for>
     </div>
-    <span style="font-size: 11px; color: #A1A1A6; padding: 0 2px">Click to open its VS Code window · % = context</span>
+    <span style="font-size: 11px; color: #A1A1A6; padding: 0 2px">Click to open its conversation (Cowork: the Claude app) · % = context</span>
   </section>
 </div>
 </x-dc>
@@ -48,11 +48,11 @@ class Component extends DCLogic {
       ctxColor: level === 2 ? '#FF6961' : level === 1 ? '#FFB340' : '#A1A1A6'
     });
     return { sessions: [
-      row('DiaRoute', 'Needs your OK', 'wait', '31%', 0, true),
-      row('bots', 'Working · 2 min', 'work', '58%', 0, false),
-      row('agent-office', 'Working · 9 min', 'work', '83%', 1, false),
-      row('claudebar', 'Idle · 12 min', 'sleep', '94%', 2, false),
-      row('landing', 'Idle · 1 h', 'sleep', '12%', 0, false)
+      row('DiaRoute', 'VS Code · Needs your OK', 'wait', '31%', 0, true),
+      row('24H', 'Cowork · Working · 2 min', 'work', '58%', 0, false),
+      row('agent-office', 'VS Code · Working · 9 min', 'work', '83%', 1, false),
+      row('claudebar', 'Terminal · Idle · 12 min', 'sleep', '94%', 2, false),
+      row('landing', 'VS Code · Idle · 1 h', 'sleep', '12%', 0, false)
     ] };
   }
 }
