@@ -21,7 +21,9 @@ struct BarModel: Equatable {
 }
 
 enum BarAction {
-    case esc, button(Int)
+    /// The character button where esc used to be (the keyboard has its own
+    /// Esc): brings the widget up from the bottom of the screen.
+    case widget, button(Int)
     case allow, always, deny
     case option(Int), other, sendPicked, send, mic
     case compact, later
@@ -29,11 +31,13 @@ enum BarAction {
 
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
 ///
-///   normal      esc · character · Session ─── · Context ── · buttons
-///   permission  esc · character · ● Run `command` · Allow · Always · Deny
-///   question    esc · character · ● Question? · option · option · Other…
-///   typing      esc · character · ═ · Other [answer________] · Send · 🎤
-///   context     esc · character · Session ─── · Context ── (red) · Compact · Later
+///   normal      [character] · Session ─── · Context ── · buttons
+///   permission  [character] · ● Run `command` · Allow · Always · Deny
+///   question    [character] · ● Question? · option · option · Other…
+///   typing      [character] · ═ · Other [answer________] · Send · 🎤
+///   context     [character] · Session ─── · Context ── (red) · Compact · Later
+///
+/// [character] is a button (where esc used to be) that opens the widget.
 ///
 /// Session and Context share whatever the buttons leave (3 : 2) and drop
 /// their words as space runs out: "Session"/"Context" → "5h"/"Ctx" → just
@@ -48,7 +52,12 @@ final class BarView: NSView {
     private(set) var model = BarModel()
     private var builtFor: String?
     private let mascot = MascotView(size: 28)
-    private lazy var esc = BarButton("esc") { [weak self] in self?.onAction?(.esc) }
+    private lazy var widgetButton: BarButton = {
+        let b = BarButton("Clouding Bar") { [weak self] in self?.onAction?(.widget) }
+        b.setTitle("")
+        b.addSubview(mascot)
+        return b
+    }()
 
     private var slots: [Slot] = []
     private var meters: MetersPair?
@@ -113,8 +122,7 @@ final class BarView: NSView {
         pendingAnimations = []
         animatedViews = []
 
-        add(esc, .fixed(60))
-        add(mascot, .fixed(28))
+        add(widgetButton, .fixed(60))
 
         switch model.mode {
         case .normal:
@@ -269,6 +277,9 @@ final class BarView: NSView {
         for (slot, width) in zip(slots, widths) {
             var h = Palette.height
             if slot.view === mascot { h = 28 }
+            if slot.view === widgetButton {
+                mascot.frame = CGRect(x: (width - 28) / 2, y: 1, width: 28, height: 28)
+            }
             if let label = slot.view as? NSTextField { h = ceil(label.intrinsicContentSize.height) }
             slot.view.frame = CGRect(x: x, y: (bounds.height - h) / 2, width: width, height: h)
             x += width + Palette.gap

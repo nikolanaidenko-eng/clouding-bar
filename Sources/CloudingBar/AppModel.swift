@@ -107,6 +107,14 @@ final class AppModel: ObservableObject {
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
+    /// Pill density by dragging its edge: +1 more, −1 less.
+    func setPillDensity(_ delta: Int) {
+        let levels = ["icon", "numbers", "full"]
+        let i = levels.firstIndex(of: config.pillDensity) ?? 2
+        let next = levels[min(2, max(0, i + delta))]
+        if next != config.pillDensity { setConfig("pillDensity", next) }
+    }
+
     var statusTitle: String {
         if request != nil { return request?.kind == .question ? "Claude asks" : "Needs your OK" }
         switch activity {

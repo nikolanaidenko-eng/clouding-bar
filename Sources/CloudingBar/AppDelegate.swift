@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = AppModel()
     private lazy var widget = WidgetController(model: model)
     private lazy var settings = SettingsWindow(model: model)
+    private lazy var drawer = DrawerController(model: model)
     private let voice = VoiceInput()
     private let rightOption = RightOptionHold()
     private var voiceMessageShown = false
@@ -340,14 +341,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let request = currentRequest(active: active)
 
         switch action {
-        case .esc:
-            if let request {
-                DebugLog.tap("esc → Claude's own UI (\(request.kind == .question ? "question" : "permission"))")
-                finish(request, "handed to Claude by esc")
-            } else {
-                DebugLog.tap("esc")
-                KeySender.tap(KeySender.escape)
-            }
+        case .widget:
+            DebugLog.tap("widget button")
+            drawer.toggle()
 
         case let .button(i):
             let buttons = currentButtons(active)

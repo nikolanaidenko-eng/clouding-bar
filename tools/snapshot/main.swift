@@ -154,6 +154,19 @@ widget("w-panel-extras", .panel, size: NSSize(width: 480, height: 330)) {
     $0.queue = [.init(text: "Run the tests and fix what fails", sessionId: nil, project: nil),
                 .init(text: "Update the README", sessionId: nil, project: nil)]
 }
+widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
+    $0.config.metrics = ["model", "lines", "git", "agents"]
+    $0.config.templatesEnabled = true
+    $0.config.screenshot = true
+    $0.config.taskQueue = true
+    $0.config.sessionsList = true
+    $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"
+    $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
+    $0.buttons = $0.buttons + [ButtonSpec(label: "review", type: .command, value: "/review"),
+                               ButtonSpec(label: "run tests", type: .phrase, value: "run tests")]
+}
+widget("w-pill-numbers", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "numbers" }
+widget("w-pill-icon", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "icon" }
 widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"

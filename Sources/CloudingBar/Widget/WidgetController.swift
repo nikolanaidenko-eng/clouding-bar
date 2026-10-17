@@ -5,7 +5,7 @@ import SwiftUI
 /// The floating widget's window: a non-activating panel above other windows
 /// that never takes focus unless you click into it.
 ///
-///   pill ── hover 3 s (or a click) ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
+///   pill ── hover 1 s (or a click) ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
 ///
 /// With "Keep the pill visible" off, a 4 pt line stands in for the pill at
 /// rest and wakes into it after a 250 ms hover.
@@ -144,7 +144,7 @@ final class WidgetController: NSObject {
         }
     }
 
-    /// Pill → panel after 3 s with the mouse on it (a click opens it at once).
+    /// Pill → panel after 1 s with the mouse on it (a click opens it at once).
     private func scheduleOpen() {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -152,7 +152,7 @@ final class WidgetController: NSObject {
             self.set(.panel)
         }
         openWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
     private func set(_ mode: WidgetMode) {

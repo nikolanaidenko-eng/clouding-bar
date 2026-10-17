@@ -28,6 +28,9 @@ final class MascotView: NSView {
 
     override var intrinsicContentSize: NSSize { frame.size }
 
+    /// Taps go to whatever holds it (the bar's widget button).
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func layout() {
         super.layout()
         CATransaction.begin()
