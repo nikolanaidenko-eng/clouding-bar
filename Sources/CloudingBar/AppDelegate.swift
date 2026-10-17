@@ -1,7 +1,7 @@
 import AppKit
 
 /// Wires everything together:
-///  - messages from hooks, the status line and claudebar-tap arrive on the
+///  - messages from hooks, the status line and cloudingbar-tap arrive on the
 ///    socket and update the session model (SessionStore)
 ///  - permissions and questions wait here for an answer from the bar, and
 ///    go back to Claude's own UI the moment the bar can't answer them
@@ -70,8 +70,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         do {
             try server.start()
             self.server = server
+            // The pre-rename socket name, for taps and hooks started before.
+            let old = Config.directory.appendingPathComponent("claudebar.sock").path
+            unlink(old)
+            symlink("cloudingbar.sock", old)
         } catch {
-            NSLog("ClaudeBar: could not open the socket — \(error.localizedDescription)")
+            NSLog("Clouding Bar: could not open the socket — \(error.localizedDescription)")
         }
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -855,7 +859,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let combo = spec.hotkey else { return nil }
             return (combo, { [weak self] in
                 DebugLog.tap("hotkey \(spec.label)")
-                self?.run(spec)
+                KeySender.afterModifiersUp { self?.run(spec) }
             })
         }
         hotKeys.set(shortcuts)

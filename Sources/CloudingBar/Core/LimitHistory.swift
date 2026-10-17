@@ -1,7 +1,7 @@
 import Foundation
 
 /// The 5-hour limit over time, for the Stats tab: one line per change in
-/// ~/.claudebar/limit-history.jsonl ({"t": unix seconds, "p": percent}),
+/// ~/.cloudingbar/limit-history.jsonl ({"t": unix seconds, "p": percent}),
 /// plus the snapshots Claude Desktop keeps in plan-usage-history.json.
 enum LimitHistory {
     struct Sample { let time: Date; let percent: Double }

@@ -48,7 +48,7 @@ extension ButtonSpec {
     }
 }
 
-/// User-editable settings, loaded from ~/.claudebar/config.json.
+/// User-editable settings, loaded from ~/.cloudingbar/config.json.
 /// Everything has a default, so the file and every key in it are optional.
 struct Config: Equatable {
     /// Apps that count as "where Claude Code runs". The Touch Bar only
@@ -151,19 +151,19 @@ struct Config: Equatable {
         Locale.preferredLanguages.first?.hasPrefix("ru") == true ? "ru-RU" : "en-US"
     }
 
-    /// ~/.claudebar (CLAUDEBAR_DIR overrides it, for the tests).
+    /// ~/.cloudingbar (CLOUDINGBAR_DIR overrides it, for the tests).
     static var directory: URL {
-        if let dir = ProcessInfo.processInfo.environment["CLAUDEBAR_DIR"] {
+        if let dir = ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"] {
             return URL(fileURLWithPath: dir, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".claudebar", isDirectory: true)
+            .appendingPathComponent(".cloudingbar", isDirectory: true)
     }
 
     static var fileURL: URL { directory.appendingPathComponent("config.json") }
 
     static var socketPath: String {
-        directory.appendingPathComponent("claudebar.sock").path
+        directory.appendingPathComponent("cloudingbar.sock").path
     }
 
     /// The buttons for a project: its profile, else the main list.

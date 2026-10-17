@@ -1,14 +1,14 @@
 import Foundation
 
-// claudebar-tap — sits on Claude Code's stdout when the VS Code extension
-// starts Claude through hooks/claudebar-wrapper.sh.
+// cloudingbar-tap — sits on Claude Code's stdout when the VS Code extension
+// starts Claude through hooks/cloudingbar-wrapper.sh.
 //
 // The extension's panel never runs the status line command, but Claude Code
 // tells the extension about the 5-hour limit on stdout (a stream-json
 // "rate_limit_event" line). This copies stdin to stdout byte for byte and,
-// on the side, forwards each of those lines to ClaudeBar's socket in the
+// on the side, forwards each of those lines to Clouding Bar's socket in the
 // status line's shape. The copy always comes first: a missing or stuck
-// ClaudeBar must never slow down or break Claude.
+// Clouding Bar must never slow down or break Claude.
 
 // Live until Claude closes the pipe, even if a signal hits the whole
 // process group: Claude may still be writing its last lines. A vanished
@@ -28,7 +28,7 @@ var state = LineState.matching(0)
 var line: [UInt8] = []
 
 let socketPath = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".claudebar/claudebar.sock").path
+    .appendingPathComponent(".cloudingbar/cloudingbar.sock").path
 
 func writeAll(_ base: UnsafePointer<UInt8>, _ count: Int) -> Bool {
     var done = 0
@@ -43,7 +43,7 @@ func writeAll(_ base: UnsafePointer<UInt8>, _ count: Int) -> Bool {
     return true
 }
 
-/// Turns a rate_limit_event into the status line JSON ClaudeBar already
+/// Turns a rate_limit_event into the status line JSON Clouding Bar already
 /// understands: {"session_id", "rate_limits": {"five_hour": {...}, ...}}.
 func report(_ bytes: [UInt8]) {
     guard let obj = try? JSONSerialization.jsonObject(with: Data(bytes)) as? [String: Any],

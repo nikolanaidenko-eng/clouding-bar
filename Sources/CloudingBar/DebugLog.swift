@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Appends to ~/.claudebar/debug.log: one line per tap on the bar, so a
+/// Appends to ~/.cloudingbar/debug.log: one line per tap on the bar, so a
 /// button that "does nothing" can be told apart (no line = the tap never
 /// reached us; trusted=false = macOS is blocking the keystrokes), plus what
 /// happened to each permission or question.

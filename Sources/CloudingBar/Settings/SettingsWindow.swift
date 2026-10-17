@@ -43,7 +43,7 @@ enum LoginItem {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            NSLog("ClaudeBar: login item — \(error.localizedDescription)")
+            NSLog("Clouding Bar: login item — \(error.localizedDescription)")
         }
     }
 }

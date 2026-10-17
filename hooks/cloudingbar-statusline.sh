@@ -1,10 +1,10 @@
 #!/bin/bash
 # Claude Code status line command. Forwards the status JSON (session limit,
-# context window) to ClaudeBar's unix socket, then prints the status line.
-# If you had your own status line before installing ClaudeBar, its command
-# is saved in ~/.claudebar/statusline-original and runs here unchanged.
-SOCKET="$HOME/.claudebar/claudebar.sock"
-ORIGINAL="$HOME/.claudebar/statusline-original"
+# context window) to Clouding Bar's unix socket, then prints the status line.
+# If you had your own status line before installing Clouding Bar, its command
+# is saved in ~/.cloudingbar/statusline-original and runs here unchanged.
+SOCKET="$HOME/.cloudingbar/cloudingbar.sock"
+ORIGINAL="$HOME/.cloudingbar/statusline-original"
 
 input=$(cat)
 

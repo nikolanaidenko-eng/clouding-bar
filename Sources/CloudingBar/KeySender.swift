@@ -18,8 +18,22 @@ enum KeySender {
 
     static func tap(_ keyCode: CGKeyCode) {
         let source = CGEventSource(stateID: .hidSystemState)
-        CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)?.post(tap: .cghidEventTap)
-        CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)?.post(tap: .cghidEventTap)
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down)
+            e?.flags = [] // a plain Return/Esc even while a shortcut's keys are held
+            e?.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Runs `action` once the modifier keys are up (at most ~1 s), so a
+    /// shortcut's ⌘/⌃/⌥ can't turn typed text into commands.
+    static func afterModifiersUp(_ action: @escaping () -> Void, waited: Int = 0) {
+        let held = NSEvent.modifierFlags.intersection([.command, .control, .option, .shift])
+        if held.isEmpty || waited >= 20 {
+            action()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { afterModifiersUp(action, waited: waited + 1) }
+        }
     }
 
     /// Type arbitrary text using unicode key events, optionally pressing
@@ -29,11 +43,14 @@ enum KeySender {
         // CGEvent caps the unicode payload, so send in small chunks.
         for chunk in text.chunked(into: 16) {
             let chars = Array(chunk.utf16)
+            // No modifiers, whatever keys are held: text, not ⌘-shortcuts.
             let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
             down?.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
+            down?.flags = []
             down?.post(tap: .cghidEventTap)
             let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
             up?.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
+            up?.flags = []
             up?.post(tap: .cghidEventTap)
         }
         if pressReturn {

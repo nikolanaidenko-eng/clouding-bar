@@ -1,7 +1,7 @@
 import AppKit
 
 /// Pick an area of the screen with the system's screenshot tool; the file
-/// lands in ~/.claudebar/shots and its path is handed back. The first time,
+/// lands in ~/.cloudingbar/shots and its path is handed back. The first time,
 /// macOS asks to allow Screen Recording for Clouding Bar.
 enum Screenshot {
     static func take(_ done: @escaping (String?) -> Void) {

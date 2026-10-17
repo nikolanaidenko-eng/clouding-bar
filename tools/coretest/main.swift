@@ -2,9 +2,9 @@ import Foundation
 
 // Checks for the core (no UI): which session a window title picks, what the
 // bar sends back to Claude, and config defaults. `make test`.
-// Never touch the real ~/.claudebar.
-guard ProcessInfo.processInfo.environment["CLAUDEBAR_DIR"] != nil else {
-    print("run through `make test` (it sets CLAUDEBAR_DIR)")
+// Never touch the real ~/.cloudingbar.
+guard ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"] != nil else {
+    print("run through `make test` (it sets CLOUDINGBAR_DIR)")
     exit(2)
 }
 var failures = 0
@@ -109,7 +109,7 @@ check(week.days.count == 7 && week.grid.count == 7, "stats: a 7 × 24 week from 
 print("     (this week: \(week.headline); \(week.projects.map { "\($0.name) \(Int($0.share * 100))%" }.joined(separator: ", ")))")
 
 // Cowork plugin: built into the test folder, its script run on a fake transcript.
-let pluginDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLAUDEBAR_DIR"]!)
+let pluginDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
 let zip = try? Cowork.makePlugin(mode: "thresholds", into: pluginDir)
 check(zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false, "cowork plugin zip is made")
 check(FileManager.default.fileExists(atPath: pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path),

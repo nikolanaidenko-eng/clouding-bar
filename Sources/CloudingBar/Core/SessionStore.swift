@@ -34,7 +34,7 @@ final class SessionStore {
         }
 
         // Only hook events start a session; status messages (the status
-        // line, claudebar-tap) just add numbers to one we already know.
+        // line, cloudingbar-tap) just add numbers to one we already know.
         guard let session = sessions[id] ?? (m.event != nil ? Session(id: id, now: now) : nil) else {
             onChange?()
             return

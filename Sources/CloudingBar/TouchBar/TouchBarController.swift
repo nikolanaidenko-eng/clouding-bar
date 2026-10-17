@@ -42,5 +42,5 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
 }
 
 private extension NSTouchBarItem.Identifier {
-    static let root = Self("dev.claudebar.bar")
+    static let root = Self("dev.cloudingbar.bar")
 }

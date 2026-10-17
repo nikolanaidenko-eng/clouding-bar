@@ -6,15 +6,15 @@ a localhost port.
 
 ## Transport
 
-- macOS: a unix socket at `~/.claudebar/claudebar.sock`, created by the app.
+- macOS: a unix socket at `~/.cloudingbar/cloudingbar.sock`, created by the app.
 - One connection carries **one message**: a JSON object on a single line,
   ended by `\n` or by the sender closing the connection.
 - Senders:
-  - `claudebar-hook`, the command for every Claude Code hook event;
-  - `claudebar-statusline.sh`, the status line, for terminal sessions;
-  - `claudebar-tap`, which reads Claude's stdout behind the VS Code panel
+  - `cloudingbar-hook`, the command for every Claude Code hook event;
+  - `cloudingbar-statusline.sh`, the status line, for terminal sessions;
+  - `cloudingbar-tap`, which reads Claude's stdout behind the VS Code panel
     (`claudeCode.claudeProcessWrapper`);
-  - `claudebar-relay.sh`, the old hook command. Sessions started before an
+  - `cloudingbar-relay.sh`, the old hook command. Sessions started before an
     upgrade keep calling it.
 
 ## Messages to the app
@@ -22,7 +22,7 @@ a localhost port.
 ### Hook events
 
 This is the JSON Claude Code gives the hook, unchanged
-([hooks reference](https://code.claude.com/docs/en/hooks)). `claudebar-hook`
+([hooks reference](https://code.claude.com/docs/en/hooks)). `cloudingbar-hook`
 adds two fields:
 
 | field | meaning |
@@ -57,7 +57,7 @@ Two hook events wait for an answer:
 - `PermissionRequest`, for any tool;
 - `PreToolUse` with `tool_name: "AskUserQuestion"`.
 
-For these, `claudebar-hook` keeps the connection open after sending. The app
+For these, `cloudingbar-hook` keeps the connection open after sending. The app
 replies with JSON lines:
 
 | reply | meaning |
@@ -68,7 +68,7 @@ replies with JSON lines:
 
 ### The rule: Claude never waits on a broken app
 
-`claudebar-hook` exits 0 with no output, which means "no decision", when:
+`cloudingbar-hook` exits 0 with no output, which means "no decision", when:
 - the socket is missing or refuses the connection (app not running);
 - no `hold` arrives within 2 s (app hung);
 - the connection closes (app quit or crashed);
@@ -147,11 +147,11 @@ Cowork's hooks run away from this Mac. The `clouding-bar-cowork` plugin
 The app reads the file every 2 s. It shows the line as a session
 `cowork-<session>`, which ends after 3 hours without news.
 
-## Files in `~/.claudebar`
+## Files in `~/.cloudingbar`
 
 | file | what |
 |---|---|
-| `config.json` | settings, every key optional (`Sources/ClaudeBar/Core/Config.swift`) |
+| `config.json` | settings, every key optional (`Sources/CloudingBar/Core/Config.swift`) |
 | `sessions.json` | known sessions, so a restart keeps them |
 | `last-status.json` | last 5-hour limit |
 | `debug.log` | one line per tap (`trusted=`, front app) and what happened to each request |

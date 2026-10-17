@@ -33,7 +33,7 @@ final class SocketServer {
     private let handler: Handler
     private var listenFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?
-    fileprivate let queue = DispatchQueue(label: "claudebar.socket")
+    fileprivate let queue = DispatchQueue(label: "cloudingbar.socket")
     fileprivate var connections = Set<Connection>()
 
     /// `handler` runs on the main queue.

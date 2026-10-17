@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeBar",
+    name: "CloudingBar",
     platforms: [
         .macOS(.v12)
     ],
     targets: [
         .executableTarget(
-            name: "ClaudeBar",
-            path: "Sources/ClaudeBar"
+            name: "CloudingBar",
+            path: "Sources/CloudingBar"
         ),
         .executableTarget(
-            name: "ClaudeBarTap",
-            path: "Sources/ClaudeBarTap"
+            name: "CloudingBarTap",
+            path: "Sources/CloudingBarTap"
         ),
         .executableTarget(
-            name: "ClaudeBarHook",
-            path: "Sources/ClaudeBarHook"
+            name: "CloudingBarHook",
+            path: "Sources/CloudingBarHook"
         ),
     ]
 )

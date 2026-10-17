@@ -1,6 +1,6 @@
 import Foundation
 
-// claudebar-hook — the Claude Code hook command (see docs/protocol.md).
+// cloudingbar-hook — the Claude Code hook command (see docs/protocol.md).
 //
 // Every hook event goes through here: the JSON Claude Code pipes in is
 // forwarded to the app's socket, plus the Claude process id and entrypoint.
@@ -74,7 +74,7 @@ line.append(0x0A)
 // MARK: - Socket
 
 let socketPath = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".claudebar/claudebar.sock").path
+    .appendingPathComponent(".cloudingbar/cloudingbar.sock").path
 
 let fd = socket(AF_UNIX, SOCK_STREAM, 0)
 guard fd >= 0 else { pass() }

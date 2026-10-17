@@ -9,7 +9,7 @@ import AppKit
 /// runtime and quietly do nothing if a future macOS removes them.
 ///
 /// The placement variant (placement 1) takes the full width of the Touch
-/// Bar, hiding the Control Strip (volume, brightness, Siri) while ClaudeBar
+/// Bar, hiding the Control Strip (volume, brightness, Siri) while Clouding Bar
 /// is up. If it's missing we fall back to the classic call, which keeps the
 /// Control Strip on the right.
 enum SystemModalTouchBar {

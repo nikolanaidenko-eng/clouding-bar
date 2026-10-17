@@ -1,7 +1,7 @@
 import Foundation
 
 /// One message that arrived on the socket (docs/protocol.md). Hook events
-/// carry hook_event_name; status messages (the status line, claudebar-tap)
+/// carry hook_event_name; status messages (the status line, cloudingbar-tap)
 /// carry rate_limits and/or context_window instead. Fields mirror Claude
 /// Code's own JSON and may all be missing.
 struct Inbound {
@@ -24,7 +24,7 @@ struct Inbound {
     var toolInput: [String: Any] { raw["tool_input"] as? [String: Any] ?? [:] }
     var permissionSuggestions: [Any]? { raw["permission_suggestions"] as? [Any] }
 
-    /// Added by claudebar-hook.
+    /// Added by cloudingbar-hook.
     var claudePid: Int32? { (raw["claude_pid"] as? NSNumber).map { Int32(truncatingIfNeeded: $0.intValue) } }
     var entrypoint: String? { raw["claude_entrypoint"] as? String }
     var effort: String? { raw["claude_effort"] as? String }
@@ -34,7 +34,7 @@ struct Inbound {
         event == "PermissionRequest" || (event == "PreToolUse" && toolName == "AskUserQuestion")
     }
 
-    // MARK: Status line / claudebar-tap
+    // MARK: Status line / cloudingbar-tap
 
     var fiveHour: (used: Double?, resetsAt: Double?)? {
         guard let limits = raw["rate_limits"] as? [String: Any],

@@ -1,11 +1,11 @@
-APP = ClaudeBar
+APP = CloudingBar
 BUNDLE = build/$(APP).app
 BINARY = build/$(APP)
-SOURCES = $(wildcard Sources/ClaudeBar/*.swift Sources/ClaudeBar/*/*.swift)
-TAP = build/claudebar-tap
-TAP_SOURCES = $(wildcard Sources/ClaudeBarTap/*.swift)
-HOOK = build/claudebar-hook
-HOOK_SOURCES = $(wildcard Sources/ClaudeBarHook/*.swift)
+SOURCES = $(wildcard Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift)
+TAP = build/cloudingbar-tap
+TAP_SOURCES = $(wildcard Sources/CloudingBarTap/*.swift)
+HOOK = build/cloudingbar-hook
+HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the
 # binary with their own SDK's macOS version and it won't launch on older ones.
 TARGET = $(shell uname -m)-apple-macosx12.0
@@ -14,7 +14,7 @@ TARGET = $(shell uname -m)-apple-macosx12.0
 # Preference: an "Apple Development" certificate from your keychain (added
 # in Xcode → Settings → Accounts), then the self-signed one created by
 # `make signing-identity`, then ad-hoc.
-SIGN_KEYCHAIN = $(HOME)/.claudebar/signing.keychain-db
+SIGN_KEYCHAIN = $(HOME)/.cloudingbar/signing.keychain-db
 SIGN_IDENTITY = ClaudeBar Local Signing
 APPLE_DEV_ID = $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: /{print $$2; exit}')
 
@@ -51,7 +51,7 @@ bundle: build
 	@echo "Built $(BUNDLE)"
 
 # Helper for the VS Code extension's claudeProcessWrapper setting: copies
-# Claude's stdout through and reports the session limit to ClaudeBar.
+# Claude's stdout through and reports the session limit to Clouding Bar.
 $(TAP): $(TAP_SOURCES)
 	mkdir -p build
 	swiftc -O -target $(TARGET) $(TAP_SOURCES) -o $(TAP)
@@ -68,15 +68,15 @@ install: bundle $(TAP) $(HOOK) $(HOOK)
 # Checks for the core: session picked by window title, hook output, config.
 test:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift) Sources/ClaudeBar/DebugLog.swift Sources/ClaudeBar/HotKeys.swift Sources/ClaudeBar/KeySender.swift tools/coretest/main.swift -o build/coretest
+	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home
-	CLAUDEBAR_DIR=build/test-home ./build/coretest
+	CLOUDINGBAR_DIR=build/test-home ./build/coretest
 
 # The Touch Bar in every mode as PNGs (build/snapshots), to compare with
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.
 snapshots:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/ClaudeBar/Core/*.swift Sources/ClaudeBar/TouchBar/*.swift Sources/ClaudeBar/Widget/*.swift Sources/ClaudeBar/Settings/*.swift) Sources/ClaudeBar/AppModel.swift Sources/ClaudeBar/Voice.swift Sources/ClaudeBar/HotKeys.swift Sources/ClaudeBar/KeySender.swift Sources/ClaudeBar/DebugLog.swift tools/snapshot/main.swift -o build/tb-snapshot
+	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift tools/snapshot/main.swift -o build/tb-snapshot
 	./build/tb-snapshot build/snapshots
 
 signing-identity:

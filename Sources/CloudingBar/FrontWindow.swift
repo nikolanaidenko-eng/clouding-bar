@@ -6,7 +6,7 @@ import ApplicationServices
 /// Accessibility permission the app already has for typing. Runs off the
 /// main thread with a short timeout, so a busy app can't stall the bar.
 final class FrontWindow {
-    private let queue = DispatchQueue(label: "claudebar.front-window", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "cloudingbar.front-window", qos: .userInitiated)
     private var busy = false
 
     /// Calls back on the main queue with the title, or nil.

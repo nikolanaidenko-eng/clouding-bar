@@ -1,15 +1,16 @@
 #!/bin/bash
-# ClaudeBar installer:
+# Clouding Bar installer:
 #   1. copies the app to ~/Applications
-#   2. copies the hook relay script to ~/.claudebar
+#   2. copies the hook relay script to ~/.cloudingbar
 #   3. registers the relay in ~/.claude/settings.json (merged, never clobbered)
 #   4. writes a starter config if you don't have one
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_SRC="build/ClaudeBar.app"
-APP_DEST="$HOME/Applications/ClaudeBar.app"
-CLAUDEBAR_DIR="$HOME/.claudebar"
+APP_SRC="build/CloudingBar.app"
+APP_DEST="$HOME/Applications/Clouding Bar.app"
+OLD_APP="$HOME/Applications/ClaudeBar.app" # before the rename
+CLOUDINGBAR_DIR="$HOME/.cloudingbar"
 SETTINGS="$HOME/.claude/settings.json"
 
 if [ ! -d "$APP_SRC" ]; then
@@ -17,32 +18,57 @@ if [ ! -d "$APP_SRC" ]; then
   exit 1
 fi
 
+# Renamed from ClaudeBar: move ~/.claudebar over once and leave a link, so
+# Claude sessions started earlier (their hooks, wrapper and tap still use
+# the old paths) keep working.
+OLD_DIR="$HOME/.claudebar"
+if [ -d "$OLD_DIR" ] && [ ! -L "$OLD_DIR" ] && [ ! -e "$CLOUDINGBAR_DIR" ]; then
+  echo "Moving $OLD_DIR to $CLOUDINGBAR_DIR"
+  { pkill -x CloudingBar; pkill -x ClaudeBar; } 2>/dev/null && sleep 1 || true
+  mv "$OLD_DIR" "$CLOUDINGBAR_DIR"
+  ln -s "$CLOUDINGBAR_DIR" "$OLD_DIR"
+fi
+
 echo "Installing app to $APP_DEST"
-mkdir -p "$HOME/Applications" "$CLAUDEBAR_DIR" "$HOME/.claude"
-pkill -x ClaudeBar 2>/dev/null && sleep 1 || true
-rm -rf "$APP_DEST"
+mkdir -p "$HOME/Applications" "$CLOUDINGBAR_DIR" "$HOME/.claude"
+{ pkill -x CloudingBar; pkill -x ClaudeBar; } 2>/dev/null && sleep 1 || true
+rm -rf "$APP_DEST" "$OLD_APP"
 cp -R "$APP_SRC" "$APP_DEST"
 
-echo "Installing hook scripts to $CLAUDEBAR_DIR"
-cp hooks/claudebar-relay.sh hooks/claudebar-statusline.sh "$CLAUDEBAR_DIR/"
-chmod +x "$CLAUDEBAR_DIR/claudebar-relay.sh" "$CLAUDEBAR_DIR/claudebar-statusline.sh"
+echo "Installing hook scripts to $CLOUDINGBAR_DIR"
+cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh "$CLOUDINGBAR_DIR/"
+chmod +x "$CLOUDINGBAR_DIR/cloudingbar-relay.sh" "$CLOUDINGBAR_DIR/cloudingbar-statusline.sh"
 
 # VS Code extension wrapper + tap. Running Claude sessions may be using
 # them right now, so replace by rename instead of overwriting in place.
 replace() {
   cp "$1" "$2.new" && chmod +x "$2.new" && mv -f "$2.new" "$2"
 }
-replace hooks/claudebar-wrapper.sh "$CLAUDEBAR_DIR/claudebar-wrapper.sh"
-if [ -f build/claudebar-tap ]; then
-  replace build/claudebar-tap "$CLAUDEBAR_DIR/claudebar-tap"
+replace hooks/cloudingbar-wrapper.sh "$CLOUDINGBAR_DIR/cloudingbar-wrapper.sh"
+if [ -f build/cloudingbar-tap ]; then
+  replace build/cloudingbar-tap "$CLOUDINGBAR_DIR/cloudingbar-tap"
 fi
 # The hook command (sessions started earlier may still call the old relay,
 # which stays installed for them).
-replace build/claudebar-hook "$CLAUDEBAR_DIR/claudebar-hook"
+replace build/cloudingbar-hook "$CLOUDINGBAR_DIR/cloudingbar-hook"
+# The old names, for sessions that started before the rename.
+for n in hook tap relay.sh statusline.sh wrapper.sh; do
+  ln -sfn "cloudingbar-$n" "$CLOUDINGBAR_DIR/claudebar-$n"
+done
+rm -f "$CLOUDINGBAR_DIR"/*.sh.new "$CLOUDINGBAR_DIR/claudebar-relay.sh.new" 2>/dev/null || true
 
-if [ ! -f "$CLAUDEBAR_DIR/config.json" ]; then
-  echo "Writing starter config to $CLAUDEBAR_DIR/config.json"
-  cat > "$CLAUDEBAR_DIR/config.json" <<'EOF'
+# VS Code: point claudeCode.claudeProcessWrapper at the renamed wrapper.
+VSCODE_SETTINGS="$HOME/Library/Application Support/Code/User/settings.json"
+if [ -f "$VSCODE_SETTINGS" ] && grep -q "claudebar-wrapper.sh" "$VSCODE_SETTINGS"; then
+  cp "$VSCODE_SETTINGS" "$CLOUDINGBAR_DIR/backups/vscode-settings-$(date +%Y%m%d-%H%M%S).json" 2>/dev/null \
+    || { mkdir -p "$CLOUDINGBAR_DIR/backups"; cp "$VSCODE_SETTINGS" "$CLOUDINGBAR_DIR/backups/vscode-settings-$(date +%Y%m%d-%H%M%S).json"; }
+  sed -i '' 's#/\.claudebar/claudebar-wrapper\.sh#/.cloudingbar/cloudingbar-wrapper.sh#' "$VSCODE_SETTINGS"
+  echo "  VS Code now runs Claude through $CLOUDINGBAR_DIR/cloudingbar-wrapper.sh"
+fi
+
+if [ ! -f "$CLOUDINGBAR_DIR/config.json" ]; then
+  echo "Writing starter config to $CLOUDINGBAR_DIR/config.json"
+  cat > "$CLOUDINGBAR_DIR/config.json" <<'EOF'
 {
   "touchBar": "auto"
 }
@@ -50,14 +76,16 @@ EOF
 fi
 
 echo "Registering Claude Code hooks in $SETTINGS"
-python3 - "$SETTINGS" "$CLAUDEBAR_DIR" <<'PYEOF'
+python3 - "$SETTINGS" "$CLOUDINGBAR_DIR" <<'PYEOF'
 import json, os, sys, time
 
-settings_path, claudebar_dir = sys.argv[1:3]
-relay = os.path.join(claudebar_dir, "claudebar-relay.sh")
-hook = os.path.join(claudebar_dir, "claudebar-hook")
-statusline = os.path.join(claudebar_dir, "claudebar-statusline.sh")
-original_path = os.path.join(claudebar_dir, "statusline-original")
+settings_path, cbdir = sys.argv[1:3]
+old_dir = os.path.join(os.path.dirname(cbdir), ".claudebar")
+ours_before = {os.path.join(old_dir, n) for n in ("claudebar-relay.sh", "claudebar-hook")}
+relay = os.path.join(cbdir, "cloudingbar-relay.sh")
+hook = os.path.join(cbdir, "cloudingbar-hook")
+statusline = os.path.join(cbdir, "cloudingbar-statusline.sh")
+original_path = os.path.join(cbdir, "statusline-original")
 
 settings = {}
 before = None
@@ -68,7 +96,7 @@ if os.path.exists(settings_path):
 
 hooks = settings.setdefault("hooks", {})
 
-# Seconds Claude Code gives the hook before cancelling it. claudebar-hook
+# Seconds Claude Code gives the hook before cancelling it. cloudingbar-hook
 # gives up on its own well before that (docs/protocol.md).
 timeouts = {"PermissionRequest": 960, "PreToolUse": 330}
 events = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification",
@@ -80,7 +108,7 @@ for event in events:
     for entry in entries:
         for h in entry.get("hooks", []):
             # Ours from an older install: point it at the new command.
-            if h.get("command") in (relay, hook):
+            if h.get("command") in ({relay, hook} | ours_before):
                 h["command"] = hook
                 if event in timeouts:
                     h["timeout"] = timeouts[event]
@@ -95,11 +123,14 @@ for event in events:
 # status line is kept and chained, so what you see doesn't change.
 current = settings.get("statusLine") or {}
 current_cmd = current.get("command") if isinstance(current, dict) else None
+if current_cmd == os.path.join(old_dir, "claudebar-statusline.sh"):
+    current_cmd = statusline  # ours, from before the rename
+    current["command"] = statusline
 if current_cmd != statusline:
     if current_cmd:
         with open(original_path, "w") as f:
             f.write(current_cmd)
-        print("  existing status line kept (chained through ClaudeBar)")
+        print("  existing status line kept (chained through Clouding Bar)")
     current = dict(current) if isinstance(current, dict) else {}
     current.update({"type": "command", "command": statusline})
 # Refresh every 5 s, so the bar keeps up without waiting for a message.
@@ -112,14 +143,14 @@ if after == before:
     sys.exit(0)
 
 if before is not None:
-    backups = os.path.join(claudebar_dir, "backups")
+    backups = os.path.join(cbdir, "backups")
     os.makedirs(backups, exist_ok=True)
     backup = os.path.join(backups, time.strftime("settings-%Y%m%d-%H%M%S.json"))
     with open(backup, "w") as f:
         f.write(before)
     print("  backup: " + backup)
 
-tmp = settings_path + ".claudebar-new"
+tmp = settings_path + ".cloudingbar-new"
 with open(tmp, "w") as f:
     f.write(after)
 os.replace(tmp, settings_path)

@@ -31,7 +31,7 @@ final class TranscriptWatcher {
         var linesRemoved = 0
     }
 
-    private let queue = DispatchQueue(label: "claudebar.transcripts", qos: .utility)
+    private let queue = DispatchQueue(label: "cloudingbar.transcripts", qos: .utility)
     private var states: [String: State] = [:]  // touched only on `queue`
 
     /// Read in slices, so a long session's transcript (many MB) never

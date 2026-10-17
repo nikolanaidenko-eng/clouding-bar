@@ -1,6 +1,6 @@
 #!/bin/bash
 # Creates a self-signed code signing certificate in its own keychain, so
-# every build is signed by the same identity and macOS keeps ClaudeBar's
+# every build is signed by the same identity and macOS keeps Clouding Bar's
 # Accessibility permission across rebuilds. The keychain has an empty
 # password, stays off your keychain search list, and holds nothing else.
 # Run once: make signing-identity
