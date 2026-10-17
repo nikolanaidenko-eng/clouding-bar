@@ -60,6 +60,12 @@ enum Cowork {
                                    options: [.prettyPrinted, .sortedKeys])
             .write(to: root.appendingPathComponent("hooks/hooks.json"))
 
+        // The status file lives in a folder of its own that git ignores, so
+        // it never shows up in the project's commits.
+        let ours = URL(fileURLWithPath: folder).appendingPathComponent(".clouding-bar")
+        try? fm.createDirectory(at: ours, withIntermediateDirectories: true)
+        try? "*\n".write(to: ours.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+
         let folderName = URL(fileURLWithPath: folder).lastPathComponent
         let script = statusScript
             .replacingOccurrences(of: "@MODE@", with: mode)

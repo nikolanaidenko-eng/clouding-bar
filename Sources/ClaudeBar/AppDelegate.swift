@@ -718,12 +718,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         advance(request, with: answer)
     }
 
+    /// Brings that session's VS Code window to the front. Only if no window
+    /// shows the project does it open one — in a new window, never in place
+    /// of the one you're in.
     private func openSession(_ id: String) {
-        guard store.sessions[id]?.entrypoint != "cowork", let cwd = store.sessions[id]?.cwd,
-              let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "vscode://file" + path) else { NSSound.beep(); return }
-        DebugLog.tap("open session \(store.sessions[id]?.projectName ?? id)")
+        guard let session = store.sessions[id], session.entrypoint != "cowork", let cwd = session.cwd else {
+            NSSound.beep()
+            return
+        }
+        DebugLog.tap("open session \(session.projectName ?? id)")
+        if let name = session.projectName, raiseVSCodeWindow(showing: name) { return }
+        guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "vscode://file" + path + "?windowId=_blank") else { NSSound.beep(); return }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Finds the VS Code window whose title names the project and raises it.
+    private func raiseVSCodeWindow(showing project: String) -> Bool {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.microsoft.VSCode").first
+        else { return false }
+        let ax = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(ax, 0.5)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return false }
+        for window in windows {
+            var title: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &title) == .success,
+                  let text = title as? String else { continue }
+            let parts = text.components(separatedBy: " — ").flatMap { $0.components(separatedBy: " - ") }
+                .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " (Workspace)", with: "") }
+            guard parts.contains(project) else { continue }
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            app.activate(options: [])
+            return true
+        }
+        return false
     }
 
     // MARK: - Voice
