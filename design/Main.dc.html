@@ -15,17 +15,17 @@ body{margin:0;background:#1B1B1D}
 @keyframes fillIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 </style>
 </helmet>
-<div style="width: 480px; height: 260px; box-sizing: border-box; background: #1B1B1D; padding: 20px 30px; display: flex; flex-direction: column; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+<div style="width: 640px; height: 300px; box-sizing: border-box; background: #1B1B1D; padding: 20px 30px; display: flex; flex-direction: column; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
   <sc-if value="{{collapsed}}" hint-placeholder-val="{{ false }}">
     <button onClick="{{open}}" aria-label="Show Clouding Bar" style="height: 44px; box-sizing: border-box; border-radius: 22px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 8px 24px rgba(0,0,0,0.35); display: flex; align-items: center; gap: 16px; padding: 0 20px 0 10px; cursor: pointer; color: #F5F5F7; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums; animation: popIn 220ms cubic-bezier(.2,.8,.2,1) both">
       <dc-import name="Mascot" state="work" size="30" hint-size="30px,30px"></dc-import>
       <span style="display: flex; align-items: center; gap: 8px"><span style="width: 44px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; display: block"><span style="width: 42%; height: 3px; background: #E5E5EA; display: block"></span></span>42%</span>
-      <span style="display: flex; align-items: center; gap: 4px"><span style="color: #A1A1A6; font-size: 11px">ctx</span>31%</span>
+      <span style="display: flex; align-items: center; gap: 6px"><span style="color: #A1A1A6; font-size: 11px">ctx</span><span style="width: 44px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; display: block"><span style="width: 31%; height: 3px; background: #E5E5EA; display: block"></span></span>31%</span>
       <span style="display: flex; align-items: center; gap: 4px"><svg aria-label="resets in" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>1:23</span>
     </button>
   </sc-if>
   <sc-if value="{{expanded}}" hint-placeholder-val="{{ true }}">
-    <section onMouseLeave="{{close}}" aria-label="Clouding Bar" style="width: 420px; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 8px 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; transform-origin: top center; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
+    <section onMouseLeave="{{close}}" aria-label="Clouding Bar" style="width: {{panelWidth}}; box-sizing: border-box; border-radius: 18px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 16px 40px rgba(0,0,0,0.4); padding: 8px 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; transform-origin: top center; animation: sheetIn 280ms cubic-bezier(.2,.8,.2,1) both">
       <div style="display: flex; align-items: center; gap: 8px">
         <dc-import name="Mascot" state="work" size="24" hint-size="24px,24px"></dc-import>
         <span style="font-size: 13px; font-weight: 600">Working</span>
@@ -47,13 +47,24 @@ body{margin:0;background:#1B1B1D}
           <span style="font-size: 11px; color: #A1A1A6; font-variant-numeric: tabular-nums">41.2k in · 2.3k out</span>
         </div>
       </div>
-      <sc-if value="{{showMetrics}}" hint-placeholder-val="{{ true }}">
-        <div style="display: flex; gap: 12px; font-size: 11px; color: #A1A1A6; font-variant-numeric: tabular-nums"><span>Opus 5.5 1M · xhigh</span><span>+214 −37</span><span>clouding-bar</span><span>2 subagents</span></div>
+      <sc-if value="{{showAll}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: #A1A1A6; font-variant-numeric: tabular-nums">
+          <span style="display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 11px; background: rgba(255,255,255,0.06)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path></svg>Opus 5.5 1M · xhigh</span>
+          <span style="display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 11px; background: rgba(255,255,255,0.06)">+214 −37</span>
+          <span style="display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 11px; background: rgba(255,255,255,0.06)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="5" r="2"></circle><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="7" r="2"></circle><path d="M6 7v10M18 9c0 5-12 3-12 8"></path></svg>clouding-bar</span>
+          <span style="display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 11px; background: rgba(255,255,255,0.06)">2 subagents</span>
+        </div>
       </sc-if>
       <div style="display: flex; gap: 6px; padding-right: 4px">
         <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">caveman</button>
         <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">compact</button>
         <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">office</button>
+        <sc-if value="{{showAll}}" hint-placeholder-val="{{ true }}">
+          <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">review</button>
+          <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">run tests</button>
+          <button aria-label="Templates" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; border: none; background: rgba(255,255,255,0.1); color: #F5F5F7; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"></path></svg></button>
+          <button aria-label="Screenshot" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; border: none; background: rgba(255,255,255,0.1); color: #F5F5F7; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+        </sc-if>
         <button aria-label="Dictate" style="width: 32px; height: 32px; flex-shrink: 0; border-radius: 16px; border: none; background: rgba(255,255,255,0.1); color: #F5F5F7; display: flex; align-items: center; justify-content: center; cursor: pointer">
           <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>
         </button>
@@ -62,14 +73,15 @@ body{margin:0;background:#1B1B1D}
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"showMetrics":{"editor":"boolean","default":false},"$preview":{"width":480,"height":260}}'>
+<script type="text/x-dc" data-dc-script data-props='{"showAll":{"editor":"boolean","default":false},"$preview":{"width":640,"height":300}}'>
 class Component extends DCLogic {
   constructor(props) { super(props); this.state = { open: true }; }
   renderVals() {
     const open = this.state.open;
     return {
       expanded: open, collapsed: !open,
-      showMetrics: this.props.showMetrics ?? false,
+      showAll: this.props.showAll ?? false,
+      panelWidth: (this.props.showAll ?? false) ? '560px' : '420px',
       open: () => this.setState({ open: true }),
       close: () => this.setState({ open: false })
     };

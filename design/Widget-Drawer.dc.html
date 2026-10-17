@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget from the Touch Bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#1B1B1D}
+@keyframes rise{from{transform:translateY(100%)}to{transform:translateY(14px)}}
+@keyframes fillIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+</style>
+</helmet>
+<div style="width: 560px; height: 320px; box-sizing: border-box; background: #1B1B1D; position: relative; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+  <p style="margin: 0; padding: 20px 24px; font-size: 12px; line-height: 1.5; color: #A1A1A6; max-width: 420px">Tap the character on the Touch Bar: the widget slides up out of the bottom edge of the screen above it, its foot tucked under the edge — and under the Dock when the Dock shows. Tap again, or move the mouse in and out, and it slides back.</p>
+  <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: rgba(255,255,255,0.25)"></div>
+  <section aria-label="Clouding Bar" style="position: absolute; left: 16px; bottom: 0; width: 420px; box-sizing: border-box; border-radius: 18px 18px 0 0; border: 0.5px solid rgba(255,255,255,0.14); border-bottom: none; background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 -12px 40px rgba(0,0,0,0.4); padding: 8px 8px 26px 12px; display: flex; flex-direction: column; gap: 10px; animation: rise 380ms cubic-bezier(.2,.8,.2,1) both">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <dc-import name="Mascot" state="work" size="24" hint-size="24px,24px"></dc-import>
+      <span style="font-size: 13px; font-weight: 600">Working</span>
+      <span style="font-size: 12px; color: #A1A1A6; flex-grow: 1">DiaRoute</span>
+      <button aria-label="Slide away" style="width: 30px; height: 30px; border-radius: 15px; border: none; background: transparent; color: #A1A1A6; display: flex; align-items: center; justify-content: center; cursor: pointer">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </button>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-right: 4px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; justify-content: space-between; font-size: 12px"><span style="color: #A1A1A6">Session</span><span style="font-weight: 600; font-variant-numeric: tabular-nums">42%</span></div>
+        <div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); overflow: hidden"><div style="width: 42%; height: 4px; border-radius: 2px; background: #E5E5EA; transform-origin: left; animation: fillIn 900ms 200ms cubic-bezier(.2,.8,.2,1) both"></div></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; justify-content: space-between; font-size: 12px"><span style="color: #A1A1A6">Context</span><span style="font-weight: 600; font-variant-numeric: tabular-nums">31%</span></div>
+        <div style="height: 4px; border-radius: 2px; background: rgba(255,255,255,0.12); overflow: hidden"><div style="width: 31%; height: 4px; border-radius: 2px; background: #E5E5EA; transform-origin: left; animation: fillIn 900ms 320ms cubic-bezier(.2,.8,.2,1) both"></div></div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 6px; padding-right: 4px">
+      <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">caveman</button>
+      <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">compact</button>
+      <button style="flex: 1 1 0; min-width: 0; height: 32px; border-radius: 9px; border: none; background: rgba(255,255,255,0.08); color: #F5F5F7; font-family: inherit; font-size: 13px; cursor: pointer">office</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":560,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

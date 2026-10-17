@@ -1,1 +1,175 @@
-{"v": 3, "createdOnFiles": {"v": 1, "at": "2026-10-15T18:40:00Z"}, "title": "Clouding Bar UI", "launch": {"view": "canvas"}, "pages": [], "boards": {"TB-Normal.dc.html": {"x": 0, "y": 0, "w": 2170, "h": 60, "title": "Touch Bar · normal (2x) · Tweaks: number of buttons"}, "TB-Permission.dc.html": {"x": 0, "y": 180, "w": 2170, "h": 60, "title": "Touch Bar · permission (2x)"}, "TB-Question.dc.html": {"x": 0, "y": 360, "w": 2170, "h": 60, "title": "Touch Bar · question (2x)"}, "TB-Typing.dc.html": {"x": 0, "y": 540, "w": 2170, "h": 60, "title": "Touch Bar · typing an answer (2x, type in Play)", "is_interactive": true}, "TB-Context.dc.html": {"x": 0, "y": 720, "w": 2170, "h": 60, "title": "Touch Bar · context threshold (2x)"}, "Main.dc.html": {"x": 0, "y": 1260, "w": 480, "h": 260, "title": "Widget · prototype: pill → panel after 3 s hover or a click (Play)", "is_interactive": true}, "Widget-Collapsed.dc.html": {"x": 560, "y": 1260, "w": 440, "h": 300, "title": "Widget · pill, always visible (Tweaks: what it shows)"}, "Widget-Permission.dc.html": {"x": 1080, "y": 1260, "w": 480, "h": 200, "title": "Widget · permission (wide and low)"}, "Widget-Question.dc.html": {"x": 1640, "y": 1260, "w": 400, "h": 480, "title": "Widget · question + Other"}, "Widget-Sessions.dc.html": {"x": 2120, "y": 1260, "w": 400, "h": 480, "title": "Widget · sessions (optional), with where each runs"}, "Widget-Empty.dc.html": {"x": 2600, "y": 1260, "w": 400, "h": 320, "title": "Widget · no session"}, "Settings.dc.html": {"x": 0, "y": 2300, "w": 560, "h": 560, "title": "Settings · compact (all tabs work in Play)", "is_interactive": true}, "Mascot.dc.html": {"x": 640, "y": 2300, "w": 120, "h": 120, "title": "Mascot component"}, "Mascot-Sheet.dc.html": {"x": 840, "y": 2300, "w": 760, "h": 280, "title": "Mascot · 3 states"}, "Style.dc.html": {"x": 1680, "y": 2300, "w": 760, "h": 640, "title": "Palette · type · motion"}}, "order": ["TB-Normal.dc.html", "TB-Permission.dc.html", "TB-Question.dc.html", "TB-Typing.dc.html", "TB-Context.dc.html", "Main.dc.html", "Widget-Collapsed.dc.html", "Widget-Permission.dc.html", "Widget-Question.dc.html", "Widget-Sessions.dc.html", "Widget-Empty.dc.html", "Settings.dc.html", "Mascot.dc.html", "Mascot-Sheet.dc.html", "Style.dc.html"], "notes": {"tbTitle": {"x": 0, "y": -300, "text": "Touch Bar — drawn at 2x (2170×60 px = 1085×30 pt)", "kind": "title1", "maxW": 2170}, "wTitle": {"x": 0, "y": 960, "text": "Floating widget", "kind": "title1", "maxW": 3000}, "sTitle": {"x": 0, "y": 2000, "text": "Settings, mascot, style", "kind": "title1", "maxW": 2440}}, "designSystems": []}
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Main.dc.html": {
+      "h": 300,
+      "is_interactive": true,
+      "title": "Widget · prototype: pill → panel after 1 s hover or a click · Tweak “showAll”: it grows (Play)",
+      "w": 640,
+      "x": 0,
+      "y": 1260
+    },
+    "Mascot-Sheet.dc.html": {
+      "h": 280,
+      "title": "Mascot · 3 states",
+      "w": 760,
+      "x": 840,
+      "y": 2300
+    },
+    "Mascot.dc.html": {
+      "h": 120,
+      "title": "Mascot component",
+      "w": 120,
+      "x": 640,
+      "y": 2300
+    },
+    "Settings.dc.html": {
+      "h": 560,
+      "is_interactive": true,
+      "title": "Settings · compact (all tabs work in Play)",
+      "w": 560,
+      "x": 0,
+      "y": 2300
+    },
+    "Style.dc.html": {
+      "h": 640,
+      "title": "Palette · type · motion",
+      "w": 760,
+      "x": 1680,
+      "y": 2300
+    },
+    "TB-Context.dc.html": {
+      "h": 60,
+      "title": "Touch Bar · context threshold (2x)",
+      "w": 2170,
+      "x": 0,
+      "y": 720
+    },
+    "TB-Normal.dc.html": {
+      "h": 60,
+      "title": "Touch Bar · normal (2x) · Tweaks: number of buttons",
+      "w": 2170,
+      "x": 0,
+      "y": 0
+    },
+    "TB-Permission.dc.html": {
+      "h": 60,
+      "title": "Touch Bar · permission (2x)",
+      "w": 2170,
+      "x": 0,
+      "y": 180
+    },
+    "TB-Question.dc.html": {
+      "h": 60,
+      "title": "Touch Bar · question (2x)",
+      "w": 2170,
+      "x": 0,
+      "y": 360
+    },
+    "TB-Typing.dc.html": {
+      "h": 60,
+      "is_interactive": true,
+      "title": "Touch Bar · typing an answer (2x, type in Play)",
+      "w": 2170,
+      "x": 0,
+      "y": 540
+    },
+    "Widget-Collapsed.dc.html": {
+      "h": 420,
+      "title": "Widget · pill, always visible · drag its edge for more or less",
+      "w": 440,
+      "x": 720,
+      "y": 1260
+    },
+    "Widget-Empty.dc.html": {
+      "h": 320,
+      "title": "Widget · no session",
+      "w": 400,
+      "x": 2760,
+      "y": 1260
+    },
+    "Widget-Permission.dc.html": {
+      "h": 200,
+      "title": "Widget · permission (wide and low)",
+      "w": 480,
+      "x": 1240,
+      "y": 1260
+    },
+    "Widget-Question.dc.html": {
+      "h": 480,
+      "title": "Widget · question + Other",
+      "w": 400,
+      "x": 1800,
+      "y": 1260
+    },
+    "Widget-Sessions.dc.html": {
+      "h": 480,
+      "title": "Widget · sessions (optional), with where each runs",
+      "w": 400,
+      "x": 2280,
+      "y": 1260
+    },
+    "Widget-Drawer.dc.html": {
+      "x": 3240,
+      "y": 1260,
+      "w": 560,
+      "h": 320,
+      "title": "Widget · from the Touch Bar's character button"
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-15T18:40:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "sTitle": {
+      "kind": "title1",
+      "maxW": 2440,
+      "text": "Settings, mascot, style",
+      "w": 240,
+      "x": 0,
+      "y": 2000
+    },
+    "tbTitle": {
+      "kind": "title1",
+      "maxW": 2170,
+      "text": "Touch Bar — drawn at 2x (2170×60 px = 1085×30 pt)",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "wTitle": {
+      "kind": "title1",
+      "maxW": 3800,
+      "text": "Floating widget",
+      "w": 240,
+      "x": 0,
+      "y": 960
+    }
+  },
+  "order": [
+    "TB-Normal.dc.html",
+    "TB-Permission.dc.html",
+    "TB-Question.dc.html",
+    "TB-Typing.dc.html",
+    "TB-Context.dc.html",
+    "Main.dc.html",
+    "Widget-Collapsed.dc.html",
+    "Widget-Permission.dc.html",
+    "Widget-Question.dc.html",
+    "Widget-Sessions.dc.html",
+    "Widget-Empty.dc.html",
+    "Widget-Drawer.dc.html",
+    "Settings.dc.html",
+    "Mascot.dc.html",
+    "Mascot-Sheet.dc.html",
+    "Style.dc.html"
+  ],
+  "pages": [],
+  "title": "Clouding Bar UI"
+}

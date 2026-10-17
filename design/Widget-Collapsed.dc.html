@@ -14,12 +14,12 @@ body{margin:0;background:#1B1B1D}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 </style>
 </helmet>
-<div style="width: 440px; height: 300px; box-sizing: border-box; background: #1B1B1D; padding: 16px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
+<div style="width: 440px; height: 420px; box-sizing: border-box; background: #1B1B1D; padding: 16px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; color: #F5F5F7">
   <button aria-label="Show Clouding Bar" style="height: 44px; box-sizing: border-box; border-radius: 22px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 8px 24px rgba(0,0,0,0.35); display: flex; align-items: center; gap: 16px; padding: 0 20px 0 10px; color: #F5F5F7; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums; animation: popIn 220ms cubic-bezier(.2,.8,.2,1) both">
     <dc-import name="Mascot" state="work" size="30" hint-size="30px,30px"></dc-import>
     <span style="display: flex; align-items: center; gap: 8px"><span style="width: 44px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; display: block"><span style="width: 42%; height: 3px; background: #E5E5EA; display: block"></span></span>42%</span>
     <sc-if value="{{showContext}}" hint-placeholder-val="{{ true }}">
-      <span style="display: flex; align-items: center; gap: 4px"><span style="color: #A1A1A6; font-size: 11px">ctx</span>31%</span>
+      <span style="display: flex; align-items: center; gap: 6px"><span style="color: #A1A1A6; font-size: 11px">ctx</span><span style="width: 44px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; display: block"><span style="width: 31%; height: 3px; background: #E5E5EA; display: block"></span></span>31%</span>
     </sc-if>
     <sc-if value="{{showReset}}" hint-placeholder-val="{{ true }}">
       <span style="display: flex; align-items: center; gap: 4px"><svg aria-label="resets in" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A1A1A6" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>1:23</span>
@@ -28,7 +28,18 @@ body{margin:0;background:#1B1B1D}
       <span style="color: #E5E5EA">$0.84</span>
     </sc-if>
   </button>
-  <span style="font-size: 11px; color: #A1A1A6">Always visible, top center · hover 3 s or click to open · drag to move</span>
+  <span style="font-size: 11px; color: #A1A1A6">Always visible, top center · hover 1 s or click to open · drag to move</span>
+  <div style="display: flex; align-items: center; gap: 10px">
+    <button aria-label="Show Clouding Bar" style="height: 44px; box-sizing: border-box; border-radius: 22px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 8px 24px rgba(0,0,0,0.35); display: flex; align-items: center; color: #F5F5F7; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums; gap: 12px; padding: 0 20px 0 10px">
+      <dc-import name="Mascot" state="work" size="30" hint-size="30px,30px"></dc-import>
+      <span>42%</span>
+      <span style="display: flex; align-items: center; gap: 4px"><span style="color: #A1A1A6; font-size: 11px">ctx</span>31%</span>
+    </button>
+    <button aria-label="Show Clouding Bar" style="height: 44px; box-sizing: border-box; border-radius: 22px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 8px 24px rgba(0,0,0,0.35); display: flex; align-items: center; color: #F5F5F7; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums; padding: 0 7px">
+      <dc-import name="Mascot" state="work" size="30" hint-size="30px,30px"></dc-import>
+    </button>
+  </div>
+  <span style="font-size: 11px; color: #A1A1A6">Drag the pill's edge in: numbers only, then just the character. Out: bars again.</span>
 
   <button aria-label="Show Clouding Bar" style="height: 44px; box-sizing: border-box; border-radius: 22px; border: 0.5px solid rgba(255,255,255,0.14); background: rgba(40,40,42,0.78); backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); box-shadow: 0 8px 24px rgba(0,0,0,0.35); display: flex; align-items: center; gap: 10px; padding: 0 20px 0 10px; color: #A1A1A6; font-family: inherit; font-size: 13px; font-variant-numeric: tabular-nums; animation: popIn 220ms 60ms cubic-bezier(.2,.8,.2,1) both">
     <dc-import name="Mascot" state="sleep" size="30" hint-size="30px,30px"></dc-import>
