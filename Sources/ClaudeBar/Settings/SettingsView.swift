@@ -713,9 +713,10 @@ struct CoworkTab: View {
                         Button("Make plugin") { model.makeCoworkPlugin() }
                     }
                     SettingsRow(title: "Folders",
-                                hint: model.coworkFolders.isEmpty
-                                    ? "Connect a folder to a Cowork task; it's found by itself"
-                                    : "Watching " + model.coworkFolders.joined(separator: ", ")) {
+                                hint: (model.coworkFolders.isEmpty
+                                    ? "Connect a folder to a Cowork task; it's found by itself."
+                                    : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
+                                    + " Only tasks with a connected folder can report their context.") {
                         Button("Add…") { model.chooseCoworkFolder() }
                     }
                     SettingsRow(title: "Last status", hint: model.coworkLast ?? "None yet", divider: model.coworkMessage != nil) {
