@@ -18,6 +18,9 @@ struct BarModel: Equatable {
     var buttons: [ButtonSpec] = []
     /// Do not disturb: nothing pulses.
     var quiet = false
+    /// What shows besides the character: "session", "reset", "context",
+    /// "buttons", "mic", "shot" (Settings → On the Touch Bar).
+    var shows: Set<String> = ["session", "reset", "context", "buttons"]
 }
 
 enum BarAction {
@@ -27,6 +30,8 @@ enum BarAction {
     case allow, always, deny
     case option(Int), other, sendPicked, send, mic
     case compact, later
+    /// Normal mode's own mic and screenshot buttons.
+    case dictate, screenshot
 }
 
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
@@ -103,6 +108,7 @@ final class BarView: NSView {
     /// What decides the set of subviews; values change without a rebuild.
     private static func structureKey(_ m: BarModel) -> String {
         let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
+            + "|" + m.shows.sorted().joined(separator: ",")
         switch m.mode {
         case .normal: return "normal|\(buttons)"
         case .contextWarning: return "context"
@@ -126,14 +132,28 @@ final class BarView: NSView {
 
         switch model.mode {
         case .normal:
-            let pair = MetersPair(padding: 6)
-            meters = pair
-            add(pair, .flex(weight: 1, min: 80))
-            for (i, spec) in model.buttons.enumerated() {
-                let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
-                add(b.button, .shrinkable(b.width))
-                animate(b.button) { $0.popIn() }
+            let shows = model.shows
+            let session = shows.contains("session"), context = shows.contains("context")
+            if session || context {
+                let pair = MetersPair(padding: 6, showSession: session, showContext: context)
+                meters = pair
+                add(pair, .flex(weight: 1, min: 80))
             }
+            if shows.contains("buttons") {
+                for (i, spec) in model.buttons.enumerated() {
+                    let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
+                    add(b.button, .shrinkable(b.width))
+                    animate(b.button) { $0.popIn() }
+                }
+            }
+            if shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
+                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(48))
+            }
+            if shows.contains("mic") {
+                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48))
+            }
+            // No meters: the rest stays at the left, after the character.
+            if meters == nil { add(NSView(), .flex(weight: 1, min: 0)) }
 
         case .contextWarning:
             let pair = MetersPair(padding: 8, contextWidth: 210)
@@ -228,7 +248,8 @@ final class BarView: NSView {
 
     private func refreshValues() {
         mascot.activity = model.activity
-        meters?.set(session: model.sessionPercent, countdown: model.resetCountdown,
+        meters?.set(session: model.sessionPercent,
+                    countdown: model.mode == .normal && !model.shows.contains("reset") ? nil : model.resetCountdown,
                     context: model.contextPercent)
         mini?.set(session: model.sessionPercent, context: model.contextPercent)
         if case let .typing(text) = model.mode { field?.set(text: text) }
@@ -329,17 +350,21 @@ private final class MetersPair: NSView {
     private let context = MeterView()
     private let padding: CGFloat
     private let contextWidth: CGFloat?
+    private let showSession: Bool
+    private let showContext: Bool
     private var values: (Double?, String?, Double?) = (nil, nil, nil)
 
     var contextAlarm = false { didSet { context.alarm = contextAlarm } }
 
-    init(padding: CGFloat, contextWidth: CGFloat? = nil) {
+    init(padding: CGFloat, contextWidth: CGFloat? = nil, showSession: Bool = true, showContext: Bool = true) {
         self.padding = padding
         self.contextWidth = contextWidth
+        self.showSession = showSession
+        self.showContext = showContext
         super.init(frame: .zero)
         context.breathesWhenFull = true
-        addSubview(session)
-        addSubview(context)
+        if showSession { addSubview(session) }
+        if showContext { addSubview(context) }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -369,6 +394,9 @@ private final class MetersPair: NSView {
             context.frame = CGRect(x: bounds.maxX - padding - cw, y: 0, width: cw, height: bounds.height)
             session.frame = CGRect(x: inner.minX, y: 0, width: max(0, context.frame.minX - padding * 2 - inner.minX),
                                    height: bounds.height)
+        } else if !showSession || !showContext {
+            // Just one of them: it takes the room.
+            (showSession ? session : context).frame = CGRect(x: inner.minX, y: 0, width: inner.width, height: bounds.height)
         } else {
             let spacing: CGFloat = 14
             let w = max(0, inner.width - spacing)

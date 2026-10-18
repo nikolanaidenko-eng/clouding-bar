@@ -116,6 +116,11 @@ struct Config: Equatable {
     /// whatever fits, from the character alone up to every metric and button.
     /// 0: not resized yet, so it comes from `pillDensity`.
     var pillWidth: Double = 0
+    /// Hovering the pill for 2 s opens the full panel; off: only a click does.
+    var hoverOpens = true
+    /// What the Touch Bar shows next to its character button (requests
+    /// always show): "session", "reset", "context", "buttons", "mic", "shot".
+    var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
     /// What the pill shows besides the session limit: "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
     /// Where the pill was dragged: its top center in screen points.
@@ -209,6 +214,8 @@ struct Config: Equatable {
         if let v = obj["pillDensity"] as? String { config.pillDensity = v }
         if let v = obj["pillWidth"] as? NSNumber { config.pillWidth = v.doubleValue }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
+        if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
+        if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)
         }

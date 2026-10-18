@@ -26,6 +26,8 @@ add("normal-3") { _ in }
 add("normal-0") { $0.buttons = [] }
 add("normal-5") { $0.buttons = Array(seven.prefix(5)) }
 add("normal-7") { $0.buttons = seven }
+add("normal-pick-context-mic") { $0.shows = ["context", "buttons", "mic", "shot"] }
+add("normal-pick-session") { $0.shows = ["session"] }
 add("normal-sleep-nodata") { $0.activity = .sleep; $0.sessionPercent = nil; $0.contextPercent = nil; $0.resetCountdown = nil }
 add("normal-orange-red") { $0.sessionPercent = 74; $0.contextPercent = 93 }
 add("permission") { $0.activity = .wait; $0.mode = .permission(verb: "Run", detail: "npm run build && npm test") }
@@ -144,7 +146,7 @@ widget("w-question", .panel) {
     $0.request = card
     $0.otherDraft = "WatermelonDB, sync later"
 }
-widget("w-panel-extras", .panel, size: NSSize(width: 480, height: 330)) {
+widget("w-panel-extras", .panel, size: NSSize(width: 720, height: 330)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]
     $0.config.templatesEnabled = true
     $0.config.screenshot = true

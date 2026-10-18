@@ -287,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
         bar.activity = activity(of: active)
         bar.quiet = config.doNotDisturb
+        bar.shows = Set(config.touchBarShows)
 
         if let request = currentRequest(active: active) {
             bar.activity = .wait
@@ -407,6 +408,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("dictate")
             if let request = typingFor { extendHold(request) }
             typing.startDictation()
+
+        case .dictate:
+            DebugLog.tap("dictate (bar)")
+            model.voiceToggle()
+
+        case .screenshot:
+            DebugLog.tap("screenshot (bar)")
+            takeScreenshot()
 
         case .compact:
             DebugLog.tap("compact (context warning)")

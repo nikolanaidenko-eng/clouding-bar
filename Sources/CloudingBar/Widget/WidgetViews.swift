@@ -13,8 +13,11 @@ final class WidgetState: ObservableObject {
     var collapse: (() -> Void)?
     /// Cloud already stands on top of the island; no second one in the header.
     var hidesHeaderCharacter = false
-    /// Set by WidgetController: the pill hands its mouse-downs over for dragging.
+    /// Set by WidgetController: the pill hands its mouse over for moving,
+    /// resizing and clicks.
     var pillMouseDown: ((NSEvent) -> Void)?
+    var pillMouseDragged: ((NSEvent) -> Void)?
+    var pillMouseUp: ((NSEvent) -> Void)?
     /// The pointer went over (true) or off a control on the pill.
     var controlHover: ((Bool) -> Void)?
     /// While the pill's edge is pulled: its width, following the pointer.
@@ -23,6 +26,14 @@ final class WidgetState: ObservableObject {
     @Published var pillHover = false
     /// How close to an end a click resizes instead of moving.
     static let pillEdge: CGFloat = 14
+    /// How close to the top or bottom of the outline.
+    static let pillRim: CGFloat = 7
+
+    /// The pill resizes from anywhere along its outline: either end, or the
+    /// band along its top and bottom.
+    static func onPillRim(_ p: NSPoint, in size: NSSize) -> Bool {
+        p.x <= pillEdge || p.x >= size.width - pillEdge || p.y <= pillRim || p.y >= size.height - pillRim
+    }
 }
 
 extension Color {
@@ -530,20 +541,24 @@ extension View {
     }
 }
 
-/// Lets the pill be dragged (and clicked); its ends resize it. It lies
+/// Lets the pill be dragged (and clicked); its outline resizes it. It lies
 /// under the pill's content, so the pill's buttons get their own clicks.
 struct PillDragHandle: NSViewRepresentable {
     let state: WidgetState
 
     final class HandleView: NSView {
-        var onMouseDown: ((NSEvent) -> Void)?
-        override func mouseDown(with event: NSEvent) { onMouseDown?(event) }
+        weak var state: WidgetState?
+        override func mouseDown(with event: NSEvent) { state?.pillMouseDown?(event) }
+        override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
+        override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        /// ↔ over the ends: pull them to show more or less.
+        /// ↔ all along the outline: pull it to show more or less.
         override func resetCursorRects() {
-            let edge = WidgetState.pillEdge
+            let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
             addCursorRect(NSRect(x: 0, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
             addCursorRect(NSRect(x: bounds.width - edge, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
+            addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: rim), cursor: .resizeLeftRight)
+            addCursorRect(NSRect(x: 0, y: bounds.height - rim, width: bounds.width, height: rim), cursor: .resizeLeftRight)
         }
         override func setFrameSize(_ newSize: NSSize) {
             super.setFrameSize(newSize)
@@ -553,7 +568,7 @@ struct PillDragHandle: NSViewRepresentable {
 
     func makeNSView(context: Context) -> HandleView {
         let v = HandleView()
-        v.onMouseDown = { [weak state] in state?.pillMouseDown?($0) }
+        v.state = state
         return v
     }
     func updateNSView(_ nsView: HandleView, context: Context) {}
@@ -694,8 +709,11 @@ struct MainPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @State private var queueDraft = ""
+    @FocusState private var typing: Bool
 
     private static let chrome: CGFloat = 12 + 8 + 4
+    /// The text field never gets narrower than this.
+    private static let fieldMin: CGFloat = 170
     /// Inside the message box.
     private static let boxPad: CGFloat = 8
 
@@ -706,7 +724,8 @@ struct MainPanel: View {
         let tools = toolWidths
         let toolsRow = tools.reduce(0, +) + 8 * CGFloat(max(0, tools.count - 1)) + Self.chrome
         let buttons = buttonWidths
-        let buttonsRow = buttons.reduce(0, +) + 6 * CGFloat(max(0, buttons.count - 1)) + Self.chrome + Self.boxPad * 2
+        let field = model.config.taskQueue ? Self.fieldMin + 6 + 24 + 6 : 0
+        let buttonsRow = field + buttons.reduce(0, +) + 6 * CGFloat(max(0, buttons.count - 1)) + Self.chrome + Self.boxPad * 2 + 4
         return min(640, max(420, toolsRow, buttonsRow))
     }
 
@@ -811,40 +830,59 @@ struct MainPanel: View {
         }
     }
 
-    /// Where a message is written: the queue (when on), and the buttons
-    /// inside the same box, under the text.
+    /// Where a message is written: one line with the text field and the
+    /// buttons after it (owner's request, 18.10). While you type, the
+    /// buttons step back and can't be clicked by accident.
     private func messageBox(inner: CGFloat) -> some View {
         let labels = model.buttons.map(\.label)
         let boxInner = inner - 4 - Self.boxPad * 2
+        let field = model.config.taskQueue
+        // As many buttons as fit after the field go on its line; the rest wrap below.
+        let room = boxInner - (field ? Self.fieldMin + 6 + 24 + 6 : 0)
+        let first = Self.rows(buttonWidths, within: room, gap: 6).first ?? []
+        let firstCount = buttonWidths.first.map { $0 <= room ? first.count : 0 } ?? 0
+        let rest = Array(buttonWidths.dropFirst(firstCount))
+        let more = rest.isEmpty ? [] : Self.rows(rest, within: boxInner, gap: 6).map { $0.map { $0 + firstCount } }
+        let busy = typing || !queueDraft.isEmpty
+        func button(_ i: Int) -> some View {
+            Button(labels[i]) { model.perform(.button(i)) }
+                .buttonStyle(ComposerButtonStyle())
+                .disabled(busy)
+                .opacity(busy ? 0.35 : 1)
+                .animation(.easeOut(duration: 0.15), value: busy)
+        }
         return VStack(alignment: .leading, spacing: 8) {
-            if model.config.taskQueue {
-                if !model.queue.isEmpty { queueList }
-                HStack(spacing: 6) {
-                    TextField("Queue a request for after this reply", text: $queueDraft)
+            if field && !model.queue.isEmpty { queueList }
+            HStack(spacing: 6) {
+                if field {
+                    TextField("Queue for after this reply", text: $queueDraft)
                         .textFieldStyle(.plain).font(.system(size: 12))
-                        .padding(.horizontal, 4).frame(height: 24)
+                        .padding(.horizontal, 4)
+                        .frame(minWidth: Self.fieldMin, maxWidth: .infinity, minHeight: 26)
+                        .focused($typing)
                         .onSubmit(addToQueue)
+                        .onExitCommand { typing = false }
+                }
+                ForEach(Array(0..<firstCount), id: \.self) { i in button(i) }
+                if !field { Spacer(minLength: 0) }
+                if field {
                     Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
                         .buttonStyle(IconButtonStyle(background: queueDraft.isEmpty ? Color.white.opacity(0.1) : .cbAction,
                                                      foreground: .white, size: 24))
                         .accessibilityLabel("Add to queue")
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(Self.rows(buttonWidths, within: boxInner, gap: 6).enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 6) {
-                        ForEach(row, id: \.self) { i in
-                            Button(labels[i]) { model.perform(.button(i)) }
-                                .buttonStyle(ComposerButtonStyle())
-                        }
-                    }
+            ForEach(Array(more.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 6) {
+                    ForEach(row, id: \.self) { i in button(i) }
                 }
             }
         }
         .padding(Self.boxPad)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.25)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(typing ? Color.cbAction.opacity(0.6) : Color.white.opacity(0.12), lineWidth: typing ? 1 : 0.5))
     }
 
     /// Requests that go out one by one after each reply.
@@ -873,6 +911,7 @@ struct MainPanel: View {
         guard !text.isEmpty else { return }
         model.addToQueue(text)
         queueDraft = ""
+        typing = false
     }
 
     private var tokens: String? {

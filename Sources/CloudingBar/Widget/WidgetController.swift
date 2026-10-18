@@ -5,7 +5,7 @@ import SwiftUI
 /// The floating widget's window: a non-activating panel above other windows
 /// that never takes focus unless you click into it.
 ///
-///   pill ── hover 1 s (or a click) ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
+///   pill ── hover 2 s (or a click) ──▶ panel ── 400 ms after the mouse leaves ──▶ pill
 ///
 /// With "Keep the pill visible" off, a 4 pt line stands in for the pill at
 /// rest and wakes into it after a 250 ms hover.
@@ -30,6 +30,9 @@ final class WidgetController: NSObject {
     private var pinned = false
     private var shownRequest: UUID?
     private var dragAnchor: CGPoint?
+    private var gesture: PillGesture?
+    /// While resizing away from the default spot: the end that stays put.
+    private var fixedEdge: FixedEdge?
     private var subscriptions = Set<AnyCancellable>()
     private var layoutQueued = false
 
@@ -53,6 +56,8 @@ final class WidgetController: NSObject {
         panel.setAccessibilityTitle("Clouding Bar")
 
         state.pillMouseDown = { [weak self] event in self?.pillMouseDown(event) }
+        state.pillMouseDragged = { [weak self] _ in self?.pillMouseDragged() }
+        state.pillMouseUp = { [weak self] _ in self?.pillMouseUp() }
         state.controlHover = { [weak self] inside in self?.controlHover(inside) }
         // Re-fit the window whenever what's shown changes.
         model.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
@@ -156,7 +161,8 @@ final class WidgetController: NSObject {
         if inside { openWork?.cancel() } else if hovering && state.mode == .pill { scheduleOpen() }
     }
 
-    /// Pill → panel after 1 s with the mouse on it (a click opens it at once).
+    /// Pill → panel after 2 s with the mouse on it, unless that's off in
+    /// Settings (a click opens it at once).
     private func scheduleOpen() {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -165,7 +171,8 @@ final class WidgetController: NSObject {
             self.set(.panel)
         }
         openWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+        guard model.config.hoverOpens else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
     private func set(_ mode: WidgetMode) {
@@ -190,6 +197,14 @@ final class WidgetController: NSObject {
 
     // MARK: Drag
 
+    /// A press on the pill: on its outline it resizes, elsewhere it moves
+    /// (or, without moving, opens the panel). Driven by the pill's own mouse
+    /// events, so the screen keeps drawing while you pull.
+    private enum PillGesture {
+        case move(start: CGPoint, anchor: CGPoint, moved: Bool)
+        case resize(start: CGFloat, width: CGFloat, rightEdge: Bool, centered: Bool, most: CGFloat, raw: CGFloat)
+    }
+
     private func pillMouseDown(_ event: NSEvent) {
         // While dictating, the pill is the stop button.
         if model.listening {
@@ -197,74 +212,79 @@ final class WidgetController: NSObject {
             return
         }
         openWork?.cancel() // holding it: don't open the panel underneath
-        // Near either end: resize (more or less shown), not move.
         let local = host.convert(event.locationInWindow, from: nil)
-        let edge = WidgetState.pillEdge
+        let mouse = NSEvent.mouseLocation
         if state.mode == .pill, model.hasSession, model.request == nil,
-           local.x <= edge || local.x >= host.bounds.width - edge {
-            resizePill(rightEdge: local.x > host.bounds.width / 2)
-            return
-        }
-        let start = NSEvent.mouseLocation
-        let startAnchor = anchor
-        var moved = false
-        while let next = panel.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            let p = NSEvent.mouseLocation
-            let dx = p.x - start.x, dy = p.y - start.y
-            if !moved && hypot(dx, dy) >= 3 { moved = true }
-            if moved {
-                dragAnchor = CGPoint(x: startAnchor.x + dx, y: startAnchor.y + dy)
-                layout()
-            }
-            if next.type == .leftMouseUp { break }
-        }
-        if moved, let a = dragAnchor {
-            model.setConfig("widgetPosition", [Double(a.x), Double(a.y)])
-            model.setConfig("widgetAtNotch", false)
+           WidgetState.onPillRim(local, in: host.bounds.size) {
+            let frame = panel.frame
+            let rightEdge = local.x > host.bounds.width / 2
+            let centered = dragAnchor == nil && model.config.widgetPosition == nil && !atNotch
+            fixedEdge = centered ? nil
+                : rightEdge ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
+            gesture = .resize(start: mouse.x, width: frame.width, rightEdge: rightEdge, centered: centered,
+                              most: PillLayout(model: model).maxWidth, raw: frame.width)
+            withAnimation(.cb(0.15)) { state.pillEditWidth = frame.width }
+            layout()
         } else {
-            set(.panel) // a click opens it right away
+            gesture = .move(start: mouse, anchor: anchor, moved: false)
         }
     }
 
-    /// Edit mode: the pulled end follows the pointer and the pill shows
-    /// whatever fits — the character, numbers, bars, metrics, buttons.
-    /// At the default spot it grows both ways and stays centred; moved
-    /// somewhere, the other end stays put. Let go and it snaps to what it
-    /// shows.
-    private func resizePill(rightEdge: Bool) {
-        let startFrame = panel.frame
-        let startX = NSEvent.mouseLocation.x
-        let centered = dragAnchor == nil && model.config.widgetPosition == nil && !atNotch
-        let fixed: FixedEdge? = centered ? nil
-            : rightEdge ? FixedEdge(x: startFrame.minX, left: true) : FixedEdge(x: startFrame.maxX, left: false)
-        let most = PillLayout(model: model).maxWidth
-        var raw = startFrame.width
-        withAnimation(.cb(0.15)) { state.pillEditWidth = startFrame.width }
-        layout(fixed: fixed)
-        while let e = panel.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            let dx = NSEvent.mouseLocation.x - startX
-            raw = startFrame.width + (rightEdge ? dx : -dx) * (centered ? 2 : 1)
+    private func pillMouseDragged() {
+        let p = NSEvent.mouseLocation
+        switch gesture {
+        case let .move(start, startAnchor, moved):
+            let dx = p.x - start.x, dy = p.y - start.y
+            guard moved || hypot(dx, dy) >= 3 else { return }
+            gesture = .move(start: start, anchor: startAnchor, moved: true)
+            dragAnchor = CGPoint(x: startAnchor.x + dx, y: startAnchor.y + dy)
+            layout()
+        case let .resize(start, width, rightEdge, centered, most, _):
+            // The pulled end follows the pointer; at the default spot both
+            // ends move, so the pill stays centred.
+            let dx = p.x - start
+            let raw = width + (rightEdge ? dx : -dx) * (centered ? 2 : 1)
+            gesture = .resize(start: start, width: width, rightEdge: rightEdge, centered: centered, most: most, raw: raw)
             // Past either end it gives a little, like a rubber band.
             var w = raw
             if w > most { w = most + (w - most) * 0.2 }
             if w < PillLayout.minWidth { w = PillLayout.minWidth - (PillLayout.minWidth - w) * 0.2 }
             state.pillEditWidth = w
-            layout(fixed: fixed)
-            if e.type == .leftMouseUp { break }
+            layout()
+        case nil:
+            break
         }
-        // Pulled all the way: everything, now and whatever's added later.
-        model.setConfig("pillWidth", raw >= most ? 10_000 : Double(max(0, raw)))
-        withAnimation(.cb(0.2)) { state.pillEditWidth = nil }
-        if let fixed {
-            // Snap to what it shows, the fixed end still in place.
-            let layout = PillLayout(model: model)
-            let w = layout.width(of: layout.count(within: model.pillBudget))
-            let midX = fixed.left ? fixed.x + w / 2 : fixed.x - w / 2
-            dragAnchor = CGPoint(x: midX, y: startFrame.maxY)
-            model.setConfig("widgetPosition", [Double(midX), Double(startFrame.maxY)])
+    }
+
+    private func pillMouseUp() {
+        defer { gesture = nil }
+        switch gesture {
+        case let .move(_, _, moved):
+            if moved, let a = dragAnchor {
+                model.setConfig("widgetPosition", [Double(a.x), Double(a.y)])
+                model.setConfig("widgetAtNotch", false)
+            } else {
+                set(.panel) // a click opens it right away
+            }
+        case let .resize(_, _, _, _, most, raw):
+            // Pulled all the way: everything, now and whatever's added later.
+            model.setConfig("pillWidth", raw >= most ? 10_000 : Double(max(0, raw)))
+            if let fixed = fixedEdge {
+                // Snap to what it shows, the fixed end still in place.
+                let layout = PillLayout(model: model)
+                let w = layout.width(of: layout.count(within: model.pillBudget))
+                let midX = fixed.left ? fixed.x + w / 2 : fixed.x - w / 2
+                let top = panel.frame.maxY
+                dragAnchor = CGPoint(x: midX, y: top)
+                model.setConfig("widgetPosition", [Double(midX), Double(top)])
+            }
+            fixedEdge = nil
+            withAnimation(.cb(0.2)) { state.pillEditWidth = nil }
+            queueLayout()
+            suppressOpen = true // the mouse is still on it; let it be until it leaves
+        case nil:
+            break
         }
-        queueLayout()
-        suppressOpen = true // the mouse is still on it; let it be until it leaves
     }
 
     // MARK: Placement
@@ -316,18 +336,20 @@ final class WidgetController: NSObject {
     /// An end of the pill that stays put while the other is pulled.
     private struct FixedEdge { let x: CGFloat; let left: Bool }
 
-    private func layout(fixed: FixedEdge? = nil) {
+    private func layout() {
         guard panel != nil else { return }
-        var size = host.fittingSize
-        // While its edge is pulled the pill is exactly as wide as the pointer
-        // says; SwiftUI may not have caught up inside the drag loop.
+        // While its edge is pulled the pill is exactly as wide as the
+        // pointer says (and measuring SwiftUI on every move is slow).
+        let size: NSSize
         if state.mode == .pill, let w = state.pillEditWidth {
             size = NSSize(width: max(PillLayout.minWidth, w), height: 44)
+        } else {
+            size = host.fittingSize
         }
         guard size.width > 0, size.height > 0 else { return }
         let a = anchor
         var frame = NSRect(x: a.x - size.width / 2, y: a.y - size.height, width: size.width, height: size.height)
-        if let fixed { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
+        if let fixed = fixedEdge { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
         // Keep it on a screen.
         let target = NSScreen.screens.first { $0.frame.contains(a) } ?? screen
         let bounds = atNotch ? target.frame : target.visibleFrame

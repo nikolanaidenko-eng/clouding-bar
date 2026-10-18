@@ -167,6 +167,9 @@ struct GeneralTab: View {
                 SettingsRow(title: "Floating widget", hint: "A pill at the top of the screen that opens on hover") {
                     CBSwitch(title: "Floating widget", on: binding("widget") { $0.widget })
                 }
+                SettingsRow(title: "Open on hover", hint: "The full panel after 2 s on the pill; off: click it") {
+                    CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
+                }
                 SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
                     CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
                 }
@@ -195,6 +198,23 @@ struct GeneralTab: View {
                             var list = model.config.pillShows
                             if let i = list.firstIndex(of: id) { list.remove(at: i) } else { list.append(id) }
                             model.setConfig("pillShows", list)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 46)
+            }
+
+            SettingsGroup {
+                HStack(spacing: 8) {
+                    Text("On the Touch Bar").font(.system(size: 13))
+                    Spacer()
+                    ForEach([("session", "Session"), ("reset", "Reset time"), ("context", "Context"),
+                             ("buttons", "Buttons"), ("mic", "Mic"), ("shot", "Screenshot")], id: \.0) { id, label in
+                        Chip(label: label, on: model.config.touchBarShows.contains(id)) {
+                            var list = model.config.touchBarShows
+                            if let i = list.firstIndex(of: id) { list.remove(at: i) } else { list.append(id) }
+                            model.setConfig("touchBarShows", list)
                         }
                     }
                 }
