@@ -23,6 +23,8 @@ final class WidgetState: ObservableObject {
     var controlHover: ((Bool) -> Void)?
     /// A click on the pill's numbers: open the panel.
     var openPanel: (() -> Void)?
+    /// Dragging the pill's items onto each other.
+    let pillRearrange = Rearrange(space: "pill")
     /// Writing in the pill's chat: everything else steps aside for the text.
     @Published var pillTyping = false
     @Published var pillDraft = ""
@@ -160,6 +162,7 @@ struct MeterBar: View {
     var delay: Double = 0
     @State private var shown: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.cbStill) private var still
 
     var body: some View {
         GeometryReader { geo in
@@ -175,7 +178,7 @@ struct MeterBar: View {
     }
 
     private func animate(to value: Double, delay: Double) {
-        if reduceMotion { shown = value; return }
+        if reduceMotion || still { shown = value; return }
         withAnimation(.cb(0.9).delay(delay)) { shown = value }
     }
 }
@@ -436,6 +439,7 @@ struct Metric {
 /// A metric as a small labelled chip, so several never run together.
 struct MetricChip: View {
     let metric: Metric
+    @Environment(\.clickGate) private var gate
 
     var body: some View {
         let label = HStack(spacing: 5) {
@@ -448,7 +452,7 @@ struct MetricChip: View {
         .frame(height: 22)
         .background(Capsule().fill(Color.white.opacity(0.06)))
         if let action = metric.action {
-            Button(action: action) { label }.buttonStyle(.plain).help(metric.help)
+            Button { if gate() { action() } } label: { label }.buttonStyle(.plain).help(metric.help)
         } else {
             label.contentShape(Capsule())
         }
@@ -464,6 +468,8 @@ struct MainPanel: View {
     @ObservedObject var state: WidgetState
     @State private var queueDraft = ""
     @FocusState private var typing: Bool
+    @StateObject private var toolsRearrange = Rearrange(space: "panel-tools")
+    @StateObject private var buttonsRearrange = Rearrange(space: "panel-buttons")
 
     private static let chrome: CGFloat = 12 + 8 + 4
     /// The text field never gets narrower than this.
@@ -490,16 +496,18 @@ struct MainPanel: View {
 
     /// The metrics row: metrics and templates · screenshot · mic, in the
     /// owner's order (drag one onto another to swap them).
-    private var tools: [(id: String, width: CGFloat)] {
+    private func tools(_ order: [String]) -> [(id: String, width: CGFloat)] {
         (Metric.list(model).map { (id: "metric:" + $0.id, width: $0.width) } + extras.map { (id: $0, width: CGFloat(24)) })
-            .sorted { model.rank($0.id) < model.rank($1.id) }
+            .sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
     }
-    private var toolWidths: [CGFloat] { tools.map(\.width) }
-    /// The buttons' indices, in the owner's order.
-    private var buttonOrder: [Int] {
-        model.buttons.indices.sorted { model.rank("button:" + model.buttons[$0].label) < model.rank("button:" + model.buttons[$1].label) }
+    private var toolWidths: [CGFloat] { tools(model.itemIDs).map(\.width) }
+    /// The buttons (index into model.buttons), in `order`.
+    private func buttons(_ order: [String]) -> [(id: String, width: CGFloat, index: Int)] {
+        model.buttons.indices.map { (id: "button:" + model.buttons[$0].label,
+                                     width: max(56, Self.textWidth(model.buttons[$0].label, 12) + 24), index: $0) }
+            .sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
     }
-    private var buttonWidths: [CGFloat] { buttonOrder.map { max(56, Self.textWidth(model.buttons[$0].label, 12) + 24) } }
+    private var buttonWidths: [CGFloat] { buttons(model.itemIDs).map(\.width) }
 
     static func textWidth(_ text: String, _ size: CGFloat) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size)]).width)
@@ -571,85 +579,87 @@ struct MainPanel: View {
         }
     }
 
-    /// The metrics, then templates · screenshot · mic, wrapping if needed.
+    /// The metrics, then templates · screenshot · mic, wrapping if needed;
+    /// drag one onto another to swap them.
     private func toolRows(inner: CGFloat) -> some View {
         let metrics = Metric.list(model)
-        let items = tools
-        return VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(Self.rows(toolWidths, within: inner, gap: 8).enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 8) {
-                    ForEach(row, id: \.self) { i in
-                        let id = items[i].id
-                        Group {
-                            if let m = metrics.first(where: { "metric:" + $0.id == id }) {
-                                MetricChip(metric: m)
-                            } else if id == "templates" {
-                                TemplatesButton(model: model, size: 24)
-                            } else if id == "shot" {
-                                ShotButton(model: model, size: 24)
-                            } else {
-                                MicButton(model: model, size: 24)
-                            }
-                        }
-                        .swappable(id, model)
-                    }
-                }
+        let items = tools(toolsRearrange.order(model.itemIDs))
+        let board = flowSlots(items, width: inner, rowHeight: 24, gap: 8, rowGap: 6)
+        return RearrangeBoard(ids: items.map(\.id), slots: board.slots, size: board.size, rearrange: toolsRearrange,
+                              commit: { model.swapItems($0, $1) }) { id in
+            if let m = metrics.first(where: { "metric:" + $0.id == id }) {
+                MetricChip(metric: m)
+            } else if id == "templates" {
+                TemplatesButton(model: model, size: 24)
+            } else if id == "shot" {
+                ShotButton(model: model, size: 24)
+            } else {
+                MicButton(model: model, size: 24)
             }
         }
-        .animation(.cb(0.25), value: model.config.itemOrder)
     }
 
     /// Where a message is written: one line with the text field and the
     /// buttons after it (owner's request, 18.10). While you type, the
-    /// buttons step back and can't be clicked by accident.
+    /// buttons step back and can't be clicked by accident. Drag a button
+    /// onto another to swap them.
     private func messageBox(inner: CGFloat) -> some View {
-        let order = buttonOrder
-        let labels = model.buttons.map(\.label)
         let boxInner = inner - 4 - Self.boxPad * 2
         let field = model.config.taskQueue
+        let items = buttons(buttonsRearrange.order(model.itemIDs))
+        let index = Dictionary(items.map { ($0.id, $0.index) }, uniquingKeysWith: { a, _ in a })
         // As many buttons as fit after the field go on its line; the rest wrap below.
         let room = boxInner - (field ? Self.fieldMin + 6 + 24 + 6 : 0)
-        let first = Self.rows(buttonWidths, within: room, gap: 6).first ?? []
-        let firstCount = buttonWidths.first.map { $0 <= room ? first.count : 0 } ?? 0
-        let rest = Array(buttonWidths.dropFirst(firstCount))
-        let more = rest.isEmpty ? [] : Self.rows(rest, within: boxInner, gap: 6).map { $0.map { $0 + firstCount } }
-        let busy = typing || !queueDraft.isEmpty
-        // `k`: the k-th button in the owner's order.
-        func button(_ k: Int) -> some View {
-            let i = order[k]
-            return Button(labels[i]) { model.perform(.button(i)) }
-                .buttonStyle(ComposerButtonStyle())
-                .disabled(busy)
-                .opacity(busy ? 0.35 : 1)
-                .animation(.easeOut(duration: 0.15), value: busy)
-                .swappable("button:" + labels[i], model)
+        var firstCount = 0
+        var used: CGFloat = 0
+        for b in items {
+            let add = (firstCount == 0 ? 0 : 6) + b.width
+            guard used + add <= room else { break }
+            used += add
+            firstCount += 1
         }
+        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) - 6 - 24 : 0
+        var slots: [String: CGRect] = [:]
+        var x = field ? fieldWidth + 6 : 0
+        for b in items.prefix(firstCount) {
+            slots[b.id] = CGRect(x: x, y: 0, width: b.width, height: 26)
+            x += b.width + 6
+        }
+        let rest = flowSlots(items.dropFirst(firstCount).map { (id: $0.id, width: $0.width) },
+                             width: boxInner, rowHeight: 26, gap: 6, rowGap: 6)
+        let restTop: CGFloat = firstCount > 0 || field ? 32 : 0
+        for (id, r) in rest.slots { slots[id] = r.offsetBy(dx: 0, dy: restTop) }
+        let height = items.count > firstCount ? restTop + rest.size.height : 26
+        let busy = typing || !queueDraft.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
             if field && !model.queue.isEmpty { queueList }
-            HStack(spacing: 6) {
+            ZStack(alignment: .topLeading) {
                 if field {
                     TextField("Queue for after this reply", text: $queueDraft)
                         .textFieldStyle(.plain).font(.system(size: 12))
                         .padding(.horizontal, 4)
-                        .frame(minWidth: Self.fieldMin, maxWidth: .infinity, minHeight: 26)
+                        .frame(width: max(0, fieldWidth), height: 26)
                         .focused($typing)
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
-                }
-                ForEach(Array(0..<firstCount), id: \.self) { i in button(i) }
-                if !field { Spacer(minLength: 0) }
-                if field {
                     Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
                         .buttonStyle(IconButtonStyle(background: queueDraft.isEmpty ? Color.white.opacity(0.1) : .cbAction,
                                                      foreground: .white, size: 24))
                         .accessibilityLabel("Add to queue")
+                        .offset(x: boxInner - 24, y: 1)
+                }
+                RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
+                               rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
+                    if let i = index[id] {
+                        Button(model.buttons[i].label) { if buttonsRearrange.clickAllowed { model.perform(.button(i)) } }
+                            .buttonStyle(ComposerButtonStyle())
+                            .disabled(busy)
+                            .opacity(busy ? 0.35 : 1)
+                            .animation(.easeOut(duration: 0.15), value: busy)
+                    }
                 }
             }
-            ForEach(Array(more.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 6) {
-                    ForEach(row, id: \.self) { i in button(i) }
-                }
-            }
+            .frame(width: boxInner, height: height, alignment: .topLeading)
         }
         .padding(Self.boxPad)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -713,9 +723,10 @@ struct ComposerButtonStyle: ButtonStyle {
 struct MicButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
+    @Environment(\.clickGate) private var gate
 
     var body: some View {
-        Button { model.voiceToggle() } label: {
+        Button { if gate() { model.voiceToggle() } } label: {
             Icon(kind: .mic, size: size * 0.5, lineWidth: 1.8)
         }
         .buttonStyle(IconButtonStyle(background: model.listening ? .cbAction : Color.white.opacity(0.1),
@@ -728,9 +739,10 @@ struct MicButton: View {
 struct ShotButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
+    @Environment(\.clickGate) private var gate
 
     var body: some View {
-        Button { model.takeScreenshot() } label: { Image(systemName: "camera.viewfinder").font(.system(size: size * 0.44)) }
+        Button { if gate() { model.takeScreenshot() } } label: { Image(systemName: "camera.viewfinder").font(.system(size: size * 0.44)) }
             .buttonStyle(IconButtonStyle(background: Color.white.opacity(0.1), foreground: .cbText, size: size))
             .help("Screenshot an area; its path goes to Claude")
             .accessibilityLabel("Screenshot")

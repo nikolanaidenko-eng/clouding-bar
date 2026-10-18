@@ -176,7 +176,7 @@ final class WidgetController: NSObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.hovering, self.state.mode == .pill, !self.model.listening,
                   !self.suppressOpen, !self.overControl, self.state.pillEditSize == nil,
-                  !self.state.pillTyping else { return }
+                  !self.state.pillTyping, !self.state.pillRearrange.isDragging else { return }
             self.set(.panel)
         }
         openWork = work
