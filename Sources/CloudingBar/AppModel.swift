@@ -107,6 +107,11 @@ final class AppModel: ObservableObject {
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
+    /// The pill's height budget: what was set by pulling its top or bottom.
+    var pillHeightBudget: CGFloat {
+        config.pillHeight > 0 ? CGFloat(config.pillHeight) : PillLayout.height(rows: max(1, config.pillRows))
+    }
+
     /// The pill's width budget: what was set by pulling its edge, or what
     /// the old density setting showed.
     var pillBudget: CGFloat {

@@ -116,8 +116,11 @@ struct Config: Equatable {
     /// whatever fits, from the character alone up to every metric and button.
     /// 0: not resized yet, so it comes from `pillDensity`.
     var pillWidth: Double = 0
-    /// Rows the pill may use, set by pulling its top or bottom edge.
+    /// Rows the pill may use (the old setting; `pillHeight` replaces it).
     var pillRows = 1
+    /// The pill's height in points, set by pulling its top or bottom edge;
+    /// taller than wide, it stands up as a column. 0: from `pillRows`.
+    var pillHeight: Double = 0
     /// The order of the pill's and the panel's items, by id ("session",
     /// "metric:model", "button:<label>", "chat", "mic", …), set by dragging
     /// one onto another. Items not listed keep their place after these.
@@ -220,6 +223,7 @@ struct Config: Equatable {
         if let v = obj["pillDensity"] as? String { config.pillDensity = v }
         if let v = obj["pillWidth"] as? NSNumber { config.pillWidth = v.doubleValue }
         if let v = obj["pillRows"] as? Int { config.pillRows = v }
+        if let v = obj["pillHeight"] as? NSNumber { config.pillHeight = v.doubleValue }
         if let v = obj["itemOrder"] as? [String] { config.itemOrder = v }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
         if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }

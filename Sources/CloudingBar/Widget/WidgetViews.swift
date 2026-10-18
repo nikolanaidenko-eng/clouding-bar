@@ -156,23 +156,27 @@ struct VisualEffect: NSViewRepresentable {
 /// A meter bar that fills from 0 on appear and slides on change (900 ms).
 struct MeterBar: View {
     let percent: Double?
+    /// The bar's thickness.
     var height: CGFloat = 4
     var track = Color.white.opacity(0.12)
     var color: Color? = nil
     var delay: Double = 0
+    /// Upright, filling from the bottom (the column pill).
+    var vertical = false
     @State private var shown: Double = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.cbStill) private var still
 
     var body: some View {
         GeometryReader { geo in
-            ZStack(alignment: .leading) {
+            let f = CGFloat(min(max(shown, 0), 100) / 100)
+            ZStack(alignment: vertical ? .bottom : .leading) {
                 Capsule().fill(track)
                 Capsule().fill(color ?? Color.meter(percent ?? 0))
-                    .frame(width: geo.size.width * CGFloat(min(max(shown, 0), 100) / 100))
+                    .frame(width: vertical ? nil : geo.size.width * f, height: vertical ? geo.size.height * f : nil)
             }
         }
-        .frame(height: height)
+        .frame(width: vertical ? height : nil, height: vertical ? nil : height)
         .onAppear { animate(to: percent ?? 0, delay: delay) }
         .onChange(of: percent ?? 0) { animate(to: $0, delay: 0) }
     }

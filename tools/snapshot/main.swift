@@ -188,6 +188,16 @@ widget("w-pill-chat", .pill, size: NSSize(width: 900, height: 90)) {
     $0.config.metrics = ["model", "agents"]; $0.modelName = "Opus 5.5 1M"; $0.agents = 2
     $0.config.itemOrder = ["session", "context", "reset", "cost", "metric:agents", "metric:model"]
 }
+for (name, width, height) in [("w-pill-column", 64.0, 520.0), ("w-pill-column-wide", 190.0, 520.0)] {
+    let m = sampleModel()
+    m.config.pillWidth = width; m.config.pillHeight = height; m.config.taskQueue = true; m.config.screenshot = true
+    m.config.metrics = ["model", "lines", "git", "agents"]; m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"
+    m.linesAdded = 214; m.linesRemoved = 37; m.branch = "clouding-bar"; m.agents = 2
+    let st = WidgetState(); st.mode = .pill
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 260, height: 560).padding(.top, 20))
+    renderView(host, size: NSSize(width: 260, height: 560), name: name)
+}
 do { // writing in the pill's chat
     let m = sampleModel()
     m.config.taskQueue = true

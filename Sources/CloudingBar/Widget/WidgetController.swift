@@ -294,8 +294,9 @@ final class WidgetController: NSObject {
                 x > high ? high + (x - high) * 0.2 : x < low ? low - (low - x) * 0.2 : x
             }
             let w = rubber(r.raw.width, PillLayout.minWidth, r.most)
-            let tallest = PillLayout(model: model).maxHeight(width: w)
-            let h = rubber(r.raw.height, PillLayout.height(rows: 1), max(PillLayout.height(rows: 1), tallest))
+            // Down to the bottom of the screen: once taller than wide, it
+            // stands up as a column.
+            let h = rubber(r.raw.height, PillLayout.height(rows: 1), screenRoom)
             state.pillEditSize = CGSize(width: w, height: h)
             // Pulling the top: the bottom stays, so the top moves.
             if r.v == 1 { dragAnchor = CGPoint(x: anchor.x, y: r.bottom + h) }
@@ -321,12 +322,10 @@ final class WidgetController: NSObject {
                 model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(0, r.raw.width)))
             }
             if r.v != 0 {
-                model.setConfig("pillRows", min(20, PillLayout.rows(forHeight: r.raw.height)))
+                model.setConfig("pillHeight", Double(min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))))
             }
             // Snap to what it shows, the opposite sides still in place.
-            let layout = PillLayout(model: model)
-            let rows = max(1, model.config.pillRows)
-            let size = layout.size(layout.count(width: model.pillBudget, rows: rows), width: model.pillBudget)
+            let size = PillLayout(model: model).arrange(width: model.pillBudget, height: model.pillHeightBudget).frame
             if fixedEdge != nil || r.v == 1 {
                 var a = anchor
                 if let fixed = fixedEdge { a.x = fixed.left ? fixed.x + size.width / 2 : fixed.x - size.width / 2 }
@@ -344,6 +343,12 @@ final class WidgetController: NSObject {
     }
 
     // MARK: Placement
+
+    /// The most height the pill can take: the screen's, under the menu bar.
+    private var screenRoom: CGFloat {
+        let target = NSScreen.screens.first { $0.frame.contains(anchor) } ?? screen
+        return (atNotch ? target.frame : target.visibleFrame).height
+    }
 
     private var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
 

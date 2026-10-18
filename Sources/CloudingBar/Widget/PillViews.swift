@@ -230,10 +230,12 @@ struct PillLayout {
     /// Each part, the width it adds (a bar widens its number's group) and
     /// its id for swapping.
     let parts: [(part: Part, width: CGFloat, id: String)]
+    private let model: AppModel?
 
     /// `order`: the items' ids in the order to show them (the owner's by
     /// default; mid-drag, with the swap being previewed).
     init(model: AppModel, order: [String]? = nil) {
+        self.model = model
         let ids = order ?? model.itemIDs
         func rank(_ id: String) -> Int { ids.firstIndex(of: id) ?? .max }
         // A little over the measured width: SwiftUI's text runs a hair wider.
@@ -337,6 +339,141 @@ struct PillLayout {
 
     /// Everything in one row: the widest the pill gets.
     var maxWidth: CGFloat { size(parts.count, width: .greatestFiniteMagnitude).width }
+
+    // MARK: Arrangement
+
+    /// Where everything goes for a size budget. Wider than tall: rows after
+    /// the character. Taller than wide: a column — the character on top,
+    /// the meters turned upright and stretched to the full height, the rest
+    /// stacked under them; whatever is wider than the column stays hidden
+    /// until the column is pulled wide enough for it.
+    struct Arrangement {
+        var vertical = false
+        /// Visible items, in order, and their slots in the content's space.
+        var ids: [String] = []
+        var parts: [String: Part] = [:]
+        var slots: [String: CGRect] = [:]
+        var board: CGSize = .zero
+        /// Top-left of the character in the content's space.
+        var character: CGPoint = .zero
+        /// From the pill's top-left to the content's.
+        var inset = CGSize(width: 10, height: PillLayout.vPad)
+        /// The pill's size.
+        var frame = CGSize(width: PillLayout.minWidth, height: PillLayout.height(rows: 1))
+        var shown: Set<Part> = []
+    }
+
+    static func isVertical(width: CGFloat, height: CGFloat) -> Bool { height > max(width, Self.height(rows: 1)) }
+
+    func arrange(width: CGFloat, height: CGFloat) -> Arrangement {
+        Self.isVertical(width: width, height: height) ? column(width: width, height: height) : rows(width: width, height: height)
+    }
+
+    private func rows(width: CGFloat, height: CGFloat) -> Arrangement {
+        var a = Arrangement()
+        let n = count(width: width, rows: Self.rows(forHeight: height))
+        let list = items(n)
+        let f = flowSlots(list.map { (id: $0.id, width: $0.width) }, width: width - Self.pad, rowHeight: Self.rowHeight,
+                          gap: Self.gap, firstRowStart: Self.character)
+        a.ids = list.map(\.id)
+        a.parts = Dictionary(list.map { ($0.id, $0.part) }, uniquingKeysWith: { x, _ in x })
+        a.slots = f.slots
+        a.board = f.size
+        a.character = CGPoint(x: 0, y: (Self.rowHeight - Self.character) / 2)
+        a.frame = size(n, width: width)
+        a.shown = Set(parts.prefix(n).map(\.part))
+        return a
+    }
+
+    static let columnPad: CGFloat = 8
+    static let columnGap: CGFloat = 8
+    /// An upright meter: its bar at the least, and the labels under it.
+    static let meterWidth: CGFloat = 36
+    static let meterLabels: CGFloat = 34
+    static let meterMinBar: CGFloat = 56
+
+    /// The chat as a column: the bit to write in, the buttons under it.
+    static func chatColumn(_ model: AppModel) -> CGSize {
+        let widest = model.buttons.map { buttonWidth($0.label) }.max() ?? 0
+        return CGSize(width: max(chatField + 16, widest + 10), height: 10 + 24 + CGFloat(model.buttons.count) * 26)
+    }
+
+    private func column(width: CGFloat, height: CGFloat) -> Arrangement {
+        var a = Arrangement()
+        a.vertical = true
+        let pad = Self.columnPad, gap = Self.columnGap
+        let inner = max(Self.character, width - pad * 2)
+        let top = Self.character + gap
+        // Sizes standing up; bars go into the meters.
+        var sized: [(id: String, part: Part, size: CGSize)] = []
+        for p in parts {
+            let size: CGSize
+            switch p.part {
+            case .sessionBar, .contextBar: continue
+            case .session, .context: size = CGSize(width: Self.meterWidth, height: Self.meterMinBar + Self.meterLabels)
+            case .reset, .cost: size = CGSize(width: p.width, height: 20)
+            case .metric: size = CGSize(width: p.width, height: 22)
+            case .button: size = CGSize(width: p.width, height: 26)
+            case .chat: size = model.map(Self.chatColumn) ?? .zero
+            case .templates, .shot, .mic: size = CGSize(width: 26, height: 26)
+            }
+            sized.append((p.id, p.part, size))
+        }
+        // Rows of whatever fits side by side, centred; too wide: left out.
+        var rows: [[(id: String, part: Part, size: CGSize)]] = [[]]
+        var used: CGFloat = 0
+        func contentHeight(_ rows: [[(id: String, part: Part, size: CGSize)]]) -> CGFloat {
+            let filled = rows.filter { !$0.isEmpty }
+            return filled.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + gap * CGFloat(max(0, filled.count - 1))
+        }
+        for item in sized where item.size.width <= inner {
+            var next = rows
+            if !next[next.count - 1].isEmpty && used + gap + item.size.width > inner {
+                next.append([item])
+            } else {
+                next[next.count - 1].append(item)
+            }
+            guard pad + top + contentHeight(next) + pad <= height else { break }
+            used = next[next.count - 1].count == 1 ? item.size.width : used + gap + item.size.width
+            rows = next
+        }
+        rows = rows.filter { !$0.isEmpty }
+        // The meters take whatever height is left.
+        let meterRows = rows.indices.filter { rows[$0].contains { $0.part == .session || $0.part == .context } }
+        let extra = meterRows.isEmpty ? 0 : max(0, height - pad * 2 - top - contentHeight(rows)) / CGFloat(meterRows.count)
+        var y = top
+        var widest = Self.character
+        for (r, row) in rows.enumerated() {
+            let grow = meterRows.contains(r) ? extra : 0
+            let rowHeight = (row.map(\.size.height).max() ?? 0) + grow
+            let rowWidth = row.map(\.size.width).reduce(0, +) + gap * CGFloat(row.count - 1)
+            widest = max(widest, rowWidth)
+            var x = (inner - rowWidth) / 2
+            for item in row {
+                let meter = item.part == .session || item.part == .context
+                let h = meter ? item.size.height + grow : item.size.height
+                a.slots[item.id] = CGRect(x: x, y: y + (meter ? 0 : (rowHeight - h) / 2), width: item.size.width, height: h)
+                a.ids.append(item.id)
+                a.parts[item.id] = item.part
+                x += item.size.width + gap
+            }
+            y += rowHeight + gap
+        }
+        a.board = CGSize(width: inner, height: max(Self.character, y - gap))
+        a.character = CGPoint(x: (inner - Self.character) / 2, y: 0)
+        a.inset = CGSize(width: pad, height: pad)
+        a.frame = CGSize(width: max(Self.minWidth, widest + pad * 2),
+                         height: meterRows.isEmpty ? pad * 2 + a.board.height : height)
+        // The column was narrowed below what it shows: centre in what's there.
+        if a.frame.width < width {
+            let shift = (inner - (a.frame.width - pad * 2)) / 2
+            for (id, r) in a.slots { a.slots[id] = r.offsetBy(dx: -shift, dy: 0) }
+            a.character.x -= shift
+            a.board.width = a.frame.width - pad * 2
+        }
+        a.shown = Set(a.parts.values)
+        return a
+    }
     /// Everything within `width`: the tallest it gets.
     func maxHeight(width: CGFloat) -> CGFloat { size(parts.count, width: max(width, Self.minWidth)).height }
 }
@@ -363,6 +500,7 @@ struct PillView: View {
                     .allowsHitTesting(false)
             } else if state.pillTyping {
                 PillTyping(model: model, state: state, width: max(340, current(layout).width))
+                    .frame(height: current(layout).height > 60 ? current(layout).height : nil, alignment: .top)
             } else {
                 sized(layout)
             }
@@ -391,14 +529,13 @@ struct PillView: View {
         }
     }
 
-    private func budget() -> (width: CGFloat, rows: Int) {
-        (state.pillEditSize?.width ?? model.pillBudget,
-         state.pillEditSize.map { PillLayout.rows(forHeight: $0.height) } ?? max(1, model.config.pillRows))
+    private func budget() -> CGSize {
+        state.pillEditSize ?? CGSize(width: model.pillBudget, height: model.pillHeightBudget)
     }
 
     private func current(_ layout: PillLayout) -> CGSize {
         let b = budget()
-        return layout.size(layout.count(width: b.width, rows: b.rows), width: b.width)
+        return layout.arrange(width: b.width, height: b.height).frame
     }
 
     /// The usual pill: as many rows and as much in them as its size allows.
@@ -440,59 +577,75 @@ struct PillBoard: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @ObservedObject var rearrange: Rearrange
-    let budget: (width: CGFloat, rows: Int)
+    let budget: CGSize
 
     var body: some View {
         let base = model.itemIDs
-        let layout = PillLayout(model: model, order: rearrange.order(base))
-        let n = layout.count(width: budget.width, rows: budget.rows)
-        let items = layout.items(n)
-        let shown = Set(layout.parts.prefix(n).map(\.part))
-        let parts = Dictionary(items.map { ($0.id, $0.part) }, uniquingKeysWith: { a, _ in a })
-        let board = flowSlots(items.map { (id: $0.id, width: $0.width) }, width: budget.width - PillLayout.pad,
-                              rowHeight: PillLayout.rowHeight, gap: PillLayout.gap,
-                              firstRowStart: PillLayout.character)
+        let a = PillLayout(model: model, order: rearrange.order(base)).arrange(width: budget.width, height: budget.height)
         // While its outline is pulled, the pill follows the pointer exactly.
         let frame = state.pillEditSize.map {
             CGSize(width: max(PillLayout.minWidth, $0.width), height: max(PillLayout.height(rows: 1), $0.height))
-        } ?? layout.size(n, width: budget.width)
+        } ?? a.frame
         rearrange.accepts = { [model, budget] dragged, other in
             // The dragged item has to stay on the pill.
             var ids = base
             guard let i = ids.firstIndex(of: dragged), let j = ids.firstIndex(of: other) else { return false }
             ids.swapAt(i, j)
-            let l = PillLayout(model: model, order: ids)
-            return l.parts.prefix(l.count(width: budget.width, rows: budget.rows)).contains { $0.id == dragged }
+            return PillLayout(model: model, order: ids).arrange(width: budget.width, height: budget.height)
+                .slots[dragged] != nil
         }
         return Group {
-            if n == 0 {
+            if a.ids.isEmpty && !a.vertical {
                 MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
                     .allowsHitTesting(false)
                     .frame(width: frame.width, height: frame.height)
             } else {
                 ZStack(alignment: .topLeading) {
                     MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                        .offset(y: (PillLayout.rowHeight - 30) / 2)
+                        .offset(x: a.character.x, y: a.character.y)
                         .allowsHitTesting(false)
-                    RearrangeBoard(ids: items.map(\.id), slots: board.slots, size: board.size, rearrange: rearrange,
+                    RearrangeBoard(ids: a.ids, slots: a.slots, size: a.board, rearrange: rearrange,
                                    commit: { model.swapItems($0, $1) }) { id in
-                        if let part = parts[id] { item(part, shown: shown).fixedSize() }
+                        if let part = a.parts[id] {
+                            item(part, shown: a.shown, vertical: a.vertical, slot: a.slots[id]?.size ?? .zero)
+                        }
                     }
                 }
                 .lineLimit(1)
-                .padding(.leading, 10)
-                .padding(.vertical, PillLayout.vPad)
+                .padding(.leading, a.inset.width)
+                .padding(.top, a.inset.height)
                 .frame(width: frame.width, height: frame.height, alignment: .topLeading)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .animation(.cb(0.2), value: n)
+        .animation(.cb(0.2), value: a.ids)
+        .animation(.cb(0.28), value: a.vertical)
+    }
+
+    /// An upright meter: the bar as tall as the slot allows, the number and
+    /// what it is under it.
+    private func upright(_ percent: Double?, _ label: String, height: CGFloat, delay: Double = 0) -> some View {
+        VStack(spacing: 4) {
+            MeterBar(percent: percent, height: 6, track: .white.opacity(0.14), delay: delay, vertical: true)
+                .frame(height: max(0, height - PillLayout.meterLabels))
+            Text(PillLayout.percent(percent)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+            Text(label).font(.system(size: 10)).foregroundColor(.cbSecondary)
+        }
+        .frame(width: PillLayout.meterWidth, height: height, alignment: .top)
     }
 
     /// One item: a number (with its bar, if shown), a metric or a control.
     /// A click on a number opens the panel.
-    @ViewBuilder private func item(_ part: PillLayout.Part, shown: Set<PillLayout.Part>) -> some View {
+    @ViewBuilder private func item(_ part: PillLayout.Part, shown: Set<PillLayout.Part>, vertical: Bool,
+                                   slot: CGSize) -> some View {
         switch part {
+        case .session where vertical:
+            upright(model.sessionPercent, "5h", height: slot.height).opensPanel(state)
+        case .context where vertical:
+            upright(model.contextPercent, "ctx", height: slot.height, delay: 0.12).opensPanel(state)
+        case .chat where vertical:
+            PillChat(model: model, state: state, rearrange: rearrange, column: true)
+                .frame(width: slot.width).transition(.opacity)
         case .session:
             HStack(spacing: 8) {
                 if shown.contains(.sessionBar) {
@@ -563,37 +716,55 @@ struct PillChat: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @ObservedObject var rearrange: Rearrange
+    /// In the upright pill: the bit to write in on top, the buttons under it.
+    var column = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(state.pillDraft.isEmpty ? "Write…" : state.pillDraft)
-                .font(.system(size: 12))
-                .foregroundColor(state.pillDraft.isEmpty ? .cbMuted : .cbSecondary)
-                .truncationMode(.head)
-                .frame(width: PillLayout.chatField, height: 26, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { [weak state, weak rearrange] in
-                    if rearrange?.clickAllowed ?? true { state?.startTyping?() }
-                }
-                .onHover { inside in if inside { NSCursor.iBeam.push() } else { NSCursor.pop() } }
+        let order = model.buttons.indices.sorted {
+            model.rank("button:" + model.buttons[$0].label) < model.rank("button:" + model.buttons[$1].label)
+        }
+        let buttons = ForEach(order, id: \.self) { i in
+            Button(model.buttons[i].label) { if rearrange.clickAllowed { model.perform(.button(i)) } }
+                .buttonStyle(PillButtonStyle(height: 22, fill: column))
                 .hoverReport(state)
-                .help("Write to Claude: sent now if it's free, after this reply if not")
-                .accessibilityLabel("Write to Claude")
-                .accessibilityAddTraits(.isButton)
-            let order = model.buttons.indices.sorted {
-                model.rank("button:" + model.buttons[$0].label) < model.rank("button:" + model.buttons[$1].label)
-            }
-            ForEach(order, id: \.self) { i in
-                Button(model.buttons[i].label) { if rearrange.clickAllowed { model.perform(.button(i)) } }
-                    .buttonStyle(PillButtonStyle(height: 22))
-                    .hoverReport(state)
+        }
+        Group {
+            if column {
+                VStack(spacing: 4) {
+                    field.frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading)
+                    buttons
+                }
+                .padding(5)
+            } else {
+                HStack(spacing: 6) {
+                    field.frame(width: PillLayout.chatField, height: 26, alignment: .leading)
+                    buttons
+                }
+                .padding(.leading, 8)
+                .padding(.trailing, 4)
+                .frame(height: 30)
             }
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 4)
-        .frame(height: 30)
-        .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color.black.opacity(0.25)))
-        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .background(RoundedRectangle(cornerRadius: column ? 12 : 15, style: .continuous).fill(Color.black.opacity(0.25)))
+        .overlay(RoundedRectangle(cornerRadius: column ? 12 : 15, style: .continuous)
+            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+    }
+
+    private var field: some View {
+        Text(state.pillDraft.isEmpty ? "Write…" : state.pillDraft)
+            .font(.system(size: 12))
+            .foregroundColor(state.pillDraft.isEmpty ? .cbMuted : .cbSecondary)
+            .truncationMode(.head)
+            .padding(.leading, column ? 4 : 0)
+            .contentShape(Rectangle())
+            .onTapGesture { [weak state, weak rearrange] in
+                if rearrange?.clickAllowed ?? true { state?.startTyping?() }
+            }
+            .onHover { inside in if inside { NSCursor.iBeam.push() } else { NSCursor.pop() } }
+            .hoverReport(state)
+            .help("Write to Claude: sent now if it's free, after this reply if not")
+            .accessibilityLabel("Write to Claude")
+            .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -639,6 +810,8 @@ struct PillTyping: View {
 /// A button on the pill: a small capsule.
 struct PillButtonStyle: ButtonStyle {
     var height: CGFloat = 26
+    /// As wide as its container (the upright chat).
+    var fill = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -646,7 +819,7 @@ struct PillButtonStyle: ButtonStyle {
             .foregroundColor(.cbText)
             .lineLimit(1)
             .padding(.horizontal, 10)
-            .frame(minWidth: 44, minHeight: height)
+            .frame(minWidth: 44, maxWidth: fill ? .infinity : nil, minHeight: height)
             .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.2 : 0.1)))
             .contentShape(Capsule())
     }
