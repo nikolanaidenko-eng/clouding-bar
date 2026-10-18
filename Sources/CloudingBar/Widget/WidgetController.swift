@@ -263,7 +263,7 @@ final class WidgetController: NSObject {
            let rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
             let frame = panel.frame
             let centered = dragAnchor == nil && model.config.widgetPosition == nil && !atNotch
-            fixedEdge = centered || rim.h == 0 ? nil
+            fixedEdge = centered ? nil
                 : rim.h == 1 ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
             gesture = .resize(Resize(start: mouse, size: frame.size, h: rim.h, v: rim.v, centered: centered,
                                      bottom: frame.minY, most: PillLayout(model: model).maxWidth, raw: frame.size))
@@ -317,13 +317,16 @@ final class WidgetController: NSObject {
                 set(.panel) // a click opens it right away
             }
         case let .resize(r):
-            if r.h != 0 {
+            let height = min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))
+            if PillLayout.isVertical(width: r.raw.width, height: height) {
+                // A column keeps no spare width around what it shows.
+                let natural = PillLayout(model: model).arrange(width: max(PillLayout.minWidth, r.raw.width), height: height).natural
+                model.setConfig("pillWidth", Double(min(max(PillLayout.minWidth, r.raw.width), natural)))
+            } else {
                 // Pulled all the way: everything, now and whatever's added later.
                 model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(0, r.raw.width)))
             }
-            if r.v != 0 {
-                model.setConfig("pillHeight", Double(min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))))
-            }
+            model.setConfig("pillHeight", Double(height))
             // Snap to what it shows, the opposite sides still in place.
             let size = PillLayout(model: model).arrange(width: model.pillBudget, height: model.pillHeightBudget).frame
             if fixedEdge != nil || r.v == 1 {

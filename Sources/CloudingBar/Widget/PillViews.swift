@@ -157,15 +157,15 @@ struct RearrangeBoard<Item: View>: View {
 }
 
 /// Lays items of the given widths into rows within `width`, left to right;
-/// `firstRowStart` leaves room at the start of the first row.
+/// every row starts at `indent`.
 func flowSlots(_ items: [(id: String, width: CGFloat)], width: CGFloat, rowHeight: CGFloat, gap: CGFloat,
-               rowGap: CGFloat = 0, firstRowStart: CGFloat = 0) -> (slots: [String: CGRect], size: CGSize) {
+               rowGap: CGFloat = 0, indent: CGFloat = 0) -> (slots: [String: CGRect], size: CGSize) {
     var slots: [String: CGRect] = [:]
-    var x = firstRowStart, y: CGFloat = 0, widest = firstRowStart
-    var rowEmpty = firstRowStart == 0
+    var x = indent, y: CGFloat = 0, widest = indent
+    var rowEmpty = true
     for item in items {
         if !rowEmpty && x + gap + item.width > width {
-            x = 0
+            x = indent
             y += rowHeight + rowGap
             rowEmpty = true
         }
@@ -249,7 +249,7 @@ struct PillLayout {
         }
         if shows.contains("reset"), let r = model.resetShort { list.append((.reset, 12 + 4 + text(r), "reset")) }
         if shows.contains("cost"), let c = model.cost { list.append((.cost, text(String(format: "$%.2f", c)), "cost")) }
-        for m in Metric.list(model) { list.append((.metric(m.id), m.width, "metric:" + m.id)) }
+        for m in Metric.list(model) { list.append((.metric(m.id), m.plainWidth, "metric:" + m.id)) }
         if model.config.taskQueue {
             list.append((.chat, Self.chatWidth(model), "chat"))
         } else {
@@ -299,22 +299,30 @@ struct PillLayout {
         return list
     }
 
-    /// Items into rows within `width`; the first row starts after the character.
+    /// Items into rows within `width`. Every row starts after the
+    /// character, so the rows line up under each other.
     static func flow(_ widths: [CGFloat], width: CGFloat) -> (rows: [[Int]], widths: [CGFloat]) {
         let inner = width - pad
         var rows: [[Int]] = [[]]
         var used: [CGFloat] = [character]
         for (i, w) in widths.enumerated() {
             let last = rows.count - 1
-            if rows[last].isEmpty && last > 0 {
-                rows[last].append(i); used[last] = w
-            } else if used[last] + gap + w <= inner {
+            if rows[last].isEmpty || used[last] + gap + w <= inner {
                 rows[last].append(i); used[last] += gap + w
             } else {
-                rows.append([i]); used.append(w)
+                rows.append([i]); used.append(character + gap + w)
             }
         }
         return (rows, used)
+    }
+
+    /// Numbers, metrics, controls: a hairline goes where one kind meets another.
+    static func kind(_ p: Part) -> Int {
+        switch p {
+        case .session, .context, .reset, .cost, .sessionBar, .contextBar: return 0
+        case .metric: return 1
+        default: return 2
+        }
     }
 
     func fits(_ n: Int, width: CGFloat, rows: Int) -> Bool {
@@ -360,7 +368,11 @@ struct PillLayout {
         var inset = CGSize(width: 10, height: PillLayout.vPad)
         /// The pill's size.
         var frame = CGSize(width: PillLayout.minWidth, height: PillLayout.height(rows: 1))
+        /// Its width without spare room around what it shows.
+        var natural: CGFloat = PillLayout.minWidth
         var shown: Set<Part> = []
+        /// Hairlines between kinds, in the content's space.
+        var dividers: [CGRect] = []
     }
 
     static func isVertical(width: CGFloat, height: CGFloat) -> Bool { height > max(width, Self.height(rows: 1)) }
@@ -374,19 +386,27 @@ struct PillLayout {
         let n = count(width: width, rows: Self.rows(forHeight: height))
         let list = items(n)
         let f = flowSlots(list.map { (id: $0.id, width: $0.width) }, width: width - Self.pad, rowHeight: Self.rowHeight,
-                          gap: Self.gap, firstRowStart: Self.character)
+                          gap: Self.gap, indent: Self.character + Self.gap)
         a.ids = list.map(\.id)
         a.parts = Dictionary(list.map { ($0.id, $0.part) }, uniquingKeysWith: { x, _ in x })
         a.slots = f.slots
         a.board = f.size
         a.character = CGPoint(x: 0, y: (Self.rowHeight - Self.character) / 2)
         a.frame = size(n, width: width)
+        a.natural = a.frame.width
         a.shown = Set(parts.prefix(n).map(\.part))
+        // A hairline where numbers meet metrics or metrics meet controls.
+        for (prev, next) in zip(list, list.dropFirst()) where Self.kind(prev.part) != Self.kind(next.part) {
+            guard let p = f.slots[prev.id], let q = f.slots[next.id], p.minY == q.minY else { continue }
+            a.dividers.append(CGRect(x: (p.maxX + q.minX) / 2 - 0.5, y: p.minY + (Self.rowHeight - 16) / 2, width: 1, height: 16))
+        }
         return a
     }
 
-    static let columnPad: CGFloat = 8
-    static let columnGap: CGFloat = 8
+    static let columnPad: CGFloat = 10
+    /// Between lines of one kind, and between sections (a hairline sits in it).
+    static let lineGap: CGFloat = 6
+    static let sectionGap: CGFloat = 17
     /// An upright meter: its bar at the least, and the labels under it.
     static let meterWidth: CGFloat = 36
     static let meterLabels: CGFloat = 34
@@ -398,82 +418,92 @@ struct PillLayout {
         return CGSize(width: max(chatField + 16, widest + 10), height: 10 + 24 + CGFloat(model.buttons.count) * 26)
     }
 
+    /// How a column line holds its items: meters and icons side by side,
+    /// centred; a number or metric on a line of its own, from the left;
+    /// the chat and buttons across the whole width.
+    private enum Line { case meters, icons, list, full }
+
     private func column(width: CGFloat, height: CGFloat) -> Arrangement {
         var a = Arrangement()
         a.vertical = true
-        let pad = Self.columnPad, gap = Self.columnGap
+        let pad = Self.columnPad
         let inner = max(Self.character, width - pad * 2)
-        let top = Self.character + gap
-        // Sizes standing up; bars go into the meters.
-        var sized: [(id: String, part: Part, size: CGSize)] = []
+        let top = Self.character + Self.sectionGap
+        typealias Item = (id: String, part: Part, size: CGSize)
+        var lines: [(kind: Line, items: [Item])] = []
+        func gapBefore(_ i: Int) -> CGFloat {
+            i == 0 ? 0 : Self.kind(lines[i - 1].items[0].part) != Self.kind(lines[i].items[0].part) ? Self.sectionGap : Self.lineGap
+        }
+        func contentHeight() -> CGFloat {
+            lines.indices.reduce(0) { $0 + gapBefore($1) + (lines[$1].items.map(\.size.height).max() ?? 0) }
+        }
         for p in parts {
-            let size: CGSize
+            let item: Item
+            let kind: Line
             switch p.part {
             case .sessionBar, .contextBar: continue
-            case .session, .context: size = CGSize(width: Self.meterWidth, height: Self.meterMinBar + Self.meterLabels)
-            case .reset, .cost: size = CGSize(width: p.width, height: 20)
-            case .metric: size = CGSize(width: p.width, height: 22)
-            case .button: size = CGSize(width: p.width, height: 26)
-            case .chat: size = model.map(Self.chatColumn) ?? .zero
-            case .templates, .shot, .mic: size = CGSize(width: 26, height: 26)
+            case .session, .context:
+                item = (p.id, p.part, CGSize(width: Self.meterWidth, height: Self.meterMinBar + Self.meterLabels)); kind = .meters
+            case .templates, .shot, .mic: item = (p.id, p.part, CGSize(width: 26, height: 26)); kind = .icons
+            case .reset, .cost, .metric: item = (p.id, p.part, CGSize(width: p.width, height: 20)); kind = .list
+            case .button: item = (p.id, p.part, CGSize(width: p.width, height: 26)); kind = .full
+            case .chat: item = (p.id, p.part, model.map(Self.chatColumn) ?? .zero); kind = .full
             }
-            sized.append((p.id, p.part, size))
-        }
-        // Rows of whatever fits side by side, centred; too wide: left out.
-        var rows: [[(id: String, part: Part, size: CGSize)]] = [[]]
-        var used: CGFloat = 0
-        func contentHeight(_ rows: [[(id: String, part: Part, size: CGSize)]]) -> CGFloat {
-            let filled = rows.filter { !$0.isEmpty }
-            return filled.reduce(0) { $0 + ($1.map(\.size.height).max() ?? 0) } + gap * CGFloat(max(0, filled.count - 1))
-        }
-        for item in sized where item.size.width <= inner {
-            var next = rows
-            if !next[next.count - 1].isEmpty && used + gap + item.size.width > inner {
-                next.append([item])
+            // Too wide for the column: left out until it's pulled wider.
+            guard item.size.width <= inner else { continue }
+            let saved = lines
+            if let last = lines.last, last.kind == kind, kind == .meters || kind == .icons,
+               last.items.map(\.size.width).reduce(0, +) + Self.gap * CGFloat(last.items.count) + item.size.width <= inner {
+                lines[lines.count - 1].items.append(item)
             } else {
-                next[next.count - 1].append(item)
+                lines.append((kind, [item]))
             }
-            guard pad + top + contentHeight(next) + pad <= height else { break }
-            used = next[next.count - 1].count == 1 ? item.size.width : used + gap + item.size.width
-            rows = next
+            if pad + top + contentHeight() + pad > height {
+                lines = saved
+                break
+            }
         }
-        rows = rows.filter { !$0.isEmpty }
         // The meters take whatever height is left.
-        let meterRows = rows.indices.filter { rows[$0].contains { $0.part == .session || $0.part == .context } }
-        let extra = meterRows.isEmpty ? 0 : max(0, height - pad * 2 - top - contentHeight(rows)) / CGFloat(meterRows.count)
+        let meterLines = lines.indices.filter { lines[$0].kind == .meters }
+        let extra = meterLines.isEmpty ? 0 : max(0, height - pad * 2 - top - contentHeight()) / CGFloat(meterLines.count)
+        let fromLeft = inner >= 100
         var y = top
-        var widest = Self.character
-        for (r, row) in rows.enumerated() {
-            let grow = meterRows.contains(r) ? extra : 0
-            let rowHeight = (row.map(\.size.height).max() ?? 0) + grow
-            let rowWidth = row.map(\.size.width).reduce(0, +) + gap * CGFloat(row.count - 1)
-            widest = max(widest, rowWidth)
-            var x = (inner - rowWidth) / 2
-            for item in row {
-                let meter = item.part == .session || item.part == .context
-                let h = meter ? item.size.height + grow : item.size.height
-                a.slots[item.id] = CGRect(x: x, y: y + (meter ? 0 : (rowHeight - h) / 2), width: item.size.width, height: h)
+        var natural = Self.character
+        for (i, line) in lines.enumerated() {
+            let gap = gapBefore(i)
+            y += gap
+            if i > 0 && gap == Self.sectionGap {
+                a.dividers.append(CGRect(x: 4, y: y - gap / 2 - 0.5, width: inner - 8, height: 1))
+            }
+            let grow = line.kind == .meters ? extra : 0
+            let lineHeight = (line.items.map(\.size.height).max() ?? 0) + grow
+            let lineWidth = line.items.map(\.size.width).reduce(0, +) + Self.gap * CGFloat(line.items.count - 1)
+            natural = max(natural, lineWidth)
+            var x: CGFloat
+            switch line.kind {
+            case .meters, .icons: x = (inner - lineWidth) / 2
+            case .list: x = fromLeft ? 0 : (inner - lineWidth) / 2
+            case .full: x = 0
+            }
+            for item in line.items {
+                let w = line.kind == .full ? inner : item.size.width
+                let h = line.kind == .meters ? item.size.height + grow : item.size.height
+                a.slots[item.id] = CGRect(x: x, y: y + (lineHeight - h) / 2, width: w, height: h)
                 a.ids.append(item.id)
                 a.parts[item.id] = item.part
-                x += item.size.width + gap
+                x += w + Self.gap
             }
-            y += rowHeight + gap
+            y += lineHeight
         }
-        a.board = CGSize(width: inner, height: max(Self.character, y - gap))
+        a.board = CGSize(width: inner, height: y)
         a.character = CGPoint(x: (inner - Self.character) / 2, y: 0)
         a.inset = CGSize(width: pad, height: pad)
-        a.frame = CGSize(width: max(Self.minWidth, widest + pad * 2),
-                         height: meterRows.isEmpty ? pad * 2 + a.board.height : height)
-        // The column was narrowed below what it shows: centre in what's there.
-        if a.frame.width < width {
-            let shift = (inner - (a.frame.width - pad * 2)) / 2
-            for (id, r) in a.slots { a.slots[id] = r.offsetBy(dx: -shift, dy: 0) }
-            a.character.x -= shift
-            a.board.width = a.frame.width - pad * 2
-        }
+        a.frame = CGSize(width: width, height: meterLines.isEmpty ? pad * 2 + y : height)
+        a.natural = max(Self.minWidth, natural + pad * 2)
         a.shown = Set(a.parts.values)
         return a
     }
+
     /// Everything within `width`: the tallest it gets.
     func maxHeight(width: CGFloat) -> CGFloat { size(parts.count, width: max(width, Self.minWidth)).height }
 }
@@ -604,6 +634,12 @@ struct PillBoard: View {
                     MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
                         .offset(x: a.character.x, y: a.character.y)
                         .allowsHitTesting(false)
+                    ForEach(Array(a.dividers.enumerated()), id: \.offset) { _, d in
+                        Rectangle().fill(Color.white.opacity(0.12))
+                            .frame(width: d.width, height: d.height)
+                            .offset(x: d.minX, y: d.minY)
+                            .allowsHitTesting(false)
+                    }
                     RearrangeBoard(ids: a.ids, slots: a.slots, size: a.board, rearrange: rearrange,
                                    commit: { model.swapItems($0, $1) }) { id in
                         if let part = a.parts[id] {
@@ -679,19 +715,20 @@ struct PillBoard: View {
                 .opensPanel(state).transition(.opacity)
         case let .metric(id):
             if let m = Metric.list(model).first(where: { $0.id == id }) {
-                MetricChip(metric: m).hoverReport(state).transition(.opacity)
+                MetricChip(metric: m, plain: true).hoverReport(state).transition(.opacity)
             }
         case let .button(i):
             if model.buttons.indices.contains(i) {
                 Button(model.buttons[i].label) { if rearrange.clickAllowed { model.perform(.button(i)) } }
-                    .buttonStyle(PillButtonStyle())
+                    .buttonStyle(PillButtonStyle(fill: vertical))
+                    .frame(width: vertical ? slot.width : nil)
                     .hoverReport(state)
                     .transition(.opacity)
             }
         case .chat: PillChat(model: model, state: state, rearrange: rearrange).transition(.opacity)
-        case .templates: TemplatesButton(model: model, size: 26).hoverReport(state).transition(.opacity)
-        case .shot: ShotButton(model: model, size: 26).hoverReport(state).transition(.opacity)
-        case .mic: MicButton(model: model, size: 26).hoverReport(state).transition(.opacity)
+        case .templates: TemplatesButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
+        case .shot: ShotButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
+        case .mic: MicButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
         case .sessionBar, .contextBar: EmptyView()
         }
     }
@@ -836,22 +873,21 @@ struct PillDragHandle: NSViewRepresentable {
         override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
         override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        /// Resize arrows all along the outline: ↔ at the ends, ↕ along the
-        /// top and bottom, diagonal at the corners.
+        /// Diagonal resize arrows all along the outline, pointing the way
+        /// it goes: the nearer end and the bottom (the top from the band
+        /// along the top) — one drag sizes it both ways.
         override func resetCursorRects() {
             let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
-            let w = bounds.width, h = bounds.height
-            addCursorRect(NSRect(x: 0, y: rim, width: edge, height: h - rim * 2), cursor: .resizeLeftRight)
-            addCursorRect(NSRect(x: w - edge, y: rim, width: edge, height: h - rim * 2), cursor: .resizeLeftRight)
-            addCursorRect(NSRect(x: edge, y: 0, width: w - edge * 2, height: rim), cursor: .resizeUpDown)
-            addCursorRect(NSRect(x: edge, y: h - rim, width: w - edge * 2, height: rim), cursor: .resizeUpDown)
+            let w = bounds.width, h = bounds.height, mid = w / 2
             // y up here: bottom-left and top-right share a diagonal.
             let rising = Self.diagonal("_windowResizeNorthEastSouthWestCursor")
             let falling = Self.diagonal("_windowResizeNorthWestSouthEastCursor")
-            addCursorRect(NSRect(x: 0, y: 0, width: edge, height: rim), cursor: rising)
-            addCursorRect(NSRect(x: w - edge, y: h - rim, width: edge, height: rim), cursor: rising)
-            addCursorRect(NSRect(x: 0, y: h - rim, width: edge, height: rim), cursor: falling)
-            addCursorRect(NSRect(x: w - edge, y: 0, width: edge, height: rim), cursor: falling)
+            addCursorRect(NSRect(x: 0, y: 0, width: edge, height: h - rim), cursor: rising)
+            addCursorRect(NSRect(x: w - edge, y: 0, width: edge, height: h - rim), cursor: falling)
+            addCursorRect(NSRect(x: edge, y: 0, width: mid - edge, height: rim), cursor: rising)
+            addCursorRect(NSRect(x: mid, y: 0, width: mid - edge, height: rim), cursor: falling)
+            addCursorRect(NSRect(x: 0, y: h - rim, width: mid, height: rim), cursor: falling)
+            addCursorRect(NSRect(x: mid, y: h - rim, width: mid, height: rim), cursor: rising)
         }
 
         /// macOS's own diagonal window-resize cursors aren't public; a

@@ -41,13 +41,15 @@ final class WidgetState: ObservableObject {
     /// How close to the top or bottom of the outline.
     static let pillRim: CGFloat = 7
 
-    /// Which way a press on the pill resizes it, from anywhere along its
-    /// outline: `h` −1 left end, 1 right end; `v` 1 top, −1 bottom (0: not
-    /// that way). Nil: not on the outline. `p` in window points, y up.
+    /// Which sides a press on the pill's outline pulls — always one end and
+    /// the top or bottom, so one drag sizes it both ways (free form): `h`
+    /// −1 left, 1 right (the nearer end); `v` 1 top (only from the band
+    /// along the top), else −1 bottom. Nil: not on the outline. `p` in
+    /// window points, y up.
     static func pillRim(_ p: NSPoint, in size: NSSize) -> (h: Int, v: Int)? {
-        let h = p.x <= pillEdge ? -1 : p.x >= size.width - pillEdge ? 1 : 0
-        let v = p.y >= size.height - pillRim ? 1 : p.y <= pillRim ? -1 : 0
-        return h == 0 && v == 0 ? nil : (h, v)
+        let onRim = p.x <= pillEdge || p.x >= size.width - pillEdge || p.y <= pillRim || p.y >= size.height - pillRim
+        guard onRim else { return nil }
+        return (p.x > size.width / 2 ? 1 : -1, p.y >= size.height - pillRim ? 1 : -1)
     }
 }
 
@@ -414,6 +416,12 @@ struct Metric {
             + 14 + 5 + 16 + 2
     }
 
+    /// On the pill: icon and text, no capsule.
+    var plainWidth: CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)]).width)
+            + 14 + 4 + 3
+    }
+
     static let ids = ["model", "lines", "git", "agents", "cost"]
 
     /// The metrics that are on and known, in the owner's order.
@@ -440,21 +448,23 @@ struct Metric {
     }
 }
 
-/// A metric as a small labelled chip, so several never run together.
+/// A metric as a small labelled chip, so several never run together. On
+/// the pill (`plain`) just the icon and the text: the pill is busy enough.
 struct MetricChip: View {
     let metric: Metric
+    var plain = false
     @Environment(\.clickGate) private var gate
 
     var body: some View {
-        let label = HStack(spacing: 5) {
+        let label = HStack(spacing: plain ? 4 : 5) {
             Image(systemName: metric.icon).font(.system(size: 10)).frame(width: 14)
             Text(metric.text).lineLimit(1).fixedSize()
         }
-        .font(.system(size: 11).monospacedDigit())
+        .font(.system(size: plain ? 12 : 11).monospacedDigit())
         .foregroundColor(.cbSecondary)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, plain ? 0 : 8)
         .frame(height: 22)
-        .background(Capsule().fill(Color.white.opacity(0.06)))
+        .background(Capsule().fill(Color.white.opacity(plain ? 0 : 0.06)))
         if let action = metric.action {
             Button { if gate() { action() } } label: { label }.buttonStyle(.plain).help(metric.help)
         } else {
@@ -727,14 +737,16 @@ struct ComposerButtonStyle: ButtonStyle {
 struct MicButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
+    /// Just the icon, no circle (the pill).
+    var plain = false
     @Environment(\.clickGate) private var gate
 
     var body: some View {
         Button { if gate() { model.voiceToggle() } } label: {
             Icon(kind: .mic, size: size * 0.5, lineWidth: 1.8)
         }
-        .buttonStyle(IconButtonStyle(background: model.listening ? .cbAction : Color.white.opacity(0.1),
-                                     foreground: model.listening ? .white : .cbText, size: size))
+        .buttonStyle(IconButtonStyle(background: model.listening ? .cbAction : plain ? .clear : Color.white.opacity(0.1),
+                                     foreground: model.listening ? .white : plain ? .cbSecondary : .cbText, size: size))
         .help("Dictate")
         .accessibilityLabel("Dictate")
     }
@@ -743,11 +755,13 @@ struct MicButton: View {
 struct ShotButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
+    var plain = false
     @Environment(\.clickGate) private var gate
 
     var body: some View {
         Button { if gate() { model.takeScreenshot() } } label: { Image(systemName: "camera.viewfinder").font(.system(size: size * 0.44)) }
-            .buttonStyle(IconButtonStyle(background: Color.white.opacity(0.1), foreground: .cbText, size: size))
+            .buttonStyle(IconButtonStyle(background: plain ? .clear : Color.white.opacity(0.1),
+                                         foreground: plain ? .cbSecondary : .cbText, size: size))
             .help("Screenshot an area; its path goes to Claude")
             .accessibilityLabel("Screenshot")
     }
@@ -756,6 +770,7 @@ struct ShotButton: View {
 struct TemplatesButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
+    var plain = false
 
     var body: some View {
         Menu {
@@ -767,8 +782,9 @@ struct TemplatesButton: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .foregroundColor(plain ? .cbSecondary : .cbText)
         .frame(width: size, height: size)
-        .background(Circle().fill(Color.white.opacity(0.1)))
+        .background(Circle().fill(Color.white.opacity(plain ? 0 : 0.1)))
         .help("Templates")
         .accessibilityLabel("Templates")
     }
