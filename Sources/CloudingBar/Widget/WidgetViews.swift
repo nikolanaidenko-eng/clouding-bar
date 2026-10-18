@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // The floating widget, drawn to design/Main.dc.html and design/Widget-*.dc.html.
 // Sizes are in points; colors and timings come from the mockups.
@@ -20,19 +21,31 @@ final class WidgetState: ObservableObject {
     var pillMouseUp: ((NSEvent) -> Void)?
     /// The pointer went over (true) or off a control on the pill.
     var controlHover: ((Bool) -> Void)?
-    /// While the pill's edge is pulled: its width, following the pointer.
-    @Published var pillEditWidth: CGFloat?
-    /// The pointer is on the pill: its grips show.
+    /// A click on the pill's numbers: open the panel.
+    var openPanel: (() -> Void)?
+    /// Writing in the pill's chat: everything else steps aside for the text.
+    @Published var pillTyping = false
+    @Published var pillDraft = ""
+    /// Set by WidgetController: the window takes the keyboard for the chat
+    /// and gives it back.
+    var startTyping: (() -> Void)?
+    var endTyping: (() -> Void)?
+    /// While the pill's outline is pulled: its size, following the pointer.
+    @Published var pillEditSize: CGSize?
+    /// The pointer is on the pill: its outline shows faintly.
     @Published var pillHover = false
-    /// How close to an end a click resizes instead of moving.
+    /// How close to an end a press resizes instead of moving.
     static let pillEdge: CGFloat = 14
     /// How close to the top or bottom of the outline.
     static let pillRim: CGFloat = 7
 
-    /// The pill resizes from anywhere along its outline: either end, or the
-    /// band along its top and bottom.
-    static func onPillRim(_ p: NSPoint, in size: NSSize) -> Bool {
-        p.x <= pillEdge || p.x >= size.width - pillEdge || p.y <= pillRim || p.y >= size.height - pillRim
+    /// Which way a press on the pill resizes it, from anywhere along its
+    /// outline: `h` −1 left end, 1 right end; `v` 1 top, −1 bottom (0: not
+    /// that way). Nil: not on the outline. `p` in window points, y up.
+    static func pillRim(_ p: NSPoint, in size: NSSize) -> (h: Int, v: Int)? {
+        let h = p.x <= pillEdge ? -1 : p.x >= size.width - pillEdge ? 1 : 0
+        let v = p.y >= size.height - pillRim ? 1 : p.y <= pillRim ? -1 : 0
+        return h == 0 && v == 0 ? nil : (h, v)
     }
 }
 
@@ -310,270 +323,6 @@ struct StripView: View {
     }
 }
 
-// MARK: - Pill
-
-/// What the pill shows for a given width, in a fixed order: the character,
-/// then the numbers (session, context, reset, cost), their bars, the
-/// metrics, the buttons, then templates · screenshot · mic. Pulling the
-/// pill's edge sets the width; it shows the longest run that fits.
-struct PillLayout {
-    enum Part: Hashable {
-        case session, context, reset, cost, sessionBar, contextBar
-        case metric(Int), button(Int), templates, shot, mic
-    }
-
-    static let pad: CGFloat = 10 + 16
-    static let gap: CGFloat = 14
-    static let character: CGFloat = 30
-    /// The character alone: a circle.
-    static let minWidth: CGFloat = 44
-    static let barWidth: CGFloat = 44
-
-    let parts: [(part: Part, width: CGFloat)]
-
-    init(model: AppModel) {
-        func text(_ t: String, _ size: CGFloat = 13) -> CGFloat {
-            ceil((t as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)]).width)
-        }
-        let shows = model.config.pillShows
-        var list: [(Part, CGFloat)] = [(.session, text(Self.percent(model.sessionPercent)))]
-        if shows.contains("context"), let c = model.contextPercent {
-            list.append((.context, text("ctx", 11) + 6 + text(Self.percent(c))))
-        }
-        if shows.contains("reset"), let r = model.resetShort { list.append((.reset, 12 + 4 + text(r))) }
-        if shows.contains("cost"), let c = model.cost { list.append((.cost, text(String(format: "$%.2f", c)))) }
-        // Bars widen the groups above; no gap of their own.
-        list.append((.sessionBar, Self.barWidth + 8 - Self.gap))
-        if list.contains(where: { $0.0 == .context }) { list.append((.contextBar, Self.barWidth + 6 - Self.gap)) }
-        for (i, m) in Metric.list(model).enumerated() { list.append((.metric(i), m.width)) }
-        for (i, b) in model.buttons.enumerated() { list.append((.button(i), max(44, MainPanel.textWidth(b.label, 12) + 20))) }
-        if model.config.templatesEnabled && !model.config.templates.isEmpty { list.append((.templates, 26)) }
-        if model.config.screenshot { list.append((.shot, 26)) }
-        list.append((.mic, 26))
-        parts = list.map { (part: $0.0, width: $0.1) }
-    }
-
-    static func percent(_ p: Double?) -> String { p.map { "\(Int($0.rounded()))%" } ?? "—" }
-
-    /// Everything shown: the widest the pill gets.
-    var maxWidth: CGFloat { width(of: parts.count) }
-
-    /// The pill's width with the first `n` parts.
-    func width(of n: Int) -> CGFloat {
-        n == 0 ? Self.minWidth
-            : Self.pad + Self.character + parts.prefix(n).reduce(0) { $0 + Self.gap + $1.width }
-    }
-
-    /// How many parts fit within `budget`.
-    func count(within budget: CGFloat) -> Int {
-        var n = 0
-        while n < parts.count && width(of: n + 1) <= budget { n += 1 }
-        return n
-    }
-
-    func shown(within budget: CGFloat) -> Set<Part> { Set(parts.prefix(count(within: budget)).map(\.part)) }
-}
-
-struct PillView: View {
-    @ObservedObject var model: AppModel
-    @ObservedObject var state: WidgetState
-
-    private var editing: Bool { state.pillEditWidth != nil }
-
-    var body: some View {
-        let layout = PillLayout(model: model)
-        let budget = state.pillEditWidth ?? model.pillBudget
-        let shown = layout.shown(within: budget)
-        let special = model.listening || model.request != nil || !model.hasSession
-        let iconOnly = !special && shown.isEmpty
-        content(shown: shown, iconOnly: iconOnly, special: special)
-            .lineLimit(1)
-            .fixedSize() // numbers never wrap or squeeze
-            .font(.system(size: 13).monospacedDigit())
-            .foregroundColor(.cbText)
-            .padding(.leading, iconOnly ? 7 : 10)
-            .padding(.trailing, iconOnly ? 7 : 16)
-            // While its edge is pulled, the pill follows the pointer exactly.
-            .frame(width: editing && !special ? max(PillLayout.minWidth, state.pillEditWidth!) : nil,
-                   height: 44, alignment: .leading)
-            .clipShape(Capsule())
-            .background(PillDragHandle(state: state))
-            .modifier(Glass(radius: 22, border: model.request != nil ? Color.cbWarning.opacity(0.5)
-                                : editing ? Color.cbAction : .cbHairline))
-            .overlay(grips(editing: editing))
-            .animation(.cb(0.2), value: shown.count)
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Clouding Bar")
-    }
-
-    /// Edit mode: a blue outline and a grip at each end.
-    @ViewBuilder private func grips(editing: Bool) -> some View {
-        if editing || state.pillHover {
-            HStack {
-                grip
-                Spacer(minLength: 0)
-                grip
-            }
-            .padding(.horizontal, 3)
-            .opacity(editing ? 1 : 0.5)
-            .allowsHitTesting(false)
-            .transition(.opacity)
-        }
-    }
-
-    private var grip: some View {
-        Capsule().fill(editing ? Color.cbAction : Color.white.opacity(0.5)).frame(width: 3, height: 16)
-    }
-
-    @ViewBuilder private func content(shown: Set<PillLayout.Part>, iconOnly: Bool, special: Bool) -> some View {
-        if model.listening {
-            // The words as they come; the newest stay in view.
-            HStack(spacing: 10) {
-                MascotIcon(activity: .work, size: 30).frame(width: 30, height: 30)
-                Icon(kind: .mic, size: 15, lineWidth: 1.8).foregroundColor(.cbAction)
-                Text(model.heard.isEmpty ? "Listening…" : model.heard)
-                    .foregroundColor(model.heard.isEmpty ? .cbSecondary : .cbText)
-                    .truncationMode(.head)
-                    .frame(width: 300, alignment: .leading)
-            }
-            .allowsHitTesting(false)
-        } else if model.request != nil {
-            HStack(spacing: 10) {
-                MascotIcon(activity: .wait, size: 30).frame(width: 30, height: 30)
-                Text(model.statusTitle)
-                PulseDot(still: model.config.doNotDisturb)
-            }
-            .allowsHitTesting(false)
-        } else if !model.hasSession {
-            HStack(spacing: 10) {
-                MascotIcon(activity: .sleep, size: 30).frame(width: 30, height: 30)
-                Text(PillLayout.percent(model.sessionPercent)).foregroundColor(.cbSecondary)
-            }
-            .allowsHitTesting(false)
-        } else if iconOnly {
-            MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                .allowsHitTesting(false)
-        } else {
-            HStack(spacing: PillLayout.gap) {
-                MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                    .allowsHitTesting(false)
-                numbers(shown)
-                    .allowsHitTesting(false)
-                controls(shown)
-            }
-        }
-    }
-
-    @ViewBuilder private func numbers(_ shown: Set<PillLayout.Part>) -> some View {
-        HStack(spacing: 8) {
-            if shown.contains(.sessionBar) {
-                MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.14))
-                    .frame(width: PillLayout.barWidth)
-                    .transition(.opacity)
-            }
-            Text(PillLayout.percent(model.sessionPercent))
-        }
-        if shown.contains(.context), let c = model.contextPercent {
-            HStack(spacing: 6) {
-                Text("ctx").font(.system(size: 11)).foregroundColor(.cbSecondary)
-                if shown.contains(.contextBar) {
-                    MeterBar(percent: c, height: 3, track: .white.opacity(0.14), delay: 0.12)
-                        .frame(width: PillLayout.barWidth)
-                        .transition(.opacity)
-                }
-                Text(PillLayout.percent(c))
-            }
-            .transition(.opacity)
-        }
-        if shown.contains(.reset), let r = model.resetShort {
-            HStack(spacing: 4) {
-                Icon(kind: .clock, size: 12, lineWidth: 2.2).foregroundColor(.cbSecondary)
-                    .accessibilityLabel("resets in")
-                Text(r)
-            }
-            .transition(.opacity)
-        }
-        if shown.contains(.cost), let cost = model.cost {
-            Text(String(format: "$%.2f", cost)).foregroundColor(.cbFill).transition(.opacity)
-        }
-    }
-
-    /// Metrics and buttons, once the pill is pulled wide enough.
-    @ViewBuilder private func controls(_ shown: Set<PillLayout.Part>) -> some View {
-        let metrics = Metric.list(model)
-        ForEach(Array(metrics.enumerated()), id: \.offset) { i, m in
-            if shown.contains(.metric(i)) { MetricChip(metric: m).hoverReport(state).transition(.opacity) }
-        }
-        ForEach(Array(model.buttons.enumerated()), id: \.offset) { i, b in
-            if shown.contains(.button(i)) {
-                Button(b.label) { model.perform(.button(i)) }
-                    .buttonStyle(PillButtonStyle())
-                    .hoverReport(state)
-                    .transition(.opacity)
-            }
-        }
-        if shown.contains(.templates) { TemplatesButton(model: model, size: 26).hoverReport(state).transition(.opacity) }
-        if shown.contains(.shot) { ShotButton(model: model, size: 26).hoverReport(state).transition(.opacity) }
-        if shown.contains(.mic) { MicButton(model: model, size: 26).hoverReport(state).transition(.opacity) }
-    }
-}
-
-/// A button on the pill: a small capsule.
-struct PillButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12))
-            .foregroundColor(.cbText)
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 44, minHeight: 26)
-            .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.2 : 0.1)))
-            .contentShape(Capsule())
-    }
-}
-
-extension View {
-    /// Tells the widget the pointer is over a control, so hovering it
-    /// doesn't open the panel underneath.
-    func hoverReport(_ state: WidgetState) -> some View {
-        onHover { [weak state] inside in state?.controlHover?(inside) }
-    }
-}
-
-/// Lets the pill be dragged (and clicked); its outline resizes it. It lies
-/// under the pill's content, so the pill's buttons get their own clicks.
-struct PillDragHandle: NSViewRepresentable {
-    let state: WidgetState
-
-    final class HandleView: NSView {
-        weak var state: WidgetState?
-        override func mouseDown(with event: NSEvent) { state?.pillMouseDown?(event) }
-        override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
-        override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        /// ↔ all along the outline: pull it to show more or less.
-        override func resetCursorRects() {
-            let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
-            addCursorRect(NSRect(x: 0, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
-            addCursorRect(NSRect(x: bounds.width - edge, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
-            addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: rim), cursor: .resizeLeftRight)
-            addCursorRect(NSRect(x: 0, y: bounds.height - rim, width: bounds.width, height: rim), cursor: .resizeLeftRight)
-        }
-        override func setFrameSize(_ newSize: NSSize) {
-            super.setFrameSize(newSize)
-            window?.invalidateCursorRects(for: self)
-        }
-    }
-
-    func makeNSView(context: Context) -> HandleView {
-        let v = HandleView()
-        v.state = state
-        return v
-    }
-    func updateNSView(_ nsView: HandleView, context: Context) {}
-}
-
 // MARK: - Panels
 
 struct PanelChrome<Content: View>: View {
@@ -646,6 +395,8 @@ struct MeterBlock: View {
 /// One metric of the open panel (and the wide pill): model · effort,
 /// ±lines, branch, subagents, cost — whichever are on.
 struct Metric {
+    /// "model", "lines", "git", "agents", "cost".
+    let id: String
     let icon: String
     let text: String
     var action: (() -> Void)? = nil
@@ -656,26 +407,29 @@ struct Metric {
             + 14 + 5 + 16 + 2
     }
 
+    static let ids = ["model", "lines", "git", "agents", "cost"]
+
+    /// The metrics that are on and known, in the owner's order.
     static func list(_ model: AppModel) -> [Metric] {
         let on = Set(model.config.metrics)
         var items: [Metric] = []
         if on.contains("model"), let name = model.modelName {
-            items.append(Metric(icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
+            items.append(Metric(id: "model", icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
                                 action: model.changeModel, help: "Change the model (/model)"))
         }
         if on.contains("lines") {
-            items.append(Metric(icon: "plus.forwardslash.minus", text: "+\(model.linesAdded) −\(model.linesRemoved)"))
+            items.append(Metric(id: "lines", icon: "plus.forwardslash.minus", text: "+\(model.linesAdded) −\(model.linesRemoved)"))
         }
         if on.contains("git"), let b = model.branch {
-            items.append(Metric(icon: "arrow.triangle.branch", text: b))
+            items.append(Metric(id: "git", icon: "arrow.triangle.branch", text: b))
         }
         if on.contains("agents") {
-            items.append(Metric(icon: "person.2", text: "\(model.agents) subagent\(model.agents == 1 ? "" : "s")"))
+            items.append(Metric(id: "agents", icon: "person.2", text: "\(model.agents) subagent\(model.agents == 1 ? "" : "s")"))
         }
         if on.contains("cost"), model.isAPI, let c = model.cost {
-            items.append(Metric(icon: "dollarsign.circle", text: String(format: "$%.2f", c)))
+            items.append(Metric(id: "cost", icon: "dollarsign.circle", text: String(format: "$%.2f", c)))
         }
-        return items
+        return items.sorted { model.rank("metric:" + $0.id) < model.rank("metric:" + $1.id) }
     }
 }
 
@@ -696,7 +450,7 @@ struct MetricChip: View {
         if let action = metric.action {
             Button(action: action) { label }.buttonStyle(.plain).help(metric.help)
         } else {
-            label.allowsHitTesting(false)
+            label.contentShape(Capsule())
         }
     }
 }
@@ -734,8 +488,18 @@ struct MainPanel: View {
     /// Templates · screenshot · mic, after the metrics.
     private var extras: [String] { (showTemplates ? ["templates"] : []) + (model.config.screenshot ? ["shot"] : []) + ["mic"] }
 
-    private var toolWidths: [CGFloat] { Metric.list(model).map(\.width) + extras.map { _ in 24 } }
-    private var buttonWidths: [CGFloat] { model.buttons.map { max(56, Self.textWidth($0.label, 12) + 24) } }
+    /// The metrics row: metrics and templates · screenshot · mic, in the
+    /// owner's order (drag one onto another to swap them).
+    private var tools: [(id: String, width: CGFloat)] {
+        (Metric.list(model).map { (id: "metric:" + $0.id, width: $0.width) } + extras.map { (id: $0, width: CGFloat(24)) })
+            .sorted { model.rank($0.id) < model.rank($1.id) }
+    }
+    private var toolWidths: [CGFloat] { tools.map(\.width) }
+    /// The buttons' indices, in the owner's order.
+    private var buttonOrder: [Int] {
+        model.buttons.indices.sorted { model.rank("button:" + model.buttons[$0].label) < model.rank("button:" + model.buttons[$1].label) }
+    }
+    private var buttonWidths: [CGFloat] { buttonOrder.map { max(56, Self.textWidth(model.buttons[$0].label, 12) + 24) } }
 
     static func textWidth(_ text: String, _ size: CGFloat) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size)]).width)
@@ -810,30 +574,36 @@ struct MainPanel: View {
     /// The metrics, then templates · screenshot · mic, wrapping if needed.
     private func toolRows(inner: CGFloat) -> some View {
         let metrics = Metric.list(model)
-        let kinds = extras
+        let items = tools
         return VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(Self.rows(toolWidths, within: inner, gap: 8).enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 8) {
                     ForEach(row, id: \.self) { i in
-                        if i < metrics.count {
-                            MetricChip(metric: metrics[i])
-                        } else {
-                            switch kinds[i - metrics.count] {
-                            case "templates": TemplatesButton(model: model, size: 24)
-                            case "shot": ShotButton(model: model, size: 24)
-                            default: MicButton(model: model, size: 24)
+                        let id = items[i].id
+                        Group {
+                            if let m = metrics.first(where: { "metric:" + $0.id == id }) {
+                                MetricChip(metric: m)
+                            } else if id == "templates" {
+                                TemplatesButton(model: model, size: 24)
+                            } else if id == "shot" {
+                                ShotButton(model: model, size: 24)
+                            } else {
+                                MicButton(model: model, size: 24)
                             }
                         }
+                        .swappable(id, model)
                     }
                 }
             }
         }
+        .animation(.cb(0.25), value: model.config.itemOrder)
     }
 
     /// Where a message is written: one line with the text field and the
     /// buttons after it (owner's request, 18.10). While you type, the
     /// buttons step back and can't be clicked by accident.
     private func messageBox(inner: CGFloat) -> some View {
+        let order = buttonOrder
         let labels = model.buttons.map(\.label)
         let boxInner = inner - 4 - Self.boxPad * 2
         let field = model.config.taskQueue
@@ -844,12 +614,15 @@ struct MainPanel: View {
         let rest = Array(buttonWidths.dropFirst(firstCount))
         let more = rest.isEmpty ? [] : Self.rows(rest, within: boxInner, gap: 6).map { $0.map { $0 + firstCount } }
         let busy = typing || !queueDraft.isEmpty
-        func button(_ i: Int) -> some View {
-            Button(labels[i]) { model.perform(.button(i)) }
+        // `k`: the k-th button in the owner's order.
+        func button(_ k: Int) -> some View {
+            let i = order[k]
+            return Button(labels[i]) { model.perform(.button(i)) }
                 .buttonStyle(ComposerButtonStyle())
                 .disabled(busy)
                 .opacity(busy ? 0.35 : 1)
                 .animation(.easeOut(duration: 0.15), value: busy)
+                .swappable("button:" + labels[i], model)
         }
         return VStack(alignment: .leading, spacing: 8) {
             if field && !model.queue.isEmpty { queueList }

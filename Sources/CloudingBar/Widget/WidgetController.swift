@@ -59,11 +59,19 @@ final class WidgetController: NSObject {
         state.pillMouseDragged = { [weak self] _ in self?.pillMouseDragged() }
         state.pillMouseUp = { [weak self] _ in self?.pillMouseUp() }
         state.controlHover = { [weak self] inside in self?.controlHover(inside) }
+        state.openPanel = { [weak self] in self?.set(.panel) }
+        state.startTyping = { [weak self] in self?.beginTyping() }
+        state.endTyping = { [weak self] in self?.endTyping() }
         // Re-fit the window whenever what's shown changes.
         model.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
         state.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        // Clicked away while writing in the pill: put the text box away (the
+        // draft stays for next time).
+        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) {
+            [weak self] _ in self?.endTyping()
+        }
     }
 
     func show() {
@@ -147,7 +155,7 @@ final class WidgetController: NSObject {
             if pinned && state.mode == .panel { pinned = false } // seen it; normal rules from now on
             closeWork?.cancel()
             let work = DispatchWorkItem { [weak self] in
-                guard let self, !self.hovering, !self.pinned, !self.model.listening else { return }
+                guard let self, !self.hovering, !self.pinned, !self.model.listening, !self.state.pillTyping else { return }
                 self.set(self.rest)
             }
             closeWork = work
@@ -167,7 +175,8 @@ final class WidgetController: NSObject {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.hovering, self.state.mode == .pill, !self.model.listening,
-                  !self.suppressOpen, !self.overControl, self.state.pillEditWidth == nil else { return }
+                  !self.suppressOpen, !self.overControl, self.state.pillEditSize == nil,
+                  !self.state.pillTyping else { return }
             self.set(.panel)
         }
         openWork = work
@@ -177,6 +186,7 @@ final class WidgetController: NSObject {
 
     private func set(_ mode: WidgetMode) {
         guard state.mode != mode else { return }
+        if mode != .pill { state.pillTyping = false }
         withAnimation(.cb(mode == .panel ? 0.28 : 0.22)) { state.mode = mode }
         updateKeyAllowance()
     }
@@ -184,6 +194,7 @@ final class WidgetController: NSObject {
     private func updateKeyAllowance() {
         // The queue's text field needs the keyboard too.
         let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue)
+            || state.mode == .pill && state.pillTyping
         panel.allowsKey = wants
         if !wants { releaseKey() }
     }
@@ -195,6 +206,27 @@ final class WidgetController: NSObject {
         panel.orderFrontRegardless()
     }
 
+    // MARK: Chat
+
+    /// The pill's chat was clicked: the window takes the keyboard (without
+    /// activating the app, so your editor stays in front) for the text box.
+    private func beginTyping() {
+        guard state.mode == .pill, !state.pillTyping else { return }
+        openWork?.cancel()
+        panel.allowsKey = true
+        panel.makeKey()
+        withAnimation(.cb(0.2)) { state.pillTyping = true }
+    }
+
+    /// Sent, esc, or clicked away: back to the pill, the keyboard back to
+    /// the editor.
+    private func endTyping() {
+        guard state.pillTyping else { return }
+        withAnimation(.cb(0.2)) { state.pillTyping = false }
+        updateKeyAllowance()
+        suppressOpen = hovering // don't pop the panel under the pointer right after
+    }
+
     // MARK: Drag
 
     /// A press on the pill: on its outline it resizes, elsewhere it moves
@@ -202,7 +234,20 @@ final class WidgetController: NSObject {
     /// events, so the screen keeps drawing while you pull.
     private enum PillGesture {
         case move(start: CGPoint, anchor: CGPoint, moved: Bool)
-        case resize(start: CGFloat, width: CGFloat, rightEdge: Bool, centered: Bool, most: CGFloat, raw: CGFloat)
+        case resize(Resize)
+    }
+
+    /// Pulling the outline: `h` −1/1 for the left/right end, `v` 1/−1 for
+    /// the top/bottom (0: not that way); the opposite side stays put.
+    private struct Resize {
+        let start: CGPoint
+        let size: CGSize
+        let h: Int, v: Int
+        /// At the default spot: it grows both ways and stays centred.
+        let centered: Bool
+        let bottom: CGFloat
+        let most: CGFloat
+        var raw: CGSize
     }
 
     private func pillMouseDown(_ event: NSEvent) {
@@ -211,19 +256,18 @@ final class WidgetController: NSObject {
             model.voiceToggle()
             return
         }
+        if state.pillTyping { return }
         openWork?.cancel() // holding it: don't open the panel underneath
-        let local = host.convert(event.locationInWindow, from: nil)
         let mouse = NSEvent.mouseLocation
         if state.mode == .pill, model.hasSession, model.request == nil,
-           WidgetState.onPillRim(local, in: host.bounds.size) {
+           let rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
             let frame = panel.frame
-            let rightEdge = local.x > host.bounds.width / 2
             let centered = dragAnchor == nil && model.config.widgetPosition == nil && !atNotch
-            fixedEdge = centered ? nil
-                : rightEdge ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
-            gesture = .resize(start: mouse.x, width: frame.width, rightEdge: rightEdge, centered: centered,
-                              most: PillLayout(model: model).maxWidth, raw: frame.width)
-            withAnimation(.cb(0.15)) { state.pillEditWidth = frame.width }
+            fixedEdge = centered || rim.h == 0 ? nil
+                : rim.h == 1 ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
+            gesture = .resize(Resize(start: mouse, size: frame.size, h: rim.h, v: rim.v, centered: centered,
+                                     bottom: frame.minY, most: PillLayout(model: model).maxWidth, raw: frame.size))
+            withAnimation(.cb(0.15)) { state.pillEditSize = frame.size }
             layout()
         } else {
             gesture = .move(start: mouse, anchor: anchor, moved: false)
@@ -239,17 +283,22 @@ final class WidgetController: NSObject {
             gesture = .move(start: start, anchor: startAnchor, moved: true)
             dragAnchor = CGPoint(x: startAnchor.x + dx, y: startAnchor.y + dy)
             layout()
-        case let .resize(start, width, rightEdge, centered, most, _):
-            // The pulled end follows the pointer; at the default spot both
-            // ends move, so the pill stays centred.
-            let dx = p.x - start
-            let raw = width + (rightEdge ? dx : -dx) * (centered ? 2 : 1)
-            gesture = .resize(start: start, width: width, rightEdge: rightEdge, centered: centered, most: most, raw: raw)
+        case var .resize(r):
+            // The pulled side follows the pointer.
+            let dx = p.x - r.start.x, dy = p.y - r.start.y
+            r.raw = CGSize(width: r.size.width + CGFloat(r.h) * dx * (r.centered ? 2 : 1),
+                           height: r.size.height + CGFloat(r.v) * dy)
+            gesture = .resize(r)
             // Past either end it gives a little, like a rubber band.
-            var w = raw
-            if w > most { w = most + (w - most) * 0.2 }
-            if w < PillLayout.minWidth { w = PillLayout.minWidth - (PillLayout.minWidth - w) * 0.2 }
-            state.pillEditWidth = w
+            func rubber(_ x: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+                x > high ? high + (x - high) * 0.2 : x < low ? low - (low - x) * 0.2 : x
+            }
+            let w = rubber(r.raw.width, PillLayout.minWidth, r.most)
+            let tallest = PillLayout(model: model).maxHeight(width: w)
+            let h = rubber(r.raw.height, PillLayout.height(rows: 1), max(PillLayout.height(rows: 1), tallest))
+            state.pillEditSize = CGSize(width: w, height: h)
+            // Pulling the top: the bottom stays, so the top moves.
+            if r.v == 1 { dragAnchor = CGPoint(x: anchor.x, y: r.bottom + h) }
             layout()
         case nil:
             break
@@ -266,20 +315,27 @@ final class WidgetController: NSObject {
             } else {
                 set(.panel) // a click opens it right away
             }
-        case let .resize(_, _, _, _, most, raw):
-            // Pulled all the way: everything, now and whatever's added later.
-            model.setConfig("pillWidth", raw >= most ? 10_000 : Double(max(0, raw)))
-            if let fixed = fixedEdge {
-                // Snap to what it shows, the fixed end still in place.
-                let layout = PillLayout(model: model)
-                let w = layout.width(of: layout.count(within: model.pillBudget))
-                let midX = fixed.left ? fixed.x + w / 2 : fixed.x - w / 2
-                let top = panel.frame.maxY
-                dragAnchor = CGPoint(x: midX, y: top)
-                model.setConfig("widgetPosition", [Double(midX), Double(top)])
+        case let .resize(r):
+            if r.h != 0 {
+                // Pulled all the way: everything, now and whatever's added later.
+                model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(0, r.raw.width)))
+            }
+            if r.v != 0 {
+                model.setConfig("pillRows", min(20, PillLayout.rows(forHeight: r.raw.height)))
+            }
+            // Snap to what it shows, the opposite sides still in place.
+            let layout = PillLayout(model: model)
+            let rows = max(1, model.config.pillRows)
+            let size = layout.size(layout.count(width: model.pillBudget, rows: rows), width: model.pillBudget)
+            if fixedEdge != nil || r.v == 1 {
+                var a = anchor
+                if let fixed = fixedEdge { a.x = fixed.left ? fixed.x + size.width / 2 : fixed.x - size.width / 2 }
+                if r.v == 1 { a.y = r.bottom + size.height }
+                dragAnchor = a
+                model.setConfig("widgetPosition", [Double(a.x), Double(a.y)])
             }
             fixedEdge = nil
-            withAnimation(.cb(0.2)) { state.pillEditWidth = nil }
+            withAnimation(.cb(0.2)) { state.pillEditSize = nil }
             queueLayout()
             suppressOpen = true // the mouse is still on it; let it be until it leaves
         case nil:
@@ -341,8 +397,8 @@ final class WidgetController: NSObject {
         // While its edge is pulled the pill is exactly as wide as the
         // pointer says (and measuring SwiftUI on every move is slow).
         let size: NSSize
-        if state.mode == .pill, let w = state.pillEditWidth {
-            size = NSSize(width: max(PillLayout.minWidth, w), height: 44)
+        if state.mode == .pill, let e = state.pillEditSize {
+            size = NSSize(width: max(PillLayout.minWidth, e.width), height: max(PillLayout.height(rows: 1), e.height))
         } else {
             size = host.fittingSize
         }
