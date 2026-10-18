@@ -6,17 +6,16 @@ TAP = build/cloudingbar-tap
 TAP_SOURCES = $(wildcard Sources/CloudingBarTap/*.swift)
 HOOK = build/cloudingbar-hook
 HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift)
+KEY = build/cloudingbar-key
+KEY_SOURCES = $(wildcard Sources/CloudingBarKey/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the
 # binary with their own SDK's macOS version and it won't launch on older ones.
 TARGET = $(shell uname -m)-apple-macosx12.0
 # A stable signing identity keeps the Accessibility permission across
 # rebuilds (ad-hoc signatures change every build, so macOS forgets it).
-# Preference: an "Apple Development" certificate from your keychain (added
-# in Xcode → Settings → Accounts), then the self-signed one created by
-# `make signing-identity`, then ad-hoc.
-SIGN_KEYCHAIN = $(HOME)/.cloudingbar/signing.keychain-db
-SIGN_IDENTITY = ClaudeBar Local Signing
-APPLE_DEV_ID = $(shell security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: /{print $$2; exit}')
+# packaging/sign.sh picks an "Apple Development" certificate from your
+# keychain (added in Xcode → Settings → Accounts), then the self-signed one
+# created by `make signing-identity`, then ad-hoc.
 
 .PHONY: all build bundle install clean signing-identity snapshots test
 
@@ -31,24 +30,23 @@ build: $(SOURCES)
 
 # Wrap the binary in a minimal .app bundle. macOS ties the Accessibility
 # permission to the bundle, so this beats a bare binary.
-bundle: build
+bundle: build $(KEY)
 	rm -rf $(BUNDLE)
 	mkdir -p $(BUNDLE)/Contents/MacOS
 	cp packaging/Info.plist $(BUNDLE)/Contents/
 	cp $(BINARY) $(BUNDLE)/Contents/MacOS/
-	@# --timestamp=none: signing never talks to Apple's timestamp server.
-	@if [ -n "$(APPLE_DEV_ID)" ]; then \
-		codesign --force --timestamp=none --sign "$(APPLE_DEV_ID)" $(BUNDLE) && \
-		echo "Signed with Apple Development ($(APPLE_DEV_ID))"; \
-	elif [ -f "$(SIGN_KEYCHAIN)" ]; then \
-		security unlock-keychain -p "" "$(SIGN_KEYCHAIN)" && \
-		codesign --force --timestamp=none --keychain "$(SIGN_KEYCHAIN)" --sign "$(SIGN_IDENTITY)" $(BUNDLE) && \
-		echo "Signed with $(SIGN_IDENTITY)"; \
-	else \
-		codesign --force --sign - $(BUNDLE) 2>/dev/null || true; \
-		echo "Signed ad-hoc (run 'make signing-identity' to keep Accessibility across rebuilds)"; \
-	fi
+	@# Already signed, and copied as is: its Keychain permission survives.
+	cp -p $(KEY) $(BUNDLE)/Contents/MacOS/
+	@packaging/sign.sh $(BUNDLE)
 	@echo "Built $(BUNDLE)"
+
+# Keeps the claude.ai session key for the app. Built and signed only when
+# its source changes: the Keychain remembers "Always Allow" per exact build
+# when there's no Team ID, so a helper that stays the same keeps it.
+$(KEY): $(KEY_SOURCES)
+	mkdir -p build
+	swiftc -O -target $(TARGET) $(KEY_SOURCES) -o $(KEY)
+	@packaging/sign.sh $(KEY) dev.cloudingbar.key
 
 # Helper for the VS Code extension's claudeProcessWrapper setting: copies
 # Claude's stdout through and reports the session limit to Clouding Bar.
@@ -80,7 +78,7 @@ snapshots:
 	./build/tb-snapshot build/snapshots
 
 signing-identity:
-	./packaging/make-signing-identity.sh "$(SIGN_KEYCHAIN)" "$(SIGN_IDENTITY)"
+	./packaging/make-signing-identity.sh "$(HOME)/.cloudingbar/signing.keychain-db" "ClaudeBar Local Signing"
 
 clean:
 	rm -rf .build build

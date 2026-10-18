@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Opt-in: the live 5-hour limit for the whole account (Desktop and Cowork
 /// chats too), read from claude.ai with the session key you paste in.
@@ -17,37 +16,53 @@ final class ClaudeAILimit {
 
     // MARK: Keychain
 
+    /// The key goes through cloudingbar-key (inside the app), which stays
+    /// the same build after build, so the Keychain's "Always Allow" sticks.
+    /// Read once, then kept in memory.
+    private static var cached: String?
+    private static var helper: URL? { Bundle.main.url(forAuxiliaryExecutable: "cloudingbar-key") }
+
     static var hasKey: Bool { readKey() != nil }
 
     @discardableResult
     static func saveKey(_ key: String) -> Bool {
-        deleteKey()
-        let item: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: "sessionKey",
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData as String: Data(key.utf8),
-        ]
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        guard let out = runHelper("save", input: Data(key.utf8)), out.status == 0 else { return false }
+        cached = key
+        return true
     }
 
     static func deleteKey() {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service]
-        SecItemDelete(query as CFDictionary)
+        cached = nil
+        _ = runHelper("delete")
     }
 
     private static func readKey() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: "sessionKey",
-            kSecReturnData as String: true,
-        ]
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if let cached { return cached }
+        guard let out = runHelper("read"), out.status == 0,
+              let key = String(data: out.data, encoding: .utf8), !key.isEmpty else { return nil }
+        cached = key
+        return key
+    }
+
+    /// Runs the helper; nil if it isn't there or won't start.
+    private static func runHelper(_ command: String, input: Data? = nil) -> (status: Int32, data: Data)? {
+        guard let helper else {
+            DebugLog.note("claude.ai key: cloudingbar-key is missing from the app")
+            return nil
+        }
+        let p = Process()
+        p.executableURL = helper
+        p.arguments = [command]
+        let stdout = Pipe(), stdin = Pipe()
+        p.standardOutput = stdout
+        p.standardInput = stdin
+        do { try p.run() } catch { return nil }
+        if let input { stdin.fileHandleForWriting.write(input) }
+        try? stdin.fileHandleForWriting.close()
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        if p.terminationStatus >= 2 { DebugLog.note("claude.ai key: \(command) failed (\(p.terminationStatus))") }
+        return (p.terminationStatus, data)
     }
 
     // MARK: Polling
