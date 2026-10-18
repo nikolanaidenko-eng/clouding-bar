@@ -167,6 +167,14 @@ widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
 }
 widget("w-pill-numbers", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "numbers" }
 widget("w-pill-icon", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "icon" }
+for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.5, 0.0), ("d-island", 1.0, 0.0)] {
+    let m = sampleModel()
+    let st = WidgetState(); st.mode = .panel
+    let a = DrawerAnimation(); a.rise = 0; a.hop = CGFloat(hop); a.lift = CGFloat(lift); a.panelHeight = 146
+    let host = NSHostingView(rootView: DrawerView(model: m, state: st, anim: a, drag: { _ in })
+        .frame(width: 440, height: 220))
+    renderView(host, size: NSSize(width: 440, height: 220), name: name)
+}
 widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"

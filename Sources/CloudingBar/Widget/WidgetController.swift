@@ -21,6 +21,8 @@ final class WidgetController: NSObject {
     private var host: HoverHostingView<WidgetView>!
     private var wakeWork: DispatchWorkItem?
     private var openWork: DispatchWorkItem?
+    /// After a resize the pointer is still on the pill; don't pop the panel.
+    private var suppressOpen = false
     private var closeWork: DispatchWorkItem?
     private var hovering = false
     /// Opened by a request: stays open until the mouse has been in and out.
@@ -131,6 +133,7 @@ final class WidgetController: NSObject {
                 scheduleOpen()
             }
         } else {
+            suppressOpen = false
             wakeWork?.cancel()
             openWork?.cancel()
             if pinned && state.mode == .panel { pinned = false } // seen it; normal rules from now on
@@ -148,7 +151,8 @@ final class WidgetController: NSObject {
     private func scheduleOpen() {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.hovering, self.state.mode == .pill, !self.model.listening else { return }
+            guard let self, self.hovering, self.state.mode == .pill, !self.model.listening,
+                  !self.suppressOpen else { return }
             self.set(.panel)
         }
         openWork = work
@@ -183,6 +187,14 @@ final class WidgetController: NSObject {
             model.voiceToggle()
             return
         }
+        openWork?.cancel() // holding it: don't open the panel underneath
+        // Near either end: resize (more or less shown), not move.
+        let local = host.convert(event.locationInWindow, from: nil)
+        let edge: CGFloat = 12
+        if state.mode == .pill, local.x <= edge || local.x >= host.bounds.width - edge {
+            resizePill(rightEdge: local.x > host.bounds.width / 2)
+            return
+        }
         let start = NSEvent.mouseLocation
         let startAnchor = anchor
         var moved = false
@@ -202,6 +214,22 @@ final class WidgetController: NSObject {
         } else {
             set(.panel) // a click opens it right away
         }
+    }
+
+    /// Every 28 pt the edge is pulled out (or pushed in) shows more (or
+    /// less): bars and numbers → numbers → the character alone.
+    private func resizePill(rightEdge: Bool) {
+        var start = NSEvent.mouseLocation.x
+        while let e = panel.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let dx = NSEvent.mouseLocation.x - start
+            if abs(dx) >= 28 {
+                let outward = rightEdge ? dx > 0 : dx < 0
+                model.setPillDensity(outward ? 1 : -1)
+                start = NSEvent.mouseLocation.x
+            }
+            if e.type == .leftMouseUp { break }
+        }
+        suppressOpen = true // the mouse is still on it; let it be until it leaves
     }
 
     // MARK: Placement

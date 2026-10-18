@@ -11,6 +11,8 @@ final class WidgetState: ObservableObject {
     var rest: WidgetMode = .pill
     /// Set when collapsing means something else (the drawer slides away).
     var collapse: (() -> Void)?
+    /// Cloud already stands on top of the island; no second one in the header.
+    var hidesHeaderCharacter = false
     /// Set by WidgetController: the pill hands its mouse-downs over for dragging.
     var pillMouseDown: ((NSEvent) -> Void)?
 }
@@ -289,11 +291,6 @@ struct PillView: View {
             .frame(height: 44)
             .modifier(Glass(radius: 22, border: model.request != nil ? Color.cbWarning.opacity(0.5) : .cbHairline))
             .overlay(PillDragHandle(state: state))
-            .overlay(HStack(spacing: 0) {
-                PillEdge(step: { model.setPillDensity(-$0) }).frame(width: 8) // left edge: outward is leftward
-                Spacer(minLength: 0)
-                PillEdge(step: { model.setPillDensity($0) }).frame(width: 8)
-            })
             .animation(.cb(0.22), value: model.config.pillDensity)
             .transition(.scale(scale: 0.9).combined(with: .opacity))
             .accessibilityElement(children: .combine)
@@ -399,6 +396,16 @@ struct PillDragHandle: NSViewRepresentable {
         var onMouseDown: ((NSEvent) -> Void)?
         override func mouseDown(with event: NSEvent) { onMouseDown?(event) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        /// ↔ over the ends: drag them to show more or less.
+        override func resetCursorRects() {
+            let edge: CGFloat = 12
+            addCursorRect(NSRect(x: 0, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
+            addCursorRect(NSRect(x: bounds.width - edge, y: 0, width: edge, height: bounds.height), cursor: .resizeLeftRight)
+        }
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            window?.invalidateCursorRects(for: self)
+        }
     }
 
     func makeNSView(context: Context) -> HandleView {
@@ -528,7 +535,9 @@ struct MainPanel: View {
         let inner = width - 12 - 8 - 4
         PanelChrome(padding: EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 8), spacing: 10, width: width) {
             HStack(spacing: 8) {
-                MascotIcon(activity: model.activity, size: 24).frame(width: 24, height: 24)
+                if !state.hidesHeaderCharacter {
+                    MascotIcon(activity: model.activity, size: 24).frame(width: 24, height: 24)
+                }
                 Text(model.statusTitle).font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
                 if let project = model.project {
                     Text(project).font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)

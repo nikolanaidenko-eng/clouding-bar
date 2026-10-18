@@ -487,6 +487,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(touchBarToggleItem)
         menu.addItem(templatesItem)
         menu.addItem(.separator())
+        let islandItem = NSMenuItem(title: "Show or Hide the Island", action: #selector(toggleIsland), keyEquivalent: "")
+        islandItem.target = self
+        menu.addItem(islandItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -568,6 +571,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.save("touchBar", value)
         DebugLog.tap("touchBar \(value)")
         refresh()
+    }
+
+    /// The Touch Bar character button's job, for Macs without one.
+    @objc private func toggleIsland() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.drawer.toggle() }
     }
 
     @objc private func openSettings() {
