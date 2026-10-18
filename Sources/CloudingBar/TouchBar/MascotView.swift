@@ -1,18 +1,38 @@
 import AppKit
 
 /// The bar's character from design/Mascot.dc.html: a light rounded pebble
-/// with oval eyes, three states, drawn with Core Animation layers in the
-/// mockup's 40×40 SVG coordinates (y down) and scaled to fit.
+/// with oval eyes, drawn with Core Animation layers in the mockup's 40×40
+/// SVG coordinates (y down) and scaled to fit.
 ///
-///   sleep  dim, eyes closed, slow breathing (3.6 s), a floating "z"
+///   sleep  dim, eyes closed, slow breathing (3.6 s), nodding, three "z"s
+///          drifting up one after another
+///   awake  idle but up (woken by a hop or a touch): blinks, looks around
 ///   work   hops (0.7 s), blinks every 3.4 s, typing dots overhead
 ///   wait   sways ±7° (1.4 s), a pulsing orange "!" badge
+///   happy  a moment after being poked: ^ ^ eyes and a smile
 final class MascotView: NSView {
     var activity: Activity = .sleep {
-        didSet { if activity != oldValue { rebuild() } }
+        didSet { if activity != oldValue { refresh() } }
+    }
+    /// Idle, but awake rather than asleep (the island's Cloud after a hop).
+    var awake = false {
+        didSet { if awake != oldValue { refresh(stretch: awake) } }
     }
 
+    private enum Pose { case sleep, awake, work, wait, happy }
+    private var happyUntil: Date?
+    private var shown: Pose?
     private let stage = CALayer()
+    private var body = CALayer()
+
+    private var pose: Pose {
+        if let until = happyUntil, until > Date() { return .happy }
+        switch activity {
+        case .sleep: return awake ? .awake : .sleep
+        case .work: return .work
+        case .wait: return .wait
+        }
+    }
 
     init(size: CGFloat) {
         super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
@@ -21,7 +41,7 @@ final class MascotView: NSView {
         stage.anchorPoint = .zero
         stage.bounds = CGRect(x: 0, y: 0, width: 40, height: 40)
         layer?.addSublayer(stage)
-        rebuild()
+        refresh()
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -41,42 +61,114 @@ final class MascotView: NSView {
         CATransaction.commit()
     }
 
-    private func rebuild() {
+    /// Poked: a squashy jump and a happy face for a moment.
+    func poke() {
+        happyUntil = Date().addingTimeInterval(1.1)
+        refresh(force: true)
+        if !Palette.reduceMotion {
+            body.add(once("transform.translation.y", [0, 1.5, -5, 0.8, 0], 0.55), forKey: "jump")
+            body.add(once("transform.scale.y", [1, 0.86, 1.08, 0.95, 1], 0.55), forKey: "squash")
+            body.add(once("transform.scale.x", [1, 1.1, 0.94, 1.03, 1], 0.55), forKey: "spread")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.15) { [weak self] in self?.refresh() }
+    }
+
+    private func refresh(force: Bool = false, stretch: Bool = false) {
+        let next = pose
+        guard force || next != shown else { return }
+        shown = next
+        rebuild(next)
+        if stretch && next == .awake && !Palette.reduceMotion {
+            // Waking up: a long stretch, then settle.
+            body.add(once("transform.scale.y", [0.9, 1.12, 0.97, 1], 0.6), forKey: "stretch")
+            body.add(once("transform.scale.x", [1.06, 0.93, 1.02, 1], 0.6), forKey: "stretchx")
+        }
+    }
+
+    private func rebuild(_ pose: Pose) {
         stage.sublayers?.forEach { $0.removeFromSuperlayer() }
         let motion = !Palette.reduceMotion
-        switch activity {
+        let ink = NSColor(hex: 0x1C1C1E)
+        switch pose {
         case .sleep:
             setAccessibilityLabel("Sleeping")
-            stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
-            let body = group()
+            let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
+            stage.addSublayer(shadow)
+            body = group(anchorX: 20, anchorY: 34)
             body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xB8B6B1)))
             body.addSublayer(arcEye(x: 13.6))
             body.addSublayer(arcEye(x: 21.6))
             stage.addSublayer(body)
-            let z = CATextLayer()
-            z.string = "z"
-            z.font = NSFont.systemFont(ofSize: 6, weight: .semibold)
-            z.fontSize = 6
-            z.foregroundColor = Palette.muted.cgColor
-            z.contentsScale = 2
-            z.frame = CGRect(x: 29, y: 2.5, width: 6, height: 8) // baseline near y = 9
-            stage.addSublayer(z)
+            // Three z's, small to big, each rising up and to the right in turn.
+            let zs = [(4.0, 27.0, 9.0), (5.0, 30.0, 6.0), (6.0, 33.0, 2.5)].map { size, x, y -> CATextLayer in
+                let z = CATextLayer()
+                z.string = "z"
+                z.font = NSFont.systemFont(ofSize: size, weight: .semibold)
+                z.fontSize = size
+                z.foregroundColor = Palette.muted.cgColor
+                z.contentsScale = 2
+                z.frame = CGRect(x: x, y: y, width: size, height: size * 1.4)
+                stage.addSublayer(z)
+                return z
+            }
             if motion {
-                // SVG scales around the origin (0,0), so does this.
-                body.add(keyframes("transform.scale.x", [1, 1.02, 1], 3.6), forKey: "sx")
-                body.add(keyframes("transform.scale.y", [1, 0.97, 1], 3.6), forKey: "sy")
-                z.add(keyframes("opacity", [0, 1, 0], 3.6), forKey: "fade")
-                z.add(keyframes("transform.translation.y", [1, -3, 1], 3.6), forKey: "float")
+                // Breathing: SVG scales around the bottom, so does this.
+                body.add(keyframes("transform.scale.x", [1, 1.03, 1], 3.6), forKey: "sx")
+                body.add(keyframes("transform.scale.y", [1, 0.95, 1], 3.6), forKey: "sy")
+                let deg = CGFloat.pi / 180
+                body.add(keyframes("transform.rotation.z", [0, 3 * deg, 0], 3.6), forKey: "nod")
+                shadow.add(keyframes("transform.scale.x", [1, 1.06, 1], 3.6), forKey: "breathe")
+                for (i, z) in zs.enumerated() {
+                    z.opacity = 0
+                    let group = CAAnimationGroup()
+                    group.animations = [keyframes("opacity", [0, 1, 1, 0], 3.6, keyTimes: [0, 0.2, 0.7, 1]),
+                                        keyframes("transform.translation.y", [2, -3], 3.6),
+                                        keyframes("transform.translation.x", [-1, 1.5], 3.6)]
+                    group.duration = 3.6
+                    group.repeatCount = .infinity
+                    group.beginTime = CACurrentMediaTime() + 1.2 * Double(i)
+                    group.fillMode = .backwards
+                    z.add(group, forKey: "drift")
+                }
+            }
+
+        case .awake, .happy:
+            setAccessibilityLabel(pose == .happy ? "Happy" : "Awake")
+            stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
+            body = group(anchorX: 20, anchorY: 34)
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            stage.addSublayer(body)
+            if pose == .happy {
+                body.addSublayer(arcEye(x: 13.6, y: 21.8, bend: -2.2, color: ink))
+                body.addSublayer(arcEye(x: 21.6, y: 21.8, bend: -2.2, color: ink))
+                body.addSublayer(arcEye(x: 17.6, y: 26.2, bend: 2, color: ink, width: 1.3))
+            } else {
+                let eyes = CALayer()
+                eyes.frame = CGRect(x: 0, y: 0, width: 40, height: 40)
+                let pair = [ellipse(cx: 16, cy: 21, rx: 2, ry: 2.8, color: ink),
+                            ellipse(cx: 24, cy: 21, rx: 2, ry: 2.8, color: ink)]
+                pair.forEach(eyes.addSublayer)
+                body.addSublayer(eyes)
+                if motion {
+                    body.add(keyframes("transform.scale.y", [1, 0.98, 1], 3), forKey: "breathe")
+                    for eye in pair {
+                        eye.add(keyframes("transform.scale.y", [1, 1, 0.1, 1, 1, 0.1, 1], 4.2,
+                                          keyTimes: [0, 0.4, 0.43, 0.46, 0.88, 0.91, 1]), forKey: "blink")
+                    }
+                    // Looks around: left, back, right, back.
+                    eyes.add(keyframes("transform.translation.x", [0, 0, -1.4, -1.4, 0, 0, 1.4, 1.4, 0], 6,
+                                       keyTimes: [0, 0.1, 0.16, 0.34, 0.4, 0.58, 0.64, 0.82, 0.88]), forKey: "look")
+                }
             }
 
         case .work:
             setAccessibilityLabel("Working")
             let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
             stage.addSublayer(shadow)
-            let body = group()
+            body = group(anchorX: 20, anchorY: 34)
             body.addSublayer(rect(x: 7, y: 10, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
-            let eyes = [ellipse(cx: 16, cy: 20.5, rx: 2, ry: 2.8, color: NSColor(hex: 0x1C1C1E)),
-                        ellipse(cx: 24, cy: 20.5, rx: 2, ry: 2.8, color: NSColor(hex: 0x1C1C1E))]
+            let eyes = [ellipse(cx: 16, cy: 20.5, rx: 2, ry: 2.8, color: ink),
+                        ellipse(cx: 24, cy: 20.5, rx: 2, ry: 2.8, color: ink)]
             eyes.forEach(body.addSublayer)
             stage.addSublayer(body)
             let dots = [14, 20, 26].map { ellipse(cx: CGFloat($0), cy: 4.5, rx: 1.5, ry: 1.5, color: Palette.secondary) }
@@ -102,16 +194,16 @@ final class MascotView: NSView {
         case .wait:
             setAccessibilityLabel("Waiting for you")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
-            let body = group(anchorX: 20, anchorY: 34)
+            body = group(anchorX: 20, anchorY: 34)
             body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
-            body.addSublayer(ellipse(cx: 16, cy: 20.5, rx: 2.2, ry: 3, color: NSColor(hex: 0x1C1C1E)))
-            body.addSublayer(ellipse(cx: 24, cy: 20.5, rx: 2.2, ry: 3, color: NSColor(hex: 0x1C1C1E)))
-            body.addSublayer(ellipse(cx: 20, cy: 27, rx: 1.6, ry: 1.2, color: NSColor(hex: 0x1C1C1E)))
+            body.addSublayer(ellipse(cx: 16, cy: 20.5, rx: 2.2, ry: 3, color: ink))
+            body.addSublayer(ellipse(cx: 24, cy: 20.5, rx: 2.2, ry: 3, color: ink))
+            body.addSublayer(ellipse(cx: 20, cy: 27, rx: 1.6, ry: 1.2, color: ink))
             stage.addSublayer(body)
             let badge = ellipse(cx: 33, cy: 8, rx: 4.2, ry: 4.2, color: Palette.warning)
             stage.addSublayer(badge)
-            stage.addSublayer(rect(x: 32.3, y: 5.4, w: 1.4, h: 3.4, r: 0.7, color: NSColor(hex: 0x1C1C1E)))
-            stage.addSublayer(ellipse(cx: 33, cy: 10.4, rx: 0.8, ry: 0.8, color: NSColor(hex: 0x1C1C1E)))
+            stage.addSublayer(rect(x: 32.3, y: 5.4, w: 1.4, h: 3.4, r: 0.7, color: ink))
+            stage.addSublayer(ellipse(cx: 33, cy: 10.4, rx: 0.8, ry: 0.8, color: ink))
             if motion {
                 let deg = CGFloat.pi / 180
                 body.add(keyframes("transform.rotation.z", [0, -7 * deg, 0, 7 * deg, 0], 1.4), forKey: "sway")
@@ -153,16 +245,18 @@ final class MascotView: NSView {
         return l
     }
 
-    /// A closed eye: "M x 22.2 q 2.4 1.8 4.8 0".
-    private func arcEye(x: CGFloat) -> CAShapeLayer {
+    /// A closed eye: "M x 22.2 q 2.4 1.8 4.8 0". A negative bend arches it
+    /// up (a happy eye); a positive one below the eyes is a smile.
+    private func arcEye(x: CGFloat, y: CGFloat = 22.2, bend: CGFloat = 1.8,
+                        color: NSColor = NSColor(hex: 0x2C2C2E), width: CGFloat = 1.6) -> CAShapeLayer {
         let path = CGMutablePath()
-        path.move(to: CGPoint(x: x, y: 22.2))
-        path.addQuadCurve(to: CGPoint(x: x + 4.8, y: 22.2), control: CGPoint(x: x + 2.4, y: 24))
+        path.move(to: CGPoint(x: x, y: y))
+        path.addQuadCurve(to: CGPoint(x: x + 4.8, y: y), control: CGPoint(x: x + 2.4, y: y + bend))
         let l = CAShapeLayer()
         l.path = path
         l.fillColor = nil
-        l.strokeColor = NSColor(hex: 0x2C2C2E).cgColor
-        l.lineWidth = 1.6
+        l.strokeColor = color.cgColor
+        l.lineWidth = width
         l.lineCap = .round
         l.contentsScale = 2
         return l
@@ -175,6 +269,13 @@ final class MascotView: NSView {
         a.keyTimes = keyTimes
         a.duration = duration
         a.repeatCount = .infinity
+        return a
+    }
+
+    private func once(_ keyPath: String, _ values: [CGFloat], _ duration: CFTimeInterval) -> CAKeyframeAnimation {
+        let a = keyframes(keyPath, values, duration)
+        a.repeatCount = 1
+        a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         return a
     }
 

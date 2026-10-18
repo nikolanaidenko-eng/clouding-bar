@@ -107,12 +107,15 @@ final class AppModel: ObservableObject {
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
 
-    /// Pill density by dragging its edge: +1 more, −1 less.
-    func setPillDensity(_ delta: Int) {
-        let levels = ["icon", "numbers", "full"]
-        let i = levels.firstIndex(of: config.pillDensity) ?? 2
-        let next = levels[min(2, max(0, i + delta))]
-        if next != config.pillDensity { setConfig("pillDensity", next) }
+    /// The pill's width budget: what was set by pulling its edge, or what
+    /// the old density setting showed.
+    var pillBudget: CGFloat {
+        if config.pillWidth > 0 { return CGFloat(config.pillWidth) }
+        switch config.pillDensity {
+        case "icon": return 0
+        case "numbers": return 260
+        default: return 370
+        }
     }
 
     var statusTitle: String {

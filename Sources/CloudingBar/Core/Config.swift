@@ -110,8 +110,12 @@ struct Config: Equatable {
     /// The pill stays on screen; off: a thin line until you hover.
     var pillAlwaysVisible = true
     /// How much the pill shows: "full" (bars and numbers), "numbers", "icon".
-    /// Set by dragging the pill's edge.
+    /// The old setting; `pillWidth` replaces it once the pill is resized.
     var pillDensity = "full"
+    /// The pill's width budget in points, set by pulling its edge: it shows
+    /// whatever fits, from the character alone up to every metric and button.
+    /// 0: not resized yet, so it comes from `pillDensity`.
+    var pillWidth: Double = 0
     /// What the pill shows besides the session limit: "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
     /// Where the pill was dragged: its top center in screen points.
@@ -203,6 +207,7 @@ struct Config: Equatable {
         if let v = obj["widget"] as? Bool { config.widget = v }
         if let v = obj["pillAlwaysVisible"] as? Bool { config.pillAlwaysVisible = v }
         if let v = obj["pillDensity"] as? String { config.pillDensity = v }
+        if let v = obj["pillWidth"] as? NSNumber { config.pillWidth = v.doubleValue }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)

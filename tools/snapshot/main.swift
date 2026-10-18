@@ -167,13 +167,30 @@ widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
 }
 widget("w-pill-numbers", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "numbers" }
 widget("w-pill-icon", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "icon" }
-for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.5, 0.0), ("d-island", 1.0, 0.0)] {
+widget("w-pill-wide", .pill, size: NSSize(width: 1300, height: 90)) {
+    $0.config.pillWidth = 10_000
+    $0.config.metrics = ["model", "lines", "git", "agents"]
+    $0.config.screenshot = true
+    $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"
+    $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
+}
+do { // edit mode, mid-pull
     let m = sampleModel()
-    let st = WidgetState(); st.mode = .panel
-    let a = DrawerAnimation(); a.rise = 0; a.hop = CGFloat(hop); a.lift = CGFloat(lift); a.panelHeight = 146
+    m.config.metrics = ["model", "lines", "git", "agents"]
+    m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"
+    let st = WidgetState(); st.mode = .pill; st.pillEditWidth = 520
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 600, height: 90).padding(.top, 20))
+    renderView(host, size: NSSize(width: 600, height: 90), name: "w-pill-editing")
+}
+for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.4, 0.0), ("d-island", 1.0, 0.0)] {
+    let m = sampleModel()
+    let st = WidgetState(); st.mode = .panel; st.hidesHeaderCharacter = true
+    let a = DrawerAnimation(); a.rise = 0; a.hop = CGFloat(hop); a.lift = CGFloat(lift); a.awake = true
+    a.panelHeight = NSHostingView(rootView: WidgetView(model: m, state: st)).fittingSize.height
     let host = NSHostingView(rootView: DrawerView(model: m, state: st, anim: a, drag: { _ in })
-        .frame(width: 440, height: 220))
-    renderView(host, size: NSSize(width: 440, height: 220), name: name)
+        .frame(width: 440, height: 260))
+    renderView(host, size: NSSize(width: 440, height: 260), name: name)
 }
 widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
