@@ -122,6 +122,10 @@ check(ModelChoice.alias(of: "claude-opus-5-5[1m]") == "opus[1m]" && ModelChoice.
 check(ModelChoice.modelSet(in: "<local-command-stdout>Set model to `claude-opus-5-5[1m]`</local-command-stdout>") == "claude-opus-5-5[1m]",
       "\"Set model to\" read from the transcript")
 check(ModelChoice.modelSet(in: "Set model to \u{1B}[1mclaude-haiku-5-5\u{1B}[22m") == "claude-haiku-5-5", "…with colour codes")
+check(ModelChoice.modelSet(in: "<local-command-stdout>Set model to `Opus 5.5 (1M context)` for this session only</local-command-stdout>")
+      == "claude-opus-5-5[1m]", "…by name: Opus 5.5 (1M context)")
+check(ModelChoice.modelSet(in: "Set model to `Opus 5.5` for this session only") == "claude-opus-5-5", "…by name: Opus 5.5")
+check(ModelChoice.modelSet(in: "Set model to Sonnet") == "claude-sonnet", "…by name, no version")
 check(ModelChoice.effortSet(in: "<local-command-stdout>Set effort level to high: thinks more</local-command-stdout>") == "high",
       "\"Set effort level to\" read")
 check(ModelChoice.effortSet(in: "Set effort level to ultracode (this session only): xhigh + …") == "xhigh", "ultracode is xhigh")
@@ -140,6 +144,35 @@ do { // the watcher picks both up from a transcript
     watcher.poll([(id: "m", path: file.path)]) { got = $0; done.signal() }
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
+}
+
+// MARK: Subagents
+
+do {
+    let s = Session(id: "agents")
+    func hook(_ raw: [String: Any]) { s.trackAgents(Inbound(raw: raw), now: Date()) }
+    hook(["hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "t1",
+          "tool_input": ["subagent_type": "Explore", "description": "Find the hook code"]])
+    hook(["hook_event_name": "PreToolUse", "tool_name": "Agent", "tool_use_id": "t2",
+          "tool_input": ["description": "Long check", "run_in_background": true]])
+    check(s.agents.map(\.type) == ["Explore", "general-purpose"] && s.agents[0].task == "Find the hook code", "agents: two calls")
+    hook(["hook_event_name": "SubagentStart", "agent_id": "a1", "agent_type": "Explore"])
+    hook(["hook_event_name": "PreToolUse", "agent_id": "a1", "agent_type": "Explore", "tool_name": "Read",
+          "tool_input": ["file_path": "/x/Session.swift"]])
+    check(s.agents[0].agentId == "a1" && s.agents[0].doing == "Read · Session.swift", "agents: what one is doing")
+    hook(["hook_event_name": "PreToolUse", "agent_id": "a2", "agent_type": "general-purpose", "tool_name": "Bash",
+          "tool_input": ["command": "make test\nmake install"]])
+    check(s.agents[1].agentId == "a2" && s.agents[1].doing == "Bash · make test", "agents: the other one, by its hooks")
+    hook(["hook_event_name": "PostToolUse", "tool_name": "Agent", "tool_use_id": "t2",
+          "tool_response": ["status": "async_launched", "agentId": "a2"]])
+    check(s.agents.count == 2, "agents: a background one stays after its call returns")
+    hook(["hook_event_name": "PostToolUse", "tool_name": "Agent", "tool_use_id": "t1"])
+    check(s.agents.map(\.agentId) == ["a2"], "agents: a foreground one ends with its call")
+    hook(["hook_event_name": "Stop"])
+    check(s.runningAgents == 1, "agents: Stop keeps the background one")
+    hook(["hook_event_name": "SubagentStop", "agent_id": "a2", "agent_type": "general-purpose"])
+    check(s.runningAgents == 0, "agents: SubagentStop ends it")
+    check(Session.launchedId("Async agent launched successfully. agentId: abc123 (use it)") == "abc123", "agents: id from the launch text")
 }
 
 // MARK: Config

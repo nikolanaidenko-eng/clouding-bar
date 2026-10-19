@@ -192,7 +192,7 @@ final class WidgetController: NSObject {
     private func set(_ mode: WidgetMode) {
         guard state.mode != mode else { return }
         if mode != .pill { state.pillTyping = false }
-        if mode != .panel { model.pickingModel = false }
+        if mode != .panel { model.pickingModel = false; model.showingAgents = false }
         withAnimation(.cb(mode == .panel ? 0.28 : 0.22)) { state.mode = mode }
         updateKeyAllowance()
     }

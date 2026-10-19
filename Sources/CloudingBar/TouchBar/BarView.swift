@@ -10,6 +10,8 @@ struct BarModel: Equatable {
         case typing(text: String)
         /// The model and effort picker, opened from the model button.
         case models
+        /// The subagents at work, opened from the subagents button.
+        case agents
     }
 
     var mode: Mode = .normal
@@ -28,6 +30,8 @@ struct BarModel: Equatable {
     /// For the picker: the model's alias ("opus[1m]") and the effort.
     var modelAlias: String?
     var effort: String?
+    /// Subagents at work: "Explore · Find the hook code".
+    var agents: [String] = []
 }
 
 enum BarAction {
@@ -40,7 +44,11 @@ enum BarAction {
     /// Normal mode's own mic and screenshot buttons.
     case dictate, screenshot
     /// The model button opens the picker; a pick types /model or /effort.
-    case models, pickModel(String), pickEffort(String), closeModels
+    case models, pickModel(String), pickEffort(String)
+    /// The subagents button shows who's working.
+    case agents
+    /// Done: back from the picker or the subagents.
+    case closePanel
 }
 
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
@@ -51,6 +59,7 @@ enum BarAction {
 ///   typing      [character] · ═ · Other [answer________] · Send · 🎤
 ///   context     [character] · Session ─── · Context ── (red) · Compact · Later
 ///   models      [character] · Model  Opus 1M · Opus · … · Effort  low · … · Done
+///   agents      [character] · Subagents  Explore · Find the hook code · … · Done
 ///
 /// [character] is a button (where esc used to be) that opens the widget.
 ///
@@ -125,8 +134,9 @@ final class BarView: NSView {
         let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
             + "|" + m.shows.sorted().joined(separator: ",")
         switch m.mode {
-        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")"
+        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)"
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
+        case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
         case .contextWarning: return "context"
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)"
         case let .question(text, options, multi, picked):
@@ -158,6 +168,13 @@ final class BarView: NSView {
             if shows.contains("model"), let label = model.modelLabel {
                 let b = BarButton(label, fontSize: 12) { [weak self] in self?.onAction?(.models) }
                 add(b, .shrinkable(min(170, b.fittingWidth(padding: 14))))
+            }
+            if shows.contains("agents") {
+                let n = model.agents.count
+                let b = BarButton(n == 0 ? "No agents" : "\(n) agent\(n == 1 ? "" : "s")", fontSize: 12) {
+                    [weak self] in self?.onAction?(.agents)
+                }
+                add(b, .shrinkable(b.fittingWidth(padding: 14)))
             }
             if shows.contains("buttons") {
                 for (i, spec) in model.buttons.enumerated() {
@@ -255,7 +272,27 @@ final class BarView: NSView {
                 group.append(flip)
             }
             add(NSView(), .flex(weight: 1, min: 0))
-            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closeModels) }
+            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
+            add(done, .fixed(done.fittingWidth(padding: 14)))
+            group.append(done)
+            group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
+
+        case .agents:
+            var group: [NSView] = []
+            let word = sectionLabel("Subagents")
+            add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
+            if model.agents.isEmpty {
+                let none = sectionLabel("none working right now")
+                none.alignment = .left
+                add(none, .fixed(ceil(none.intrinsicContentSize.width) + 4))
+            }
+            for label in model.agents {
+                let b = BarButton(label, fontSize: 12)
+                add(b, .shrinkable(min(260, b.fittingWidth(padding: 14))))
+                group.append(b)
+            }
+            add(NSView(), .flex(weight: 1, min: 0))
+            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
             add(done, .fixed(done.fittingWidth(padding: 14)))
             group.append(done)
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }

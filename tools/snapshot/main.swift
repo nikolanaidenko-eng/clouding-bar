@@ -43,6 +43,8 @@ add("normal-narrow-controlstrip", width: 685) { _ in }
 add("normal-model") { $0.shows = ["session", "reset", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 add("models") { $0.mode = .models; $0.modelAlias = "opus[1m]"; $0.effort = "xhigh" }
 add("models-narrow", width: 685) { $0.mode = .models; $0.modelAlias = "sonnet"; $0.effort = "high" }
+add("agents") { $0.mode = .agents; $0.agents = ["Explore · Find the hook code", "general-purpose · Check transcripts", "Plan · Design the picker"] }
+add("normal-agents") { $0.shows = ["session", "context", "model", "agents", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh"; $0.agents = ["a", "b"] }
 add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 
 var images: [CGImage] = []
@@ -239,6 +241,18 @@ widget("w-panel-model", .panel, size: NSSize(width: 720, height: 300)) {
     $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
     $0.pickingModel = true
 }
+widget("w-panel-agents", .panel, size: NSSize(width: 720, height: 360)) {
+    $0.config.metrics = ["model", "agents"]
+    $0.config.taskQueue = true
+    $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"; $0.agents = 3
+    $0.agentRows = [
+        .init(id: "1", type: "Explore", task: "Find where hooks are installed", doing: "Read · install.sh", elapsed: "40 s", background: false),
+        .init(id: "2", type: "general-purpose", task: "Check the transcripts for /model", doing: "Bash · grep -rl \"Set model to\" ~/.claude/projects",
+              elapsed: "2 min", background: true),
+        .init(id: "3", type: "Plan", task: "Design the subagents list", doing: nil, elapsed: "3 s", background: false),
+    ]
+    $0.showingAgents = true
+}
 widget("w-panel-files-insert", .panel, size: NSSize(width: 720, height: 260)) {
     $0.attachments = ["/Users/me/Desktop/Снимок экрана 2026-10-19.png", "/Users/me/DiaRoute/docs/offline-routes.pdf"]
     $0.chatInFront = true
@@ -276,8 +290,8 @@ do { // writing in the pill with files attached
 do { // the Touch Bar tab with everything on, and the model known
     let m = sampleModel()
     m.touchBarPresent = true
-    m.config.touchBarShows = ["session", "reset", "context", "model", "buttons", "shot", "mic"]
-    m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"
+    m.config.touchBarShows = ["session", "reset", "context", "model", "agents", "buttons", "shot", "mic"]
+    m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"; m.agents = 2
     let host = NSHostingView(rootView: SettingsView(model: m, tab: "touchbar"))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-touchbar-all")
 }

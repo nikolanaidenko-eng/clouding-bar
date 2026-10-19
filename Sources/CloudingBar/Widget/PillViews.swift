@@ -673,11 +673,14 @@ struct PillBoard: View {
             .allowsHitTesting(false)
     }
 
-    /// On the pill the model opens the panel with the model picker.
-    private func opensPicker(_ metric: Metric) -> Metric {
+    /// On the pill the model and the subagents open the panel, with the
+    /// model picker or the list of subagents.
+    private func opensPanel(_ metric: Metric) -> Metric {
         var m = metric
+        let agents = metric.id == "agents"
         m.action = { [weak model, weak state] in
-            model?.pickingModel = true
+            model?.pickingModel = !agents
+            model?.showingAgents = agents
             state?.openPanel?()
         }
         return m
@@ -740,7 +743,8 @@ struct PillBoard: View {
                 .opensPanel(state).transition(.opacity)
         case let .metric(id):
             if let m = Metric.list(model).first(where: { $0.id == id }) {
-                MetricChip(metric: id == "model" ? opensPicker(m) : m, plain: true).hoverReport(state).transition(.opacity)
+                MetricChip(metric: id == "model" || id == "agents" ? opensPanel(m) : m, plain: true)
+                    .hoverReport(state).transition(.opacity)
             }
         case let .button(i):
             if model.buttons.indices.contains(i) {

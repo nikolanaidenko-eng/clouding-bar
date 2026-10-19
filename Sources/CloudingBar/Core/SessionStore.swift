@@ -53,13 +53,11 @@ final class SessionStore {
         if let event = m.event {
             session.lastEvent = now
             // Subagents: the Agent (formerly Task) tool runs one.
-            if m.toolName == "Agent" || m.toolName == "Task" {
-                if event == "PreToolUse" { session.runningAgents += 1 }
-                if event == "PostToolUse" || event == "PostToolUseFailure" {
-                    session.runningAgents = max(0, session.runningAgents - 1)
-                }
+            let agentsBefore = session.agents.map(\.type)
+            session.trackAgents(m, now: now)
+            if session.agents.map(\.type) != agentsBefore {
+                DebugLog.note("subagents in \(session.projectName ?? id): \(session.agents.map(\.type)) (after \(event))")
             }
-            if event == "Stop" || event == "SessionStart" { session.runningAgents = 0 }
             switch event {
             case "SessionStart", "Stop":
                 session.activity = .sleep
@@ -189,7 +187,7 @@ final class SessionStore {
                 s.transcriptChanged = u.modified
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
-                    s.runningAgents = 0
+                    s.agents.removeAll { !$0.background }
                 }
             }
             self.scheduleSave()

@@ -45,8 +45,9 @@ final class Session {
     /// Lines added and removed by Claude's edits in this session.
     var linesAdded = 0
     var linesRemoved = 0
-    /// Subagents running right now.
-    var runningAgents = 0
+    /// Subagents running right now (`trackAgents`).
+    var agents: [RunningAgent] = []
+    var runningAgents: Int { agents.count }
 
     /// "Opus 5.5 1M", from "claude-opus-5-5[1m]".
     var modelName: String? {
@@ -196,5 +197,108 @@ final class Account {
         guard let r = resetsAt else { return nil }
         let seconds = max(0, Int(r.timeIntervalSinceNow))
         return String(format: "%d:%02d", seconds / 3600, (seconds % 3600) / 60)
+    }
+}
+
+/// A subagent at work: what it was asked (the main thread's Agent call)
+/// and what it's doing now (the hooks it fires itself).
+struct RunningAgent: Equatable {
+    /// The Agent tool call that started it, if it was seen.
+    var toolUseId: String?
+    /// Its own id, from SubagentStart or its first hook.
+    var agentId: String?
+    /// "Explore", "general-purpose", …
+    var type: String
+    /// The call's short description ("Find the hook code").
+    var task: String?
+    /// Runs on after the call returns, until SubagentStop.
+    var background = false
+    var started: Date
+    /// Its latest tool: "Read · Session.swift".
+    var doing: String?
+}
+
+extension Session {
+    /// Keeps `agents` up to date from one hook event:
+    ///   Agent call (main thread)   PreToolUse adds it; PostToolUse removes it,
+    ///                              unless it runs in the background
+    ///   SubagentStart / its hooks  give it its id and what it's doing
+    ///   SubagentStop               removes it
+    ///   Stop                       ends what the turn started in the foreground
+    func trackAgents(_ m: Inbound, now: Date) {
+        let agentTool = m.toolName == "Agent" || m.toolName == "Task"
+        let event = m.event ?? ""
+        if agentTool && m.agentId == nil && event == "PreToolUse" {
+            let input = m.toolInput
+            agents.append(RunningAgent(toolUseId: m.toolUseId,
+                                       type: input["subagent_type"] as? String ?? "general-purpose",
+                                       task: input["description"] as? String,
+                                       background: input["run_in_background"] as? Bool ?? false,
+                                       started: now))
+        } else if agentTool && m.agentId == nil && (event == "PostToolUse" || event == "PostToolUseFailure") {
+            if let i = agents.firstIndex(where: { $0.toolUseId != nil && $0.toolUseId == m.toolUseId }) {
+                if agents[i].background && event == "PostToolUse" {
+                    // Launched: it works on until SubagentStop.
+                    if agents[i].agentId == nil { agents[i].agentId = Self.launchedId(m.toolResponse) }
+                } else {
+                    agents.remove(at: i)
+                }
+            } else if let i = agents.firstIndex(where: { !$0.background }) {
+                agents.remove(at: i) // no id to go by: the oldest in the foreground
+            }
+        } else if event == "SubagentStart", let id = m.agentId {
+            attach(id, type: m.agentType, now: now)
+        } else if event == "SubagentStop", let id = m.agentId {
+            agents.removeAll { $0.agentId == id }
+        } else if event == "Stop" {
+            agents.removeAll { !$0.background }
+        } else if event == "SessionStart" {
+            agents.removeAll()
+        } else if event == "PreToolUse", let id = m.agentId, let tool = m.toolName {
+            let i = attach(id, type: m.agentType, now: now)
+            agents[i].doing = Self.summary(tool, m.toolInput)
+        }
+        // Background ones whose end never came (SubagentStop not hooked up).
+        agents.removeAll { $0.background && now.timeIntervalSince($0.started) > 3 * 3600 }
+    }
+
+    /// The agent with this id, else the oldest unclaimed call of its type,
+    /// else a new one (started before we were watching).
+    @discardableResult
+    private func attach(_ id: String, type: String?, now: Date) -> Int {
+        if let i = agents.firstIndex(where: { $0.agentId == id }) { return i }
+        if let i = agents.firstIndex(where: { $0.agentId == nil && (type == nil || $0.type == type) }) {
+            agents[i].agentId = id
+            return i
+        }
+        agents.append(RunningAgent(agentId: id, type: type ?? "agent", started: now))
+        return agents.count - 1
+    }
+
+    /// A background agent's id from the Agent call's result ("agentId: …").
+    static func launchedId(_ response: Any?) -> String? {
+        if let d = response as? [String: Any], let id = (d["agentId"] ?? d["agent_id"]) as? String { return id }
+        let text = String(describing: response ?? "")
+        guard let re = try? NSRegularExpression(pattern: "agent_?[iI]d[\"':= ]+([A-Za-z0-9_-]{4,})"),
+              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[r])
+    }
+
+    /// A tool call in a few words: "Read · Session.swift", "Bash · make test".
+    static func summary(_ tool: String, _ input: [String: Any]) -> String {
+        func line(_ s: String) -> String {
+            String(s.split(separator: "\n", omittingEmptySubsequences: true).first ?? "").prefix(48).description
+        }
+        var detail: String?
+        if let path = (input["file_path"] ?? input["notebook_path"]) as? String {
+            detail = (path as NSString).lastPathComponent
+        } else if let url = input["url"] as? String {
+            detail = URL(string: url)?.host
+        } else if let text = ["pattern", "command", "query", "description"].lazy.compactMap({ input[$0] as? String }).first {
+            detail = line(text)
+        }
+        guard let detail, !detail.isEmpty else { return tool }
+        return tool + " · " + detail
     }
 }

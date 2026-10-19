@@ -197,11 +197,13 @@ struct MeterBar: View {
 struct PulseDot: View {
     var size: CGFloat = 8
     var still = false
+    /// Orange: needs you. The subagents' list uses the working colour.
+    var color = Color.cbWarning
     @State private var dim = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Circle().fill(Color.cbWarning)
+        Circle().fill(color)
             .frame(width: size, height: size)
             .opacity(dim ? 0.35 : 1)
             .onAppear {
@@ -452,7 +454,9 @@ struct Metric {
         var items: [Metric] = []
         if on.contains("model"), let name = model.modelName {
             items.append(Metric(id: "model", icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
-                                action: { [weak model] in withAnimation(.cb(0.24)) { model?.pickingModel.toggle() } },
+                                action: { [weak model] in
+                                    withAnimation(.cb(0.24)) { model?.pickingModel.toggle(); model?.showingAgents = false }
+                                },
                                 help: "Switch the model or effort"))
         }
         if on.contains("lines") {
@@ -462,7 +466,11 @@ struct Metric {
             items.append(Metric(id: "git", icon: "arrow.triangle.branch", text: b))
         }
         if on.contains("agents") {
-            items.append(Metric(id: "agents", icon: "person.2", text: "\(model.agents) subagent\(model.agents == 1 ? "" : "s")"))
+            items.append(Metric(id: "agents", icon: "person.2", text: "\(model.agents) subagent\(model.agents == 1 ? "" : "s")",
+                                action: { [weak model] in
+                                    withAnimation(.cb(0.24)) { model?.showingAgents.toggle(); model?.pickingModel = false }
+                                },
+                                help: "Which subagents are working"))
         }
         if on.contains("cost"), model.isAPI, let c = model.cost {
             items.append(Metric(id: "cost", icon: "dollarsign.circle", text: String(format: "$%.2f", c)))
@@ -578,6 +586,7 @@ struct MainPanel: View {
             .padding(.trailing, 4)
             toolRows(inner: inner)
             if model.pickingModel { ModelPicker(model: model).padding(.trailing, 4) }
+            if model.showingAgents { AgentsList(model: model).padding(.trailing, 4) }
             messageBox(inner: inner)
                 .padding(.trailing, 4)
         }
@@ -839,6 +848,65 @@ struct ModelPicker: View {
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.06)))
             .animation(.easeOut(duration: 0.15), value: selected)
         }
+    }
+}
+
+/// The subagents at work in this session (owner's request, 19.10): what
+/// each was asked, what it's doing right now, and for how long.
+struct AgentsList: View {
+    @ObservedObject var model: AppModel
+    private static let shown = 6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if model.agentRows.isEmpty {
+                Text("No subagents are working right now")
+                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    .padding(.vertical, 4)
+            }
+            ForEach(Array(model.agentRows.prefix(Self.shown).enumerated()), id: \.element.id) { i, agent in
+                row(agent)
+                    .overlay(i > 0 ? Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5) : nil, alignment: .top)
+                    .transition(.opacity.combined(with: .offset(y: -3)))
+            }
+            if model.agentRows.count > Self.shown {
+                Text("+\(model.agentRows.count - Self.shown) more").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.25)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .animation(.cb(0.22), value: model.agentRows.map(\.id))
+        .transition(.opacity.combined(with: .offset(y: -4)))
+    }
+
+    private func row(_ agent: AppModel.AgentRow) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            PulseDot(size: 6, still: model.config.doNotDisturb, color: .cbFill)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(agent.type).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    if agent.background {
+                        Text("background").font(.system(size: 9)).foregroundColor(.cbSecondary)
+                            .padding(.horizontal, 5).frame(height: 14)
+                            .background(Capsule().fill(Color.white.opacity(0.08)))
+                    }
+                }
+                Text(agent.task ?? "—").font(.system(size: 11)).foregroundColor(.cbSecondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(agent.doing ?? "starting…").font(.system(size: 11).monospacedDigit())
+                    .foregroundColor(agent.doing == nil ? .cbMuted : .cbText)
+                    .lineLimit(1).truncationMode(.middle)
+                Text(agent.elapsed).font(.system(size: 10).monospacedDigit()).foregroundColor(.cbSecondary)
+            }
+            .frame(maxWidth: 200, alignment: .trailing)
+        }
+        .padding(.vertical, 5)
+        .accessibilityElement(children: .combine)
     }
 }
 

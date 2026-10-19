@@ -22,6 +22,11 @@ struct Inbound {
     var notificationType: String? { raw["notification_type"] as? String }
     var toolName: String? { raw["tool_name"] as? String }
     var toolInput: [String: Any] { raw["tool_input"] as? [String: Any] ?? [:] }
+    var toolResponse: Any? { raw["tool_response"] }
+    var toolUseId: String? { raw["tool_use_id"] as? String }
+    /// Set when the hook fired inside a subagent (and on SubagentStart/Stop).
+    var agentId: String? { raw["agent_id"] as? String }
+    var agentType: String? { raw["agent_type"] as? String }
     var permissionSuggestions: [Any]? { raw["permission_suggestions"] as? [Any] }
 
     /// Added by cloudingbar-hook.

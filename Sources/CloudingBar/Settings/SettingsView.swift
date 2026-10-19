@@ -433,13 +433,15 @@ struct TouchBarTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("On the bar").font(.system(size: 13))
                     ChipSet(model: model, key: "touchBarShows",
-                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context"),
-                                      ("model", "Model"), ("buttons", "Buttons"), ("shot", "Screenshot"), ("mic", "Mic")])
+                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context")])
+                    ChipSet(model: model, key: "touchBarShows",
+                            options: [("model", "Model"), ("agents", "Subagents"), ("buttons", "Buttons"),
+                                      ("shot", "Screenshot"), ("mic", "Mic")])
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Claude's questions and permission requests always show. Tap the model on the bar to switch it; the buttons are set up in Buttons.")
+            Text("Claude's questions and permission requests always show. Tap the model on the bar to switch it, the subagents to see who's working; the buttons are set up in Buttons.")
                 .font(.system(size: 11)).foregroundColor(.cbMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
@@ -701,9 +703,13 @@ struct TouchBarPreview: View {
         let session = shows.contains("session"), context = shows.contains("context")
         let buttonWidths = buttons.map { min(84, Self.text($0, 11) + 16) }
         let modelWidth = modelText.map { min(130, Self.text($0, 10) + 16) } ?? 0
+        let agentsText = shows.contains("agents")
+            ? (model.agents == 0 ? "No agents" : "\(model.agents) agent\(model.agents == 1 ? "" : "s")") : nil
+        let agentsWidth = agentsText.map { Self.text($0, 10) + 16 } ?? 0
         let icons = [shows.contains("shot") ? "camera.viewfinder" : nil, shows.contains("mic") ? "mic" : nil].compactMap { $0 }
-        let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + icons.count + (session || context ? 1 : 0)
-        let used = Self.pad * 2 + Self.character + buttonWidths.reduce(0, +) + modelWidth
+        let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + (agentsText == nil ? 0 : 1) + icons.count
+            + (session || context ? 1 : 0)
+        let used = Self.pad * 2 + Self.character + buttonWidths.reduce(0, +) + modelWidth + agentsWidth
             + CGFloat(icons.count) * Self.icon + Self.gap * CGFloat(items - 1)
         let room = max(0, width - used)
         return HStack(spacing: Self.gap) {
@@ -714,6 +720,9 @@ struct TouchBarPreview: View {
             }
             if let modelText {
                 key { Text(modelText).font(.system(size: 10)).lineLimit(1) }.frame(width: modelWidth)
+            }
+            if let agentsText {
+                key { Text(agentsText).font(.system(size: 10)).lineLimit(1) }.frame(width: agentsWidth)
             }
             ForEach(Array(buttons.enumerated()), id: \.offset) { i, label in
                 key(fill: highlightLast && i == buttons.count - 1 ? Color(hex: 0x0A3D78) : Color(hex: 0x2C2C2E)) {

@@ -100,7 +100,8 @@ hooks = settings.setdefault("hooks", {})
 # gives up on its own well before that (docs/protocol.md).
 timeouts = {"PermissionRequest": 960, "PreToolUse": 330}
 events = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "Notification",
-          "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"]
+          "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest",
+          "SubagentStart", "SubagentStop"]
 
 for event in events:
     entries = hooks.setdefault(event, [])

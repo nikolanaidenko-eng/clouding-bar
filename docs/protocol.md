@@ -32,7 +32,7 @@ adds two fields:
 
 Registered events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`,
 `Notification`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
-`PermissionRequest`.
+`PermissionRequest`, `SubagentStart`, `SubagentStop`.
 
 What each event does to the character:
 
@@ -42,6 +42,24 @@ What each event does to the character:
 | `Stop`, `SessionStart`, `[Request interrupted by user]` in the transcript | sleep |
 | a request on the bar; `Notification` of type `permission_prompt` / `elicitation_dialog` / `agent_needs_input` | wait |
 | `SessionEnd` | session removed |
+
+Subagents (the panel's list, the bar's "agents" button), `Session.trackAgents`:
+
+| event | what happens |
+|---|---|
+| `PreToolUse` of `Agent` (no `agent_id`) | a subagent starts: `subagent_type`, `description`, `run_in_background` |
+| `PostToolUse(Failure)` of `Agent`, same `tool_use_id` | it's done, unless it runs in the background |
+| `SubagentStart`, or any hook with `agent_id` | gives it its id; a `PreToolUse` there is what it's doing now |
+| `SubagentStop` | that `agent_id` is done |
+| `Stop` | foreground subagents are done |
+
+## Model and effort
+
+The widget and the bar type `/model <alias>` or `/effort <level>` into the chat
+in front. Claude Code notes the switch in the transcript as
+`<local-command-stdout>Set model to `Opus 5.5 (1M context)`…` (older: the id)
+and `Set effort level to high: …`; the app reads those lines, so the new
+model shows at once. Hooks carry the turn's effort as `CLAUDE_EFFORT`.
 
 ### Status
 

@@ -25,13 +25,36 @@ enum ModelChoice {
         return model + (effort.map { " · \($0)" } ?? "")
     }
 
-    /// From a transcript's command output: the model "/model" set
-    /// ("Set model to `claude-opus-5-5[1m]`").
+    /// From a transcript's command output: the model "/model" set, as an
+    /// id. Claude Code prints the id ("Set model to `claude-opus-5-5[1m]`")
+    /// or, lately, the name ("Set model to `Opus 5.5 (1M context)` for this
+    /// session only").
     static func modelSet(in text: String) -> String? {
         let clean = text.replacingOccurrences(of: "\u{1B}\\[[0-9;]*m", with: "", options: .regularExpression)
-        guard let r = clean.range(of: "Set model to `?([A-Za-z0-9._\\[\\]-]+)", options: .regularExpression) else { return nil }
-        let id = clean[r].replacingOccurrences(of: "Set model to ", with: "").replacingOccurrences(of: "`", with: "")
-        return id.isEmpty ? nil : id
+        guard let start = clean.range(of: "Set model to ") else { return nil }
+        var rest = clean[start.upperBound...]
+        let name: Substring
+        if rest.hasPrefix("`"), let close = rest.dropFirst().firstIndex(of: "`") {
+            name = rest[rest.index(after: rest.startIndex)..<close]
+        } else {
+            rest = rest.prefix { !$0.isWhitespace && $0 != "<" }
+            name = rest
+        }
+        return id(fromName: String(name))
+    }
+
+    /// "claude-opus-5-5[1m]" stays; "Opus 5.5 (1M context)" → "claude-opus-5-5[1m]".
+    static func id(fromName name: String) -> String? {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        if n.lowercased().hasPrefix("claude-") { return n }
+        let lower = n.lowercased()
+        guard let family = ["opus", "sonnet", "haiku", "fable"].first(where: { lower.contains($0) }) else { return nil }
+        var id = "claude-" + family
+        if let r = lower.range(of: family + " *[0-9]+(\\.[0-9]+)?", options: .regularExpression) {
+            let version = lower[r].replacingOccurrences(of: family, with: "").trimmingCharacters(in: .whitespaces)
+            id += "-" + version.replacingOccurrences(of: ".", with: "-")
+        }
+        return id + (lower.contains("1m") ? "[1m]" : "")
     }
 
     /// From a transcript's command output: the level "/effort" set ("Set

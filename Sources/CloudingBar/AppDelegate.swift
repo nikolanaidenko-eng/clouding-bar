@@ -50,8 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var queueSentAt: Date?
     /// Files dropped on the widget, by session id, waiting for its chat.
     private var attachments: [String: [String]] = [:]
-    /// The Touch Bar shows the model picker; it closes by itself when left alone.
-    private var barPicksModel = false
+    /// The Touch Bar shows the model picker or the subagents; either closes
+    /// by itself when left alone.
+    private enum BarPanel { case models, agents }
+    private var barPanel: BarPanel?
     private var barPickerClose: DispatchWorkItem?
     /// Picked on the bar, until Claude confirms it.
     private var barPendingModel: String?
@@ -299,6 +301,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
         bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
         bar.effort = barPendingEffort ?? active?.effort
+        bar.agents = (active?.agents ?? []).map { a in
+            ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
+        }
 
         if let request = currentRequest(active: active) {
             bar.activity = .wait
@@ -325,10 +330,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
-        // The model picker, opened from the bar's model button; a request
-        // takes the bar over and closes it.
-        if barPicksModel {
-            if currentRequest(active: active) == nil && active != nil { bar.mode = .models } else { closeBarPicker() }
+        // The model picker or the subagents, opened from their buttons; a
+        // request takes the bar over and closes them.
+        if let panel = barPanel {
+            if currentRequest(active: active) == nil && active != nil {
+                bar.mode = panel == .models ? .models : .agents
+            } else {
+                closeBarPicker()
+            }
         }
         touchBar.show(bar)
     }
@@ -441,8 +450,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case .models:
             DebugLog.tap("model picker (bar)")
-            barPicksModel = true
+            barPanel = .models
             closeBarPickerLater()
+            setNeedsRefresh()
+
+        case .agents:
+            DebugLog.tap("subagents (bar)")
+            barPanel = .agents
+            closeBarPickerLater(after: 20)
             setNeedsRefresh()
 
         case let .pickModel(alias):
@@ -455,7 +470,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             switchModel("/effort " + level)
             closeBarPickerLater()
 
-        case .closeModels:
+        case .closePanel:
             closeBarPicker()
 
         case .later:
@@ -707,6 +722,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.linesRemoved, active?.linesRemoved ?? 0)
         set(\.branch, config.metrics.contains("git") ? active?.cwd.flatMap(branch(at:)) : nil)
         set(\.agents, active?.runningAgents ?? 0)
+        set(\.agentRows, (active?.agents ?? []).enumerated().map { i, a in
+            AppModel.AgentRow(id: a.toolUseId ?? a.agentId ?? "\(i)", type: a.type, task: a.task, doing: a.doing,
+                              elapsed: AppModel.elapsed(since: a.started), background: a.background)
+        })
         set(\.isAPI, store.account.sessionPercent == nil && active?.costUSD != nil)
         set(\.queue, queue)
         set(\.attachments, active.flatMap { attachments[$0.id] } ?? [])
@@ -1026,18 +1045,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setNeedsRefresh()
     }
 
-    /// The bar's picker closes 12 s after the last tap.
-    private func closeBarPickerLater() {
+    /// The bar's picker closes 12 s after the last tap (the subagents, 20 s).
+    private func closeBarPickerLater(after seconds: Double = 12) {
         barPickerClose?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.closeBarPicker() }
         barPickerClose = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
     private func closeBarPicker() {
         barPickerClose?.cancel()
-        guard barPicksModel || barPendingModel != nil || barPendingEffort != nil else { return }
-        barPicksModel = false
+        guard barPanel != nil || barPendingModel != nil || barPendingEffort != nil else { return }
+        barPanel = nil
         barPendingModel = nil
         barPendingEffort = nil
         setNeedsRefresh()

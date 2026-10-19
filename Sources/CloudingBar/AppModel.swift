@@ -68,6 +68,23 @@ final class AppModel: ObservableObject {
     /// Paying per token (no subscription limit seen): cost makes sense.
     @Published var isAPI = false
 
+    /// A running subagent, for the panel's list and the bar.
+    struct AgentRow: Identifiable, Equatable {
+        let id: String
+        /// "Explore", "general-purpose"
+        let type: String
+        /// What it was asked: "Find the hook code".
+        let task: String?
+        /// Its latest tool: "Read · Session.swift".
+        let doing: String?
+        /// How long it's been running: "40 s", "3 min".
+        let elapsed: String
+        let background: Bool
+    }
+    @Published var agentRows: [AgentRow] = []
+    /// The panel shows the list of running subagents.
+    @Published var showingAgents = false
+
     struct QueueItem: Identifiable, Equatable, Codable {
         var id = UUID()
         let text: String
@@ -164,6 +181,14 @@ final class AppModel: ObservableObject {
         if minutes < 60 { return "\(minutes) min ago" }
         if minutes < 48 * 60 { return "\(minutes / 60) h ago" }
         return "\(minutes / 1440) d ago"
+    }
+
+    /// "40 s", "3 min", "1 h 5 min".
+    static func elapsed(since date: Date, now: Date = Date()) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
+        if seconds < 60 { return "\(seconds) s" }
+        if seconds < 3600 { return "\(seconds / 60) min" }
+        return "\(seconds / 3600) h \(seconds % 3600 / 60) min"
     }
 
     static func duration(since date: Date, now: Date = Date()) -> String {
