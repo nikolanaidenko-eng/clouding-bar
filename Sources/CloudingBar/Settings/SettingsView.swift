@@ -1009,7 +1009,7 @@ struct CoworkTab: View {
 
     private let notes = [
         "off": "Cowork chats are not tracked.",
-        "thresholds": "Saves at 50, 80, 90% and when a task is done. Almost free.",
+        "thresholds": "Saves after a task's first reply, at 50, 80, 90% and when a longer turn ends. Almost free.",
         "every": "After every reply: about +5–15% usage, +1–3 s per reply.",
     ]
 

@@ -33,8 +33,9 @@ enum Cowork {
                       time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date())
     }
 
-    /// Folders connected to Cowork, from Claude Desktop's own settings
-    /// (its "spaces"), so nobody has to pick them by hand.
+    /// Folders connected to Cowork, from Claude Desktop's own records — its
+    /// "spaces" and, for each task, the folders given to it — so nobody has
+    /// to pick them by hand.
     static func connectedFolders() -> [String] {
         let root = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
@@ -43,13 +44,19 @@ enum Cowork {
                                                     options: [.skipsHiddenFiles])
         while let url = walker?.nextObject() as? URL {
             if walker!.level > 3 { walker!.skipDescendants(); continue }
-            guard url.lastPathComponent == "spaces.json",
+            let name = url.lastPathComponent
+            guard name == "spaces.json" || name == "remote-session-spaces.json",
                   let data = try? Data(contentsOf: url),
-                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let spaces = o["spaces"] as? [[String: Any]] else { continue }
-            for space in spaces {
+                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+            // A space: {"folders": [{"path": …}]}; a task: {"folders": ["…"]}.
+            for space in o["spaces"] as? [[String: Any]] ?? [] {
                 for f in space["folders"] as? [[String: Any]] ?? [] {
                     if let path = f["path"] as? String, FileManager.default.fileExists(atPath: path) { found.insert(path) }
+                }
+            }
+            for task in o["entries"] as? [[String: Any]] ?? [] {
+                for path in task["folders"] as? [String] ?? [] where FileManager.default.fileExists(atPath: path) {
+                    found.insert(path)
                 }
             }
         }
@@ -111,7 +118,7 @@ enum Cowork {
         the task (with a `.gitignore`, so it never gets committed). Clouding Bar on your Mac finds
         the folders you connect in Claude Desktop and reads it from there.
 
-        Mode: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "at 50, 80 and 90% context and when a turn of a minute or more ends")
+        Mode: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
 
         No network, no message content: only the session id, project name, token count and model.
         To change the mode, make the plugin again in Clouding Bar's settings and upload it again.
@@ -176,7 +183,9 @@ enum Cowork {
     window = 1000000 if "[1m]" in (model or "") or tokens > 200000 else 200000
     pct = tokens * 100.0 / window
 
-    report = MODE == "every"
+    # Every reply, or: the first one (so a new task shows up at once), the
+    # thresholds, and the end of a longer turn.
+    report = MODE == "every" or not state.get("reported")
     last = state.get("last_threshold", 0)
     if pct < last - 20:
         last = 0  # compacted: start over
@@ -189,6 +198,8 @@ enum Cowork {
         report = True  # a longer task is done
     state["last_threshold"] = last
     state.pop("turn_start", None)
+    if report:
+        state["reported"] = True
     save()
     if not report:
         sys.exit(0)
