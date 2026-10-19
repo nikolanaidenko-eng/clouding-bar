@@ -159,4 +159,4 @@ The app reads the file every 2 s. It shows the line as a session
 | `queue.json` | the task queue |
 | `limit-history.jsonl` | the 5-hour limit over time, for Stats |
 | `stats-cache.json` | per-transcript hour totals, for Stats |
-| `shots/` | screenshots taken from the widget |
+| `shots/` | screenshots taken from the widget, and pictures dropped on it without a file (`drop-*.png`) |

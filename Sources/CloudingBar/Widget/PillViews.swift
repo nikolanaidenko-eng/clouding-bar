@@ -249,7 +249,10 @@ struct PillLayout {
         }
         if shows.contains("reset"), let r = model.resetShort { list.append((.reset, 12 + 4 + text(r), "reset")) }
         if shows.contains("cost"), let c = model.cost { list.append((.cost, text(String(format: "$%.2f", c)), "cost")) }
-        for m in Metric.list(model) { list.append((.metric(m.id), m.plainWidth, "metric:" + m.id)) }
+        // Cost shown as a number already: not again as a metric.
+        for m in Metric.list(model) where !(m.id == "cost" && shows.contains("cost")) {
+            list.append((.metric(m.id), m.plainWidth, "metric:" + m.id))
+        }
         if model.config.taskQueue {
             list.append((.chat, Self.chatWidth(model), "chat"))
         } else {
@@ -547,7 +550,12 @@ struct PillView: View {
 
     /// Edit mode: a thick outline all the way round. Hovering: a faint one.
     @ViewBuilder private var outline: some View {
-        if editing {
+        if state.dropHover {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.cbAction, lineWidth: 2.5)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        } else if editing {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.cbAction, lineWidth: 3)
                 .allowsHitTesting(false)
@@ -626,14 +634,12 @@ struct PillBoard: View {
         }
         return Group {
             if a.ids.isEmpty && !a.vertical {
-                MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                    .allowsHitTesting(false)
+                character
                     .frame(width: frame.width, height: frame.height)
             } else {
                 ZStack(alignment: .topLeading) {
-                    MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
+                    character
                         .offset(x: a.character.x, y: a.character.y)
-                        .allowsHitTesting(false)
                     ForEach(Array(a.dividers.enumerated()), id: \.offset) { _, d in
                         Rectangle().fill(Color.white.opacity(0.12))
                             .frame(width: d.width, height: d.height)
@@ -656,6 +662,15 @@ struct PillBoard: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .animation(.cb(0.2), value: a.ids)
         .animation(.cb(0.28), value: a.vertical)
+    }
+
+    /// Cloud, with the number of files waiting for Claude (or a "+" while
+    /// some are dragged over).
+    private var character: some View {
+        MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
+            .overlay(FileBadge(text: state.dropHover ? "+" : model.attachments.isEmpty ? nil : "\(model.attachments.count)")
+                .offset(x: 5, y: -3), alignment: .topTrailing)
+            .allowsHitTesting(false)
     }
 
     /// An upright meter: the bar as tall as the slot allows, the number and
@@ -817,7 +832,15 @@ struct PillTyping: View {
         HStack(spacing: 10) {
             MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
                 .allowsHitTesting(false)
-            TextField("Write to Claude", text: $state.pillDraft)
+            if !model.attachments.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "paperclip").font(.system(size: 11))
+                    Text("\(model.attachments.count)").font(.system(size: 12).monospacedDigit())
+                }
+                .foregroundColor(.cbSecondary)
+                .help(model.attachments.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))
+            }
+            TextField(model.attachments.isEmpty ? "Write to Claude" : "Add a message, or just send", text: $state.pillDraft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($focused)
@@ -825,7 +848,8 @@ struct PillTyping: View {
                 .onExitCommand { [weak state] in state?.endTyping?() }
                 .frame(maxWidth: .infinity)
             Button(action: send) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
-                .buttonStyle(IconButtonStyle(background: state.pillDraft.isEmpty ? Color.white.opacity(0.1) : .cbAction,
+                .buttonStyle(IconButtonStyle(background: state.pillDraft.isEmpty && model.attachments.isEmpty
+                                                ? Color.white.opacity(0.1) : .cbAction,
                                              foreground: .white, size: 28))
                 .accessibilityLabel("Send")
         }
@@ -838,9 +862,28 @@ struct PillTyping: View {
 
     private func send() {
         let text = state.pillDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty { model.addToQueue(text) }
+        if !text.isEmpty || !model.attachments.isEmpty { model.addToQueue(text) }
         state.pillDraft = ""
         state.endTyping?()
+    }
+}
+
+/// A small blue count on Cloud's shoulder: files waiting for Claude.
+struct FileBadge: View {
+    let text: String?
+
+    var body: some View {
+        if let text {
+            Text(text)
+                .font(.system(size: 9, weight: .bold).monospacedDigit())
+                .foregroundColor(.white)
+                .padding(.horizontal, 3)
+                .frame(minWidth: 14, minHeight: 14)
+                .background(Capsule().fill(Color.cbAction))
+                .overlay(Capsule().strokeBorder(Color.black.opacity(0.35), lineWidth: 1))
+                .transition(.scale.combined(with: .opacity))
+                .accessibilityLabel(text == "+" ? "Drop to attach" : "\(text) files attached")
+        }
     }
 }
 

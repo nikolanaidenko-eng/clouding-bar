@@ -1,10 +1,18 @@
 import SwiftUI
 
-/// The settings window from design/Settings.dc.html (560×560): General and
-/// Buttons. Cowork and Stats come with stage 3.
+/// The settings window (600×560), one tab per place things show up:
+/// General (the app, context, voice), Widget (the pill and the panel),
+/// Touch Bar, Buttons (and templates), Cowork, Stats. Cloud in the corner
+/// keeps you company: it watches the pointer, cheers at every change, and
+/// looks away while you type a key.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var tab: String
+    @StateObject private var mood = CloudMood()
+
+    static let tabs = [("general", "General"), ("widget", "Widget"), ("touchbar", "Touch Bar"),
+                       ("buttons", "Buttons"), ("cowork", "Cowork"), ("stats", "Stats")]
+    static let width: CGFloat = 600
 
     init(model: AppModel, tab: String = "general") {
         self.model = model
@@ -14,15 +22,22 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                MascotIcon(activity: .sleep, size: 26).frame(width: 26, height: 26)
+                LiveMascot(size: 32, mood: mood)
+                    .frame(width: 32, height: 32)
+                    .overlay(Color.clear.contentShape(Rectangle()).onTapGesture { mood.pokes += 1 })
+                    .help("Cloud")
                 Text("Clouding Bar").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 HStack(spacing: 0) {
-                    ForEach([("general", "General"), ("buttons", "Buttons"), ("cowork", "Cowork"), ("stats", "Stats")], id: \.0) { id, label in
-                        Button(label) { withAnimation(.easeOut(duration: 0.18)) { tab = id } }
+                    ForEach(Self.tabs, id: \.0) { id, label in
+                        Button(label) {
+                            guard tab != id else { return }
+                            withAnimation(.easeOut(duration: 0.18)) { tab = id }
+                            mood.hops += 1
+                        }
                             .buttonStyle(.plain)
                             .font(.system(size: 12))
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, 10)
                             .frame(height: 26)
                             .background(RoundedRectangle(cornerRadius: 6).fill(tab == id ? Color(hex: 0x636366) : .clear))
                             .accessibilityAddTraits(tab == id ? .isSelected : [])
@@ -32,15 +47,17 @@ struct SettingsView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
             }
             // Room on the left for the window's close button.
-            .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 14)
+            .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 11)
             .overlay(Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5), alignment: .bottom)
 
             ScrollView {
                 Group {
                     switch tab {
                     case "general": GeneralTab(model: model)
+                    case "widget": WidgetTab(model: model)
+                    case "touchbar": TouchBarTab(model: model)
                     case "buttons": ButtonsTab(model: model)
-                    case "cowork": CoworkTab(model: model)
+                    case "cowork": CoworkTab(model: model, mood: mood)
                     default: StatsTab()
                     }
                 }
@@ -49,9 +66,45 @@ struct SettingsView: View {
             }
         }
         .foregroundColor(.cbText)
-        .frame(width: 560, height: 560)
+        .frame(width: Self.width, height: 560)
         .background(Color(hex: 0x232325))
         .environment(\.colorScheme, .dark)
+        // Every change gets a cheer.
+        .onChange(of: model.config) { _ in mood.pokes += 1 }
+    }
+}
+
+/// What Cloud in the settings window is up to.
+final class CloudMood: ObservableObject {
+    /// A click on it or a change: a happy jump (five quick ones: a spin).
+    @Published var pokes = 0
+    /// Another tab: a little hop.
+    @Published var hops = 0
+    /// The key field is open: eyes shut, turned away.
+    @Published var shy = false
+}
+
+/// Cloud that watches the pointer, dozes off and wakes by itself.
+struct LiveMascot: NSViewRepresentable {
+    let size: CGFloat
+    @ObservedObject var mood: CloudMood
+
+    final class Coordinator { var pokes = 0; var hops = 0 }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> MascotView {
+        context.coordinator.pokes = mood.pokes
+        context.coordinator.hops = mood.hops
+        let view = MascotView(size: size)
+        view.lively = true
+        return view
+    }
+
+    func updateNSView(_ view: MascotView, context: Context) {
+        view.shy = mood.shy
+        let c = context.coordinator
+        if mood.pokes != c.pokes { c.pokes = mood.pokes; view.poke() }
+        if mood.hops != c.hops { c.hops = mood.hops; view.hop() }
     }
 }
 
@@ -65,6 +118,25 @@ struct SettingsGroup<Content: View>: View {
     }
 }
 
+/// A titled group: a small heading over the rounded box, and a note under it.
+struct SettingsSection<Content: View>: View {
+    let title: String
+    var note = ""
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.cbSecondary)
+                .padding(.leading, 12)
+            SettingsGroup { content }
+            if !note.isEmpty {
+                Text(note).font(.system(size: 11)).foregroundColor(.cbMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+            }
+        }
+    }
+}
+
 struct SettingsRow<Accessory: View>: View {
     let title: String
     var hint: String = ""
@@ -75,12 +147,16 @@ struct SettingsRow<Accessory: View>: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 13))
-                if !hint.isEmpty { Text(hint).font(.system(size: 11)).foregroundColor(.cbSecondary) }
+                if !hint.isEmpty {
+                    Text(hint).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             accessory
         }
         .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .frame(minHeight: 46)
         .overlay(divider ? Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5) : nil, alignment: .bottom)
     }
@@ -145,137 +221,95 @@ struct Chip: View {
     }
 }
 
-// MARK: - General
-
-struct GeneralTab: View {
+/// Chips that turn ids in one of the settings' lists on and off.
+struct ChipSet: View {
     @ObservedObject var model: AppModel
-    @State private var moreOpen = false
-
-    private func binding(_ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
-        Binding(get: { get(model.config) }, set: { model.setConfig(key, $0) })
-    }
+    /// The config key holding the list.
+    let key: String
+    let options: [(id: String, label: String)]
+    /// Also kept in step: the same ids in another list (cost is both a
+    /// number on the pill and a metric in the panel).
+    var mirror: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsGroup {
-                SettingsRow(title: "Show on Touch Bar",
-                            hint: model.touchBarPresent ? "Detected on this Mac" : "No Touch Bar found on this Mac") {
-                    CBSwitch(title: "Show on Touch Bar", on: Binding(
-                        get: { model.config.touchBar != "off" },
-                        set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
-                }
-                SettingsRow(title: "Floating widget", hint: "A pill at the top of the screen that opens on hover") {
-                    CBSwitch(title: "Floating widget", on: binding("widget") { $0.widget })
-                }
-                SettingsRow(title: "Open on hover", hint: "The full panel after 2 s on the pill; off: click it") {
-                    CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
-                }
-                SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
-                    CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
-                }
-                SettingsRow(title: "Widget position",
-                            hint: model.config.widgetPosition == nil ? "Top center, under the menu bar" : "Where you dragged it",
-                            divider: model.hasNotch) {
-                    Button("Reset") { model.resetWidgetPosition() }
-                        .disabled(model.config.widgetPosition == nil)
-                }
-                if model.hasNotch {
-                    SettingsRow(title: "At the notch", hint: "Hang the widget from the camera notch") {
-                        CBSwitch(title: "At the notch", on: binding("widgetAtNotch") { $0.widgetAtNotch })
-                    }
-                }
-                SettingsRow(title: "Open at login", divider: false) {
-                    CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
-                }
-            }
-
-            SettingsGroup {
-                HStack(spacing: 10) {
-                    Text("Always show in pill").font(.system(size: 13))
-                    Spacer()
-                    ForEach([("context", "Context"), ("reset", "Reset time"), ("cost", "API cost")], id: \.0) { id, label in
-                        Chip(label: label, on: model.config.pillShows.contains(id)) {
-                            var list = model.config.pillShows
-                            if let i = list.firstIndex(of: id) { list.remove(at: i) } else { list.append(id) }
-                            model.setConfig("pillShows", list)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 46)
-            }
-
-            SettingsGroup {
-                HStack(spacing: 8) {
-                    Text("On the Touch Bar").font(.system(size: 13))
-                    Spacer()
-                    ForEach([("session", "Session"), ("reset", "Reset time"), ("context", "Context"),
-                             ("buttons", "Buttons"), ("mic", "Mic"), ("shot", "Screenshot")], id: \.0) { id, label in
-                        Chip(label: label, on: model.config.touchBarShows.contains(id)) {
-                            var list = model.config.touchBarShows
-                            if let i = list.firstIndex(of: id) { list.remove(at: i) } else { list.append(id) }
-                            model.setConfig("touchBarShows", list)
-                        }
-                    }
-                }
-                .padding(.horizontal, 12)
-                .frame(minHeight: 46)
-            }
-
-            VoiceGroup(model: model)
-
-            SettingsGroup {
-                Button { withAnimation(.easeOut(duration: 0.2)) { moreOpen.toggle() } } label: {
-                    HStack {
-                        Text("More options").font(.system(size: 13))
-                        Spacer()
-                        Text("\(moreOnCount) on").font(.system(size: 12)).foregroundColor(.cbSecondary)
-                        Icon(kind: .chevronRight, size: 12, lineWidth: 2.2).foregroundColor(.cbSecondary)
-                            .rotationEffect(.degrees(moreOpen ? 90 : 0))
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if moreOpen {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 0), GridItem(.flexible(), spacing: 0)], spacing: 0) {
-                        CBCheckbox(title: "Context warning", hint: "\(Int(model.config.contextWarnPercent))%",
-                                   on: binding("contextWarning") { $0.contextWarning })
-                        CBCheckbox(title: "Auto-compact", hint: "at the warning",
-                                   on: binding("autoCompact") { $0.autoCompact })
-                        CBCheckbox(title: "Sessions list", on: binding("sessionsList") { $0.sessionsList })
-                        CBCheckbox(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
-                        CBCheckbox(title: "Task queue", on: binding("taskQueue") { $0.taskQueue })
-                        CBCheckbox(title: "Templates", on: binding("templatesEnabled") { $0.templatesEnabled })
-                        CBCheckbox(title: "Screenshot", hint: "button", on: binding("screenshot") { $0.screenshot })
-                        metric("cost", "Cost", hint: "API")
-                        metric("model", "Model, effort")
-                        metric("lines", "Lines changed")
-                        metric("git", "Git branch")
-                        metric("agents", "Subagents")
-                    }
-                    .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .top)
-                    .transition(.opacity.combined(with: .offset(y: 6)))
-                }
+        HStack(spacing: 6) {
+            ForEach(options, id: \.id) { option in
+                Chip(label: option.label, on: list(key).contains(option.id)) { toggle(option.id) }
             }
         }
     }
 
-    private var moreOnCount: Int {
-        let c = model.config
-        return [c.contextWarning, c.autoCompact, c.sessionsList, c.doNotDisturb, c.taskQueue, c.templatesEnabled,
-                c.screenshot].filter { $0 }.count + c.metrics.count
+    private func list(_ key: String) -> [String] {
+        switch key {
+        case "pillShows": return model.config.pillShows
+        case "metrics": return model.config.metrics
+        case "touchBarShows": return model.config.touchBarShows
+        default: return []
+        }
     }
 
-    private func metric(_ id: String, _ title: String, hint: String = "") -> some View {
-        CBCheckbox(title: title, hint: hint, on: Binding(
-            get: { model.config.metrics.contains(id) },
-            set: { on in
-                var list = model.config.metrics.filter { $0 != id }
-                if on { list.append(id) }
-                model.setConfig("metrics", list)
-            }))
+    private func toggle(_ id: String) {
+        let on = !list(key).contains(id)
+        for k in [key] + (mirror.map { [$0] } ?? []) {
+            var l = list(k).filter { $0 != id }
+            if on { l.append(id) }
+            if l != list(k) { model.setConfig(k, l) }
+        }
+    }
+}
+
+/// A setting's switch bound to a Bool key.
+func settingBinding(_ model: AppModel, _ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
+    Binding(get: { get(model.config) }, set: { model.setConfig(key, $0) })
+}
+
+// MARK: - General
+
+struct GeneralTab: View {
+    @ObservedObject var model: AppModel
+
+    private func binding(_ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
+        settingBinding(model, key, get)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "App") {
+                SettingsRow(title: "Open at login") {
+                    CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
+                }
+                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses", divider: false) {
+                    CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
+                }
+            }
+
+            SettingsSection(title: "Context") {
+                SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact") {
+                    HStack(spacing: 10) {
+                        Picker("", selection: Binding(get: { Int(model.config.contextWarnPercent) },
+                                                      set: { model.setConfig("contextWarnPercent", $0) })) {
+                            ForEach([60, 70, 80, 90], id: \.self) { Text("at \($0)%").tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 90)
+                        .disabled(!model.config.contextWarning)
+                        .accessibilityLabel("Warn at")
+                        CBSwitch(title: "Context warning", on: binding("contextWarning") { $0.contextWarning })
+                    }
+                }
+                SettingsRow(title: "Compact by itself",
+                            hint: "At the warning it types /compact, when Claude is idle and its window is in front",
+                            divider: false) {
+                    CBSwitch(title: "Compact by itself", on: binding("autoCompact") { $0.autoCompact })
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundColor(.cbSecondary)
+                    .padding(.leading, 12)
+                VoiceGroup(model: model)
+            }
+        }
     }
 }
 
@@ -285,7 +319,7 @@ struct VoiceGroup: View {
 
     var body: some View {
         SettingsGroup {
-            SettingsRow(title: "Voice", hint: "Hold the right ⌥ key alone, or the widget's mic. Text goes in without Enter.",
+            SettingsRow(title: "Language", hint: "Hold the right ⌥ key alone, or the widget's mic. Text goes in without Enter.",
                         divider: !model.voiceOffline) {
                 Picker("", selection: Binding(get: { model.config.voiceLanguage },
                                               set: { model.setConfig("voiceLanguage", $0) })) {
@@ -310,6 +344,103 @@ struct VoiceGroup: View {
                         .padding(.horizontal, -12)
                 }
                 .padding(12)
+            }
+        }
+    }
+}
+
+// MARK: - Widget
+
+struct WidgetTab: View {
+    @ObservedObject var model: AppModel
+
+    private func binding(_ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
+        settingBinding(model, key, get)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "Floating widget") {
+                SettingsRow(title: "Show the widget", hint: "A pill over your windows; the full panel opens from it",
+                            divider: model.config.widget) {
+                    CBSwitch(title: "Show the widget", on: binding("widget") { $0.widget })
+                }
+                if model.config.widget {
+                    SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
+                        CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
+                    }
+                    SettingsRow(title: "Open on hover", hint: "The full panel after 2 s on the pill; off: click it") {
+                        CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
+                    }
+                    if model.hasNotch {
+                        SettingsRow(title: "At the notch", hint: "Hang the widget from the camera notch") {
+                            CBSwitch(title: "At the notch", on: binding("widgetAtNotch") { $0.widgetAtNotch })
+                        }
+                    }
+                    SettingsRow(title: "Position",
+                                hint: model.config.widgetPosition == nil ? "Top center, under the menu bar" : "Where you dragged it",
+                                divider: false) {
+                        Button("Reset") { model.resetWidgetPosition() }
+                            .disabled(model.config.widgetPosition == nil)
+                    }
+                }
+            }
+
+            SettingsSection(title: "What it shows",
+                            note: "The pill shows what fits its size: pull its outline to resize it, drag one item onto another to swap them.") {
+                SettingsRow(title: "Numbers", hint: "On the pill, next to the 5-hour limit") {
+                    ChipSet(model: model, key: "pillShows",
+                            options: [("context", "Context"), ("reset", "Reset time"), ("cost", "Cost")], mirror: "metrics")
+                }
+                SettingsRow(title: "Details", hint: "On the pill and in the panel", divider: false) {
+                    ChipSet(model: model, key: "metrics",
+                            options: [("model", "Model"), ("lines", "Lines"), ("git", "Branch"), ("agents", "Subagents")])
+                }
+            }
+
+            SettingsSection(title: "Tools") {
+                SettingsRow(title: "Write to Claude",
+                            hint: "A message field: sent when Claude is free and its chat is in front. Drop files on the widget to send them with it.") {
+                    CBSwitch(title: "Write to Claude", on: binding("taskQueue") { $0.taskQueue })
+                }
+                SettingsRow(title: "Screenshot button", hint: "Pick an area of the screen; its file goes to Claude") {
+                    CBSwitch(title: "Screenshot button", on: binding("screenshot") { $0.screenshot })
+                }
+                SettingsRow(title: "Sessions list", hint: "Jump between your Claude sessions from the panel", divider: false) {
+                    CBSwitch(title: "Sessions list", on: binding("sessionsList") { $0.sessionsList })
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Touch Bar
+
+struct TouchBarTab: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(title: "Touch Bar") {
+                SettingsRow(title: "Show on Touch Bar",
+                            hint: model.touchBarPresent ? "Detected on this Mac" : "No Touch Bar found on this Mac",
+                            divider: false) {
+                    CBSwitch(title: "Show on Touch Bar", on: Binding(
+                        get: { model.config.touchBar != "off" },
+                        set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
+                }
+            }
+
+            SettingsSection(title: "What it shows",
+                            note: "Claude's questions and permission requests always show. The buttons are set up in Buttons.") {
+                VStack(alignment: .leading, spacing: 10) {
+                    ChipSet(model: model, key: "touchBarShows",
+                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context")])
+                    ChipSet(model: model, key: "touchBarShows",
+                            options: [("buttons", "Buttons"), ("mic", "Mic"), ("shot", "Screenshot")])
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -392,9 +523,16 @@ struct ButtonsTab: View {
     /// {branch}, {clipboard} and {date} filled in.
     private var templatesSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(model.config.templatesEnabled ? "Templates · {project} {branch} {clipboard} {date}"
-                 : "Templates · turn on in General → More options")
-                .font(.system(size: 11)).foregroundColor(.cbSecondary)
+            HStack {
+                Text("Templates · {project} {branch} {clipboard} {date}")
+                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
+                Spacer()
+                Text(model.config.templatesEnabled ? "In the widget and the menu" : "Off")
+                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
+                CBSwitch(title: "Templates", on: settingBinding(model, "templatesEnabled") { $0.templatesEnabled })
+                    .scaleEffect(0.8)
+            }
+            .padding(.leading, 12)
             SettingsGroup {
                 ForEach(Array(model.config.templates.enumerated()), id: \.offset) { i, t in
                     HStack {
@@ -704,6 +842,7 @@ struct ShortcutField: NSViewRepresentable {
 
 struct CoworkTab: View {
     @ObservedObject var model: AppModel
+    var mood: CloudMood? = nil
     @State private var keyOpen = false
     @State private var key = ""
 
@@ -805,5 +944,8 @@ struct CoworkTab: View {
                 }
             }
         }
+        // Cloud doesn't peek while the key is being typed.
+        .onChange(of: keyOpen && !model.hasLiveKey) { open in mood?.shy = open }
+        .onDisappear { mood?.shy = false }
     }
 }

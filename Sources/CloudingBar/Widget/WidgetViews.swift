@@ -36,6 +36,10 @@ final class WidgetState: ObservableObject {
     @Published var pillEditSize: CGSize?
     /// The pointer is on the pill: its outline shows faintly.
     @Published var pillHover = false
+    /// Files are being dragged over the widget.
+    @Published var dropHover = false
+    /// Goes up by one to put the cursor in the panel's message field.
+    @Published var focusMessage = 0
     /// How close to an end a press resizes instead of moving.
     static let pillEdge: CGFloat = 14
     /// How close to the top or bottom of the outline.
@@ -292,7 +296,25 @@ struct WidgetView: View {
             }
         }
         .fixedSize()
+        .overlay(dropTarget)
         .environment(\.colorScheme, .dark)
+    }
+
+    /// Files dragged over the open panel: where they'll go.
+    @ViewBuilder private var dropTarget: some View {
+        if state.dropHover && (state.mode == .panel || state.mode == .sessions) {
+            RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.6))
+                .overlay(VStack(spacing: 6) {
+                    Image(systemName: "paperclip").font(.system(size: 20))
+                    Text(model.project.map { "Attach for \($0)" } ?? "Attach").font(.system(size: 13, weight: .semibold))
+                    Text("Sent to its chat with your next message").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                }
+                .foregroundColor(.cbText))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.cbAction, style: StrokeStyle(lineWidth: 2, dash: [7, 5])))
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
     }
 }
 
@@ -558,6 +580,8 @@ struct MainPanel: View {
                 .padding(.trailing, 4)
         }
         .animation(.cb(0.28), value: width)
+        // Files just dropped: the cursor waits in the field for a message.
+        .onChange(of: state.focusMessage) { _ in if model.config.taskQueue { typing = true } }
     }
 
     private var header: some View {
@@ -645,11 +669,14 @@ struct MainPanel: View {
         for (id, r) in rest.slots { slots[id] = r.offsetBy(dx: 0, dy: restTop) }
         let height = items.count > firstCount ? restTop + rest.size.height : 26
         let busy = typing || !queueDraft.isEmpty
+        let sendable = !queueDraft.isEmpty || !model.attachments.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
             if field && !model.queue.isEmpty { queueList }
+            if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field) }
             ZStack(alignment: .topLeading) {
                 if field {
-                    TextField("Queue for after this reply", text: $queueDraft)
+                    TextField(model.attachments.isEmpty ? "Queue for after this reply" : "Add a message, or just send",
+                              text: $queueDraft)
                         .textFieldStyle(.plain).font(.system(size: 12))
                         .padding(.horizontal, 4)
                         .frame(width: max(0, fieldWidth), height: 26)
@@ -657,7 +684,7 @@ struct MainPanel: View {
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
                     Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
-                        .buttonStyle(IconButtonStyle(background: queueDraft.isEmpty ? Color.white.opacity(0.1) : .cbAction,
+                        .buttonStyle(IconButtonStyle(background: sendable ? .cbAction : Color.white.opacity(0.1),
                                                      foreground: .white, size: 24))
                         .accessibilityLabel("Add to queue")
                         .offset(x: boxInner - 24, y: 1)
@@ -703,9 +730,42 @@ struct MainPanel: View {
         .padding(.horizontal, 4)
     }
 
+    /// The dropped files as small chips (× takes one off). With no message
+    /// field, Insert after them types them into the chat right away; with
+    /// one, Send takes them along.
+    private func attachmentRows(width: CGFloat, field: Bool) -> some View {
+        let chips = model.attachments.map { (id: $0, width: AttachmentChip.width($0)) }
+        let insertID = "\u{1}insert"
+        let insertWidth = max(56, Self.textWidth("Insert", 12) + 28)
+        let board = flowSlots(chips + (field ? [] : [(id: insertID, width: insertWidth)]), width: width,
+                              rowHeight: 24, gap: 6, rowGap: 6)
+        let insert = board.slots[insertID] ?? .zero
+        return ZStack(alignment: .topLeading) {
+            ForEach(model.attachments, id: \.self) { path in
+                let slot = board.slots[path] ?? .zero
+                AttachmentChip(path: path) { model.removeAttachment(path) }
+                    .frame(width: slot.width, height: 24)
+                    .offset(x: slot.minX, y: slot.minY)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+            if !field {
+                Button("Insert") { model.insertAttachments() }
+                    .buttonStyle(ComposerButtonStyle(height: 24))
+                    .disabled(!model.chatInFront)
+                    .opacity(model.chatInFront ? 1 : 0.4)
+                    .help(model.chatInFront ? "Type the paths into the chat now, without Enter"
+                          : "Open \(model.project ?? "its") chat to insert them")
+                    .frame(width: insert.width, height: 24)
+                    .offset(x: insert.minX, y: insert.minY)
+            }
+        }
+        .frame(width: width, height: board.size.height, alignment: .topLeading)
+        .animation(.cb(0.22), value: model.attachments)
+    }
+
     private func addToQueue() {
         let text = queueDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || !model.attachments.isEmpty else { return }
         model.addToQueue(text)
         queueDraft = ""
         typing = false
@@ -717,15 +777,47 @@ struct MainPanel: View {
     }
 }
 
+/// A file waiting to go to Claude: its icon and name; × takes it off.
+struct AttachmentChip: View {
+    let path: String
+    let remove: () -> Void
+
+    static let nameMax: CGFloat = 150
+    static func width(_ path: String) -> CGFloat {
+        8 + 12 + 5 + min(nameMax, MainPanel.textWidth((path as NSString).lastPathComponent, 11)) + 5 + 14 + 4
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: FileDrop.symbol(path)).font(.system(size: 10)).frame(width: 12)
+                .foregroundColor(.cbSecondary)
+            Text((path as NSString).lastPathComponent).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+                .frame(maxWidth: Self.nameMax, alignment: .leading)
+            Button(action: remove) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
+                .buttonStyle(.plain).foregroundColor(.cbSecondary)
+                .frame(width: 14, height: 14)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Remove \((path as NSString).lastPathComponent)")
+        }
+        .padding(.leading, 8).padding(.trailing, 4)
+        .frame(height: 24, alignment: .leading)
+        .background(Capsule().fill(Color.cbAction.opacity(0.22)))
+        .overlay(Capsule().strokeBorder(Color.cbAction.opacity(0.45), lineWidth: 0.5))
+        .help(path)
+    }
+}
+
 /// A button inside the message box: a quick reply chip.
 struct ComposerButtonStyle: ButtonStyle {
+    var height: CGFloat = 26
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12))
             .foregroundColor(.cbText)
             .lineLimit(1)
             .padding(.horizontal, 12)
-            .frame(minWidth: 56, minHeight: 26)
+            .frame(minWidth: 56, minHeight: height)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.white.opacity(configuration.isPressed ? 0.18 : 0.09)))
             .contentShape(Rectangle())

@@ -48,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hotKeys = HotKeys()
     private var queue: [AppModel.QueueItem] = []
     private var queueSentAt: Date?
+    /// Files dropped on the widget, by session id, waiting for its chat.
+    private var attachments: [String: [String]] = [:]
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
     private var coworkSeen: [String: Date] = [:]
@@ -673,6 +675,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.agents, active?.runningAgents ?? 0)
         set(\.isAPI, store.account.sessionPercent == nil && active?.costUSD != nil)
         set(\.queue, queue)
+        set(\.attachments, active.flatMap { attachments[$0.id] } ?? [])
+        set(\.chatInFront, active != nil && store.session(inWindow: frontTitle)?.id == active?.id)
         set(\.buttons, currentButtons(active))
         set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
 
@@ -925,8 +929,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.addToQueue = { [weak self] text in
             guard let self else { return }
             let active = self.store.activeSession(windowTitle: self.frontTitle)
-            self.queue.append(.init(text: text, sessionId: active?.id, project: active?.projectName))
-            DebugLog.tap("queue add (\(self.queue.count))")
+            // Dropped files go along, after the words.
+            let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
+            let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
+            guard !full.isEmpty else { return }
+            self.queue.append(.init(text: full, sessionId: active?.id, project: active?.projectName))
+            DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
             self.saveQueue()
             self.refresh()
         }
@@ -937,6 +945,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.insertTemplate = { [weak self] in self?.insertTemplate($0) }
         model.takeScreenshot = { [weak self] in self?.takeScreenshot() }
+        model.dropFiles = { [weak self] urls in self?.attach(urls) ?? false }
+        model.removeAttachment = { [weak self] path in
+            guard let self, let active = self.store.activeSession(windowTitle: self.frontTitle) else { return }
+            self.attachments[active.id]?.removeAll { $0 == path }
+            if self.attachments[active.id]?.isEmpty == true { self.attachments[active.id] = nil }
+            self.refresh()
+        }
+        model.insertAttachments = { [weak self] in self?.insertAttachments() }
         model.changeModel = { [weak self] in
             DebugLog.tap("change model")
             self?.widget.releaseKey()
@@ -968,6 +984,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
         widget.releaseKey()
         KeySender.type(next.text, pressReturn: true)
+    }
+
+    /// Files dropped on the widget wait for the session it shows.
+    private func attach(_ urls: [URL]) -> Bool {
+        guard let active = store.activeSession(windowTitle: frontTitle) else { return false }
+        attachments = attachments.filter { store.sessions[$0.key] != nil } // sessions gone
+        var list = attachments[active.id] ?? []
+        for url in urls where !list.contains(url.path) { list.append(url.path) }
+        attachments[active.id] = list
+        DebugLog.tap("dropped \(urls.count) file(s) for \(active.projectName ?? active.id), \(list.count) waiting")
+        refresh()
+        return true
+    }
+
+    /// Insert: the paths go into the chat in front right away, without
+    /// Enter, like a screenshot's. Only into that session's own chat.
+    private func insertAttachments() {
+        guard let active = store.activeSession(windowTitle: frontTitle),
+              store.session(inWindow: frontTitle)?.id == active.id,
+              let files = attachments.removeValue(forKey: active.id), !files.isEmpty else { NSSound.beep(); return }
+        DebugLog.tap("insert \(files.count) file(s) into \(active.projectName ?? active.id)")
+        widget.releaseKey()
+        KeySender.type(files.map(FileDrop.quoted).joined(separator: " ") + " ")
+        refresh()
     }
 
     private func takeScreenshot() {

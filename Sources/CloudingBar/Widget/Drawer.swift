@@ -44,6 +44,18 @@ final class DrawerController: NSObject {
         host = HoverHostingView(rootView: DrawerView(model: model, state: state, anim: anim,
                                                      drag: { [weak self] e in self?.drag(e) },
                                                      hover: { [weak self] inside in if inside { self?.touch() } }))
+        // Files dropped on the island wait for the session it shows; Cloud's pleased.
+        host.acceptsFiles = { [weak self] in (self?.shown ?? false) && (self?.model.hasSession ?? false) }
+        host.onFileDrag = { [weak self] over in
+            withAnimation(.easeOut(duration: 0.15)) { self?.state.dropHover = over }
+            if over { self?.touch() }
+        }
+        host.onFileDrop = { [weak self] urls in
+            guard let self, self.model.dropFiles(urls) else { return false }
+            self.anim.pokes += 1
+            self.dozeLater()
+            return true
+        }
         panel = WidgetPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 200),
                             styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         panel.isFloatingPanel = true

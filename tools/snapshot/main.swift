@@ -228,7 +228,41 @@ widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }
-for tab in ["general", "buttons", "cowork", "stats"] {
+widget("w-panel-files-insert", .panel, size: NSSize(width: 720, height: 260)) {
+    $0.attachments = ["/Users/me/Desktop/Снимок экрана 2026-10-19.png", "/Users/me/DiaRoute/docs/offline-routes.pdf"]
+    $0.chatInFront = true
+}
+widget("w-panel-files", .panel, size: NSSize(width: 720, height: 300)) {
+    $0.config.taskQueue = true
+    $0.attachments = ["/Users/me/Desktop/Снимок экрана 2026-10-19.png", "/Users/me/DiaRoute/docs/offline-routes.pdf", "/Users/me/DiaRoute/src"]
+    $0.chatInFront = true
+}
+do { // files dragged over the open panel
+    let m = sampleModel()
+    m.config.taskQueue = true
+    let st = WidgetState(); st.mode = .panel; st.dropHover = true
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 480, height: 230).padding(.top, 20))
+    renderView(host, size: NSSize(width: 480, height: 230), name: "w-panel-drop")
+}
+for (name, hover) in [("w-pill-drop", true), ("w-pill-files", false)] {
+    let m = sampleModel()
+    m.attachments = ["/tmp/a.png", "/tmp/b.pdf"]
+    let st = WidgetState(); st.mode = .pill; st.dropHover = hover
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 400, height: 90).padding(.top, 20))
+    renderView(host, size: NSSize(width: 400, height: 90), name: name)
+}
+do { // writing in the pill with files attached
+    let m = sampleModel()
+    m.config.taskQueue = true
+    m.attachments = ["/tmp/a.png", "/tmp/b.pdf"]
+    let st = WidgetState(); st.mode = .pill; st.pillTyping = true
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 500, height: 90).padding(.top, 20))
+    renderView(host, size: NSSize(width: 500, height: 90), name: "w-pill-typing-files")
+}
+for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.knownProjects = ["DiaRoute", "bots"]
@@ -237,8 +271,25 @@ for tab in ["general", "buttons", "cowork", "stats"] {
         m.config.coworkMode = "thresholds"; m.config.coworkFolder = NSHomeDirectory() + "/Documents/Cowork"
         m.coworkLast = "4 min ago · DiaRoute 31%"
     }
+    m.hasNotch = tab == "widget"
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
-    renderView(host, size: NSSize(width: 560, height: 560), name: "s-\(tab)")
+    renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)")
+}
+
+do { // Cloud's faces: awake, happy, dizzy, shy
+    let row = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 110))
+    for (i, face) in ["awake", "happy", "dizzy", "shy"].enumerated() {
+        let v = MascotView(size: 80)
+        v.frame = NSRect(x: 15 + CGFloat(i) * 95, y: 15, width: 80, height: 80)
+        v.awake = true
+        if face == "happy" { v.poke() }
+        if face == "dizzy" { for _ in 0..<5 { v.poke() } }
+        if face == "shy" { v.shy = true }
+        row.addSubview(v)
+    }
+    // Happy lasts 1.1 s, past the render's wait: poke it again just before.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { (row.subviews[1] as? MascotView)?.poke() }
+    renderView(row, size: row.frame.size, name: "m-faces")
 }
 
 // Everything stacked in one sheet, 12 px apart on grey, for a quick look.

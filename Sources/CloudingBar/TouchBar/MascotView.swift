@@ -10,6 +10,11 @@ import AppKit
 ///   work   hops (0.7 s), blinks every 3.4 s, typing dots overhead
 ///   wait   sways ±7° (1.4 s), a pulsing orange "!" badge
 ///   happy  a moment after being poked: ^ ^ eyes and a smile
+///   dizzy  poked five times in a row: spins, ring eyes, wobbles
+///   shy    eyes shut, turned away, blushing (a secret is being typed)
+///
+/// A `lively` Cloud (the settings window's) watches the pointer, dozes off
+/// when nothing happens for a while and wakes as soon as something does.
 final class MascotView: NSView {
     var activity: Activity = .sleep {
         didSet { if activity != oldValue { refresh() } }
@@ -19,14 +24,33 @@ final class MascotView: NSView {
         didSet { if awake != oldValue { refresh(stretch: awake) } }
     }
 
-    private enum Pose { case sleep, awake, work, wait, happy }
+    /// Eyes shut and turned away, blushing.
+    var shy = false {
+        didSet { if shy != oldValue { refresh() } }
+    }
+    /// Follows the pointer with its eyes, dozes off after `dozeAfter`
+    /// seconds of stillness, wakes when the pointer moves.
+    var lively = false {
+        didSet { if lively != oldValue { lively ? startWatching() : stopWatching() } }
+    }
+    static let dozeAfter: TimeInterval = 30
+
+    private enum Pose { case sleep, awake, work, wait, happy, dizzy, shy }
     private var happyUntil: Date?
+    private var dizzyUntil: Date?
+    private var pokeTimes: [Date] = []
+    private weak var eyes: CALayer?
+    private var watch: Timer?
+    private var lastMouse = NSPoint(x: -1, y: -1)
+    private var lastStir = Date()
     private var shown: Pose?
     private let stage = CALayer()
     private var body = CALayer()
 
     private var pose: Pose {
+        if let until = dizzyUntil, until > Date() { return .dizzy }
         if let until = happyUntil, until > Date() { return .happy }
+        if shy { return .shy }
         switch activity {
         case .sleep: return awake ? .awake : .sleep
         case .work: return .work
@@ -61,9 +85,23 @@ final class MascotView: NSView {
         CATransaction.commit()
     }
 
-    /// Poked: a squashy jump and a happy face for a moment.
+    /// Poked: a squashy jump and a happy face for a moment. Five pokes in
+    /// a row and it spins until it's dizzy.
     func poke() {
-        happyUntil = Date().addingTimeInterval(1.1)
+        stir()
+        let now = Date()
+        pokeTimes = pokeTimes.filter { now.timeIntervalSince($0) < 2.5 } + [now]
+        if pokeTimes.count >= 5 {
+            pokeTimes = []
+            dizzyUntil = now.addingTimeInterval(1.8)
+            refresh(force: true)
+            if !Palette.reduceMotion {
+                body.add(once("transform.rotation.z", [0, -2 * .pi], 0.6), forKey: "spin")
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) { [weak self] in self?.refresh() }
+            return
+        }
+        happyUntil = now.addingTimeInterval(1.1)
         refresh(force: true)
         if !Palette.reduceMotion {
             body.add(once("transform.translation.y", [0, 1.5, -5, 0.8, 0], 0.55), forKey: "jump")
@@ -71,6 +109,65 @@ final class MascotView: NSView {
             body.add(once("transform.scale.x", [1, 1.1, 0.94, 1.03, 1], 0.55), forKey: "spread")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.15) { [weak self] in self?.refresh() }
+    }
+
+    /// Something changed nearby: a small hop, no face.
+    func hop() {
+        stir()
+        guard !Palette.reduceMotion else { return }
+        body.add(once("transform.translation.y", [0, -3.5, 0], 0.32), forKey: "hop1")
+    }
+
+    // MARK: Lively
+
+    /// Something happened: wake up (with a stretch) if dozing.
+    private func stir() {
+        lastStir = Date()
+        if lively && !awake { awake = true }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if lively { window == nil ? stopWatching() : startWatching() }
+    }
+
+    private func startWatching() {
+        guard watch == nil, window != nil else { return }
+        lastStir = Date()
+        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.look() }
+        RunLoop.main.add(t, forMode: .common)
+        watch = t
+    }
+
+    private func stopWatching() {
+        watch?.invalidate()
+        watch = nil
+    }
+
+    /// 30 times a second while the window shows: eyes toward the pointer,
+    /// and dozing off or waking up.
+    private func look() {
+        guard let window, window.isVisible, window.occlusionState.contains(.visible) else { return }
+        let mouse = NSEvent.mouseLocation
+        if hypot(mouse.x - lastMouse.x, mouse.y - lastMouse.y) > 2 {
+            lastMouse = mouse
+            stir()
+        } else if awake && Date().timeIntervalSince(lastStir) > Self.dozeAfter {
+            awake = false
+        }
+        guard let eyes else { return }
+        let center = window.convertToScreen(convert(bounds, to: nil))
+        let dx = mouse.x - center.midX, dy = mouse.y - center.midY
+        let d = max(1, hypot(dx, dy))
+        // Far away: eyes all the way to that side; on top of it: straight ahead.
+        let reach = min(1, d / 120)
+        let x = dx / d * reach * 2, y = -dy / d * reach * 1.5
+        let now = eyes.transform
+        guard abs(now.m41 - x) > 0.05 || abs(now.m42 - y) > 0.05 else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.18)
+        eyes.transform = CATransform3DMakeTranslation(x, y, 0)
+        CATransaction.commit()
     }
 
     private func refresh(force: Bool = false, stretch: Bool = false) {
@@ -87,6 +184,7 @@ final class MascotView: NSView {
 
     private func rebuild(_ pose: Pose) {
         stage.sublayers?.forEach { $0.removeFromSuperlayer() }
+        eyes = nil
         let motion = !Palette.reduceMotion
         let ink = NSColor(hex: 0x1C1C1E)
         switch pose {
@@ -149,16 +247,59 @@ final class MascotView: NSView {
                             ellipse(cx: 24, cy: 21, rx: 2, ry: 2.8, color: ink)]
                 pair.forEach(eyes.addSublayer)
                 body.addSublayer(eyes)
+                self.eyes = eyes
                 if motion {
                     body.add(keyframes("transform.scale.y", [1, 0.98, 1], 3), forKey: "breathe")
                     for eye in pair {
                         eye.add(keyframes("transform.scale.y", [1, 1, 0.1, 1, 1, 0.1, 1], 4.2,
                                           keyTimes: [0, 0.4, 0.43, 0.46, 0.88, 0.91, 1]), forKey: "blink")
                     }
-                    // Looks around: left, back, right, back.
-                    eyes.add(keyframes("transform.translation.x", [0, 0, -1.4, -1.4, 0, 0, 1.4, 1.4, 0], 6,
-                                       keyTimes: [0, 0.1, 0.16, 0.34, 0.4, 0.58, 0.64, 0.82, 0.88]), forKey: "look")
+                    // Looks around: left, back, right, back. A lively one
+                    // looks at the pointer instead.
+                    if !lively {
+                        eyes.add(keyframes("transform.translation.x", [0, 0, -1.4, -1.4, 0, 0, 1.4, 1.4, 0], 6,
+                                           keyTimes: [0, 0.1, 0.16, 0.34, 0.4, 0.58, 0.64, 0.82, 0.88]), forKey: "look")
+                    }
                 }
+            }
+
+        case .dizzy:
+            setAccessibilityLabel("Dizzy")
+            stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
+            body = group(anchorX: 20, anchorY: 34)
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            for cx in [16.0, 24.0] {
+                let ring = ellipse(cx: cx, cy: 21, rx: 2.4, ry: 2.4, color: .clear)
+                ring.fillColor = nil
+                ring.strokeColor = ink.cgColor
+                ring.lineWidth = 1.1
+                body.addSublayer(ring)
+                body.addSublayer(ellipse(cx: cx + 0.6, cy: 20.6, rx: 0.8, ry: 0.8, color: ink))
+            }
+            body.addSublayer(ellipse(cx: 20, cy: 27.4, rx: 1.4, ry: 1.1, color: ink)) // "o"
+            stage.addSublayer(body)
+            if motion {
+                let deg = CGFloat.pi / 180
+                body.add(keyframes("transform.rotation.z", [0, -6 * deg, 0, 6 * deg, 0], 0.5), forKey: "wobble")
+            }
+
+        case .shy:
+            setAccessibilityLabel("Not looking")
+            stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
+            body = group(anchorX: 20, anchorY: 34)
+            // Eyes shut tight, a blush, turned a little away (in a group of
+            // its own, so breathing doesn't undo the turn).
+            let turned = group(anchorX: 20, anchorY: 34)
+            turned.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            turned.addSublayer(squint(tipX: 15.6, backX: 12.4, y: 21.2, color: ink)) // >
+            turned.addSublayer(squint(tipX: 24.4, backX: 27.6, y: 21.2, color: ink)) // <
+            turned.addSublayer(ellipse(cx: 12.6, cy: 26, rx: 2.2, ry: 1.2, color: NSColor(hex: 0xFF8A95), opacity: 0.55))
+            turned.addSublayer(ellipse(cx: 25.4, cy: 26, rx: 2.2, ry: 1.2, color: NSColor(hex: 0xFF8A95), opacity: 0.55))
+            turned.transform = CATransform3DMakeRotation(-7 * .pi / 180, 0, 0, 1)
+            body.addSublayer(turned)
+            stage.addSublayer(body)
+            if motion {
+                body.add(keyframes("transform.scale.y", [1, 0.97, 1], 2.4), forKey: "breathe")
             }
 
         case .work:
@@ -258,6 +399,23 @@ final class MascotView: NSView {
         l.strokeColor = color.cgColor
         l.lineWidth = width
         l.lineCap = .round
+        l.contentsScale = 2
+        return l
+    }
+
+    /// A squeezed-shut eye: ">" or "<", its point at `tipX`.
+    private func squint(tipX: CGFloat, backX: CGFloat, y: CGFloat, color: NSColor) -> CAShapeLayer {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: backX, y: y - 1.8))
+        path.addLine(to: CGPoint(x: tipX, y: y))
+        path.addLine(to: CGPoint(x: backX, y: y + 1.8))
+        let l = CAShapeLayer()
+        l.path = path
+        l.fillColor = nil
+        l.strokeColor = color.cgColor
+        l.lineWidth = 1.5
+        l.lineCap = .round
+        l.lineJoin = .round
         l.contentsScale = 2
         return l
     }

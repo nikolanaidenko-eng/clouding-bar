@@ -35,6 +35,8 @@ final class WidgetController: NSObject {
     private var fixedEdge: FixedEdge?
     private var subscriptions = Set<AnyCancellable>()
     private var layoutQueued = false
+    /// After a drop: watches for the pointer leaving the panel.
+    private var leaveWatch: Timer?
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -62,6 +64,9 @@ final class WidgetController: NSObject {
         state.openPanel = { [weak self] in self?.set(.panel) }
         state.startTyping = { [weak self] in self?.beginTyping() }
         state.endTyping = { [weak self] in self?.endTyping() }
+        host.acceptsFiles = { [weak model] in model?.hasSession ?? false }
+        host.onFileDrag = { [weak self] over in self?.fileDrag(over) }
+        host.onFileDrop = { [weak self] urls in self?.dropFiles(urls) ?? false }
         // Re-fit the window whenever what's shown changes.
         model.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
         state.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
@@ -225,6 +230,54 @@ final class WidgetController: NSObject {
         withAnimation(.cb(0.2)) { state.pillTyping = false }
         updateKeyAllowance()
         suppressOpen = hovering // don't pop the panel under the pointer right after
+    }
+
+    // MARK: Files
+
+    /// Files dragged over the widget: it lights up (the thin line turns
+    /// into the pill first, so there's something to drop them on).
+    private func fileDrag(_ over: Bool) {
+        withAnimation(.easeOut(duration: 0.15)) { state.dropHover = over }
+        if over {
+            closeWork?.cancel()
+            openWork?.cancel()
+            if state.mode == .strip { set(.pill) }
+        } else if !hovering {
+            hover(false) // went away without dropping
+        }
+    }
+
+    /// Files let go over the widget: they wait for the session it shows,
+    /// and the panel opens with them in its message box (the cursor in the
+    /// field, when writing is on).
+    private func dropFiles(_ urls: [URL]) -> Bool {
+        guard model.dropFiles(urls) else { return false }
+        closeWork?.cancel()
+        hovering = true
+        pinned = false
+        set(.panel)
+        watchLeave()
+        if model.config.taskQueue && model.request == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self, self.state.mode == .panel else { return }
+                self.panel.makeKey()
+                self.state.focusMessage += 1
+            }
+        }
+        return true
+    }
+
+    /// A drag sends no hover, so after a drop nothing would notice the
+    /// pointer leaving: watch for it instead.
+    private func watchLeave() {
+        leaveWatch?.invalidate()
+        leaveWatch = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
+            guard let self, self.state.mode == .panel else { timer.invalidate(); return }
+            if !self.panel.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation) {
+                timer.invalidate()
+                self.hover(false)
+            }
+        }
     }
 
     // MARK: Drag
@@ -463,4 +516,39 @@ final class HoverHostingView<Content: View>: NSHostingView<Content> {
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // MARK: Files dropped on it
+
+    /// A file is being dragged over the window (true) or went away (false).
+    var onFileDrag: ((Bool) -> Void)?
+    /// Files let go over the window; false refuses them.
+    var onFileDrop: (([URL]) -> Bool)? {
+        didSet { onFileDrop == nil ? unregisterDraggedTypes() : registerForDraggedTypes(FileDrop.types) }
+    }
+    /// Asked as a drag comes over: can files be taken right now?
+    var acceptsFiles: () -> Bool = { true }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard onFileDrop != nil, acceptsFiles(), FileDrop.canRead(sender.draggingPasteboard) else { return [] }
+        onFileDrag?(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard onFileDrop != nil, acceptsFiles(), FileDrop.canRead(sender.draggingPasteboard) else { return [] }
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onFileDrag?(false)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { true }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onFileDrag?(false)
+        let urls = FileDrop.read(sender.draggingPasteboard)
+        guard !urls.isEmpty, let onFileDrop else { return false }
+        return onFileDrop(urls)
+    }
 }

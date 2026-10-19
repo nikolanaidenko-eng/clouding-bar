@@ -72,6 +72,12 @@ final class AppModel: ObservableObject {
     }
     @Published var queue: [QueueItem] = []
 
+    /// Files dropped on the widget for the session it shows: they go with
+    /// the next message written there, or into the chat with Insert.
+    @Published var attachments: [String] = []
+    /// That session's chat is the window in front (Insert types into it).
+    @Published var chatInFront = false
+
     // Cowork tab
     @Published var coworkLast: String?
     /// Folder names being watched for Cowork's status.
@@ -100,6 +106,11 @@ final class AppModel: ObservableObject {
     var removeFromQueue: (UUID) -> Void = { _ in }
     var insertTemplate: (String) -> Void = { _ in }
     var takeScreenshot: () -> Void = {}
+    /// Files dropped on the widget; false if there's no session to take them.
+    var dropFiles: ([URL]) -> Bool = { _ in false }
+    var removeAttachment: (String) -> Void = { _ in }
+    /// Types the attached files' paths into the chat in front, without Enter.
+    var insertAttachments: () -> Void = {}
     var changeModel: () -> Void = {}
     var chooseCoworkFolder: () -> Void = {}
     var makeCoworkPlugin: () -> Void = {}

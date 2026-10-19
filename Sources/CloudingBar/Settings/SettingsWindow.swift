@@ -2,7 +2,7 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
-/// The settings window: 560×560, dark, only a close button in the corner.
+/// The settings window: 600×560, dark, only a close button in the corner.
 final class SettingsWindow {
     private var window: NSWindow?
     private let model: AppModel
@@ -11,7 +11,7 @@ final class SettingsWindow {
 
     func show() {
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 560),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: SettingsView.width, height: 560),
                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
             w.title = "Clouding Bar Settings"
             w.titleVisibility = .hidden
