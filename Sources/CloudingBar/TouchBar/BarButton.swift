@@ -17,7 +17,7 @@ final class BarButton: NSButton {
     private let fontSize: CGFloat
 
     init(_ title: String, style: Style = .normal, fontSize: CGFloat = Palette.buttonFont,
-         icon: NSImage? = nil, onTap: (() -> Void)? = nil) {
+         icon: NSImage? = nil, dot: UInt32? = nil, onTap: (() -> Void)? = nil) {
         self.style = style
         self.fontSize = fontSize
         self.onTap = onTap
@@ -36,7 +36,25 @@ final class BarButton: NSButton {
         } else {
             setTitle(title)
         }
+        if let dot {
+            // A chat's colour before its name.
+            image = Self.dot(dot)
+            imagePosition = .imageLeading
+            imageHugsTitle = true
+            hasDot = true
+        }
         updateLook()
+    }
+
+    private var hasDot = false
+
+    static func dot(_ color: UInt32) -> NSImage {
+        NSImage(size: NSSize(width: 13, height: 8), flipped: false) { _ in
+            NSColor(srgbRed: CGFloat((color >> 16) & 0xFF) / 255, green: CGFloat((color >> 8) & 0xFF) / 255,
+                    blue: CGFloat(color & 0xFF) / 255, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 0, y: 0, width: 8, height: 8)).fill()
+            return true
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -61,7 +79,7 @@ final class BarButton: NSButton {
 
     /// Width that fits the title with `padding` on each side.
     func fittingWidth(padding: CGFloat) -> CGFloat {
-        ceil(attributedTitle.size().width) + padding * 2
+        ceil(attributedTitle.size().width) + padding * 2 + (hasDot ? 13 : 0)
     }
 
     override var isHighlighted: Bool {

@@ -134,8 +134,10 @@ final class SessionStore {
     ///  - else, of that window's project, the one in `sticky` (picked in the
     ///    widget, or followed before), else the latest active;
     ///  - no session's window in front: the one in `sticky`, else the latest active.
-    func focus(windowTitle: String?, sticky: [String]) -> Session? {
+    /// A terminal tab in front (`tty`) names its chat outright.
+    func focus(windowTitle: String?, tty: String? = nil, sticky: [String]) -> Session? {
         let candidates = alive
+        if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
         let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates) } ?? []
         if let top = ranked.first {
             if top.score == 3 { return top.session }
@@ -151,7 +153,8 @@ final class SessionStore {
     /// title, or the only one of that project. Nil when it can't be told
     /// (two chats of one project, the window on a file): typing there
     /// could land anywhere.
-    func session(inWindow title: String?) -> Session? {
+    func session(inWindow title: String?, tty: String? = nil) -> Session? {
+        if let tty, let s = alive.first(where: { $0.tty == tty }) { return s }
         guard let title else { return nil }
         let ranked = Self.ranked(title: title, in: alive)
         guard let top = ranked.first else { return nil }

@@ -12,6 +12,17 @@ struct BarModel: Equatable {
         case models
         /// The subagents at work, opened from the subagents button.
         case agents
+        /// The live chats, opened from the chat button: pick one to follow.
+        case chats
+    }
+
+    /// A live chat, for the chat button and the chats panel.
+    struct Chat: Equatable {
+        let id: String
+        let name: String
+        let color: UInt32
+        let current: Bool
+        let waiting: Bool
     }
 
     var mode: Mode = .normal
@@ -32,6 +43,12 @@ struct BarModel: Equatable {
     var effort: String?
     /// Subagents at work: "Explore · Find the hook code".
     var agents: [String] = []
+    /// Every live chat; with more than one, the bar says which it shows.
+    var chats: [Chat] = []
+    /// The chat a request comes from (with several chats).
+    var requestChat: Chat?
+
+    var current: Chat? { chats.count > 1 ? chats.first(where: \.current) : nil }
 }
 
 enum BarAction {
@@ -47,6 +64,8 @@ enum BarAction {
     case models, pickModel(String), pickEffort(String)
     /// The subagents button shows who's working.
     case agents
+    /// The chat button shows the chats; a pick follows that one.
+    case chats, pickChat(String)
     /// Done: back from the picker or the subagents.
     case closePanel
 }
@@ -133,14 +152,16 @@ final class BarView: NSView {
     private static func structureKey(_ m: BarModel) -> String {
         let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
             + "|" + m.shows.sorted().joined(separator: ",")
+        let chat = (m.current.map { "\($0.id)|\($0.name)" } ?? "") + "|" + (m.requestChat?.id ?? "")
         switch m.mode {
-        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)"
+        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)"
+        case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
         case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
         case .contextWarning: return "context"
-        case let .permission(verb, detail): return "permission|\(verb)|\(detail)"
+        case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
         case let .question(text, options, multi, picked):
-            return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())"
+            return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
         case .typing: return "typing"
         }
     }
@@ -158,6 +179,11 @@ final class BarView: NSView {
 
         switch model.mode {
         case .normal:
+            // Several chats: which one this is; a tap lists them all.
+            if let chat = model.current {
+                let b = BarButton(chat.name, fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.chats) }
+                add(b, .shrinkable(min(150, b.fittingWidth(padding: 10))))
+            }
             let shows = model.shows
             let session = shows.contains("session"), context = shows.contains("context")
             if session || context {
@@ -204,6 +230,7 @@ final class BarView: NSView {
             [compact, later].forEach { b in animate(b) { $0.slideIn() } }
 
         case let .permission(verb, detail):
+            addRequestChat()
             let message = MessageView(verb: verb, detail: detail, monospaced: true, quiet: model.quiet)
             add(message, .flex(weight: 1, min: 120))
             animate(message) { $0.slideIn() }
@@ -216,6 +243,7 @@ final class BarView: NSView {
             [allow, always, deny].forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
 
         case let .question(text, options, multi, picked):
+            addRequestChat()
             let message = MessageView(verb: nil, detail: text, monospaced: false, quiet: model.quiet)
             add(message, .flex(weight: 1, min: 120))
             animate(message) { $0.slideIn() }
@@ -277,6 +305,22 @@ final class BarView: NSView {
             group.append(done)
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
 
+        case .chats:
+            var group: [NSView] = []
+            let word = sectionLabel("Chats")
+            add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
+            for chat in model.chats {
+                let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
+                                  fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
+                group.append(b)
+            }
+            add(NSView(), .flex(weight: 1, min: 0))
+            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
+            add(done, .fixed(done.fittingWidth(padding: 14)))
+            group.append(done)
+            group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
+
         case .agents:
             var group: [NSView] = []
             let word = sectionLabel("Subagents")
@@ -316,6 +360,13 @@ final class BarView: NSView {
             add(mic, .fixed(48))
         }
         needsLayout = true
+    }
+
+    /// Several chats: the one a request comes from, before it.
+    private func addRequestChat() {
+        guard model.chats.count > 1, let chat = model.requestChat else { return }
+        let b = BarButton(chat.name, style: .outline, fontSize: 12, dot: chat.color)
+        add(b, .shrinkable(min(130, b.fittingWidth(padding: 10))))
     }
 
     /// A small grey word before a group of buttons.

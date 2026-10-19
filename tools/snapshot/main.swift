@@ -45,6 +45,13 @@ add("models") { $0.mode = .models; $0.modelAlias = "opus[1m]"; $0.effort = "xhig
 add("models-narrow", width: 685) { $0.mode = .models; $0.modelAlias = "sonnet"; $0.effort = "high" }
 add("agents") { $0.mode = .agents; $0.agents = ["Explore · Find the hook code", "general-purpose · Check transcripts", "Plan · Design the picker"] }
 add("normal-agents") { $0.shows = ["session", "context", "model", "agents", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh"; $0.agents = ["a", "b"] }
+let chats = [BarModel.Chat(id: "1", name: "Status bar", color: Session.colors[0], current: true, waiting: false),
+             BarModel.Chat(id: "2", name: "Lead bot", color: Session.colors[1], current: false, waiting: true),
+             BarModel.Chat(id: "3", name: "Сайт ordermeshop portf…", color: Session.colors[2], current: false, waiting: false)]
+add("normal-chats") { $0.chats = chats }
+add("chats") { $0.chats = chats; $0.mode = .chats }
+add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
+    $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
 add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 
 var images: [CGImage] = []
@@ -74,18 +81,18 @@ for (name, model, width) in cases {
 
 // MARK: Widget and settings (SwiftUI), on the mockups' #1B1B1D desktop
 
-func renderView(_ view: NSView, size: NSSize, name: String) {
+func renderView(_ view: NSView, size: NSSize, name: String, light: Bool = false) {
     let backdrop = NSView(frame: NSRect(origin: .zero, size: size))
     backdrop.wantsLayer = true
     backdrop.layer?.backgroundColor = NSColor(hex: 0x1B1B1D).cgColor
     view.frame = NSRect(origin: .zero, size: size)
     backdrop.addSubview(view)
     let window = NSWindow(contentRect: backdrop.frame, styleMask: .borderless, backing: .buffered, defer: false)
-    window.appearance = NSAppearance(named: .darkAqua)
+    window.appearance = NSAppearance(named: light ? .aqua : .darkAqua)
     window.contentView = backdrop
     backdrop.layoutSubtreeIfNeeded()
     backdrop.displayIfNeeded()
-    RunLoop.main.run(until: Date().addingTimeInterval(name == "s-stats" ? 4 : 1.2)) // animations, stats
+    RunLoop.main.run(until: Date().addingTimeInterval(name.hasPrefix("s-stats") ? 4 : 1.2)) // animations, stats
     let scale: CGFloat = 2
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
                                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
@@ -411,6 +418,10 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     m.hasNotch = tab == "widget"
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)")
+    if ["general", "widget", "stats"].contains(tab) {
+        let light = NSHostingView(rootView: SettingsView(model: m, tab: tab))
+        renderView(light, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)-light", light: true)
+    }
 }
 
 do { // Cloud's faces: awake, happy, dizzy, shy

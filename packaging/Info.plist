@@ -26,6 +26,8 @@
 	<string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hold the right Option key to dictate to Claude.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Tells which Terminal or iTerm tab is in front, so the widget shows that chat, and brings a chat's tab forward when you pick it.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Turns what you dictate into text for Claude. On this Mac when the language allows it.</string>
 	<key>NSHumanReadableCopyright</key>

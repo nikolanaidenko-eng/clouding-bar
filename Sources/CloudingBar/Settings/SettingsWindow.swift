@@ -1,11 +1,13 @@
 import AppKit
+import Combine
 import ServiceManagement
 import SwiftUI
 
-/// The settings window: 600×560, dark, only a close button in the corner.
+/// The settings window: 600×560, light or dark, only a close button in the corner.
 final class SettingsWindow {
     private var window: NSWindow?
     private let model: AppModel
+    private var watch: AnyCancellable?
 
     init(model: AppModel) { self.model = model }
 
@@ -17,14 +19,18 @@ final class SettingsWindow {
             w.titleVisibility = .hidden
             w.titlebarAppearsTransparent = true
             w.isMovableByWindowBackground = true
-            w.appearance = NSAppearance(named: .darkAqua)
-            w.backgroundColor = NSColor(hex: 0x232325)
+            w.backgroundColor = .adaptive(light: 0xF2F2F5, dark: 0x232325)
+            w.acceptsMouseMovedEvents = true // Cloud follows the pointer
             w.standardWindowButton(.miniaturizeButton)?.isHidden = true
             w.standardWindowButton(.zoomButton)?.isHidden = true
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: SettingsView(model: model))
             w.center()
             window = w
+            watch = model.$config.map(\.appearance).removeDuplicates().sink { [weak w] value in
+                w?.appearance = value == "light" ? NSAppearance(named: .aqua)
+                    : value == "dark" ? NSAppearance(named: .darkAqua) : nil
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)

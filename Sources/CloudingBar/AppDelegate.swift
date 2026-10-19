@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var frontApp: NSRunningApplication?
     private var frontTitle: String?
+    /// Terminal or iTerm in front: the tty of its tab in front.
+    private var frontTTY: String?
     private var touchBarPresent = TouchBarDetector.hasTouchBar
     private var ticks = 0
     private var refreshQueued = false
@@ -57,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var attachments: [String: [String]] = [:]
     /// The Touch Bar shows the model picker or the subagents; either closes
     /// by itself when left alone.
-    private enum BarPanel { case models, agents }
+    private enum BarPanel { case models, agents, chats }
     private var barPanel: BarPanel?
     private var barPickerClose: DispatchWorkItem?
     /// Picked on the bar, until Claude confirms it.
@@ -224,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.frontTitle = title
                 self.setNeedsRefresh()
             }
+            readFrontTTY(app)
         }
         if ticks % 2 == 0 {
             store.pollTranscripts()
@@ -241,12 +244,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func frontmostAppChanged(_ note: Notification) {
         frontApp = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         frontTitle = nil
+        frontTTY = nil
         refresh()
         if let app = frontApp, isTerminal(app) {
             frontWindow.readTitle(of: app) { [weak self] title in
                 self?.frontTitle = title
                 self?.setNeedsRefresh()
             }
+            readFrontTTY(app)
+        }
+    }
+
+    /// Terminal or iTerm in front, with a terminal chat alive: which tab.
+    private func readFrontTTY(_ app: NSRunningApplication) {
+        guard let id = app.bundleIdentifier, Terminals.supports(id),
+              store.alive.contains(where: { $0.tty != nil && $0.entrypoint != "claude-vscode" }) else {
+            if frontTTY != nil { frontTTY = nil; setNeedsRefresh() }
+            return
+        }
+        Terminals.frontTTY(id) { [weak self] tty in
+            guard let self, tty != self.frontTTY else { return }
+            self.frontTTY = tty
+            self.setNeedsRefresh()
         }
     }
 
@@ -287,14 +306,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var focusedSession: Session? {
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) < 4,
            let s = store.sessions[id], s.isAlive() { return s }
-        return store.focus(windowTitle: frontTitle, sticky: [pickedSessionId, lastActiveId].compactMap { $0 })
+        return store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 })
     }
 
     private func refresh() {
         refreshQueued = false
         // Gone to another chat yourself: the pick is over.
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) >= 4,
-           let shown = store.session(inWindow: frontTitle), shown.id != id {
+           let shown = store.session(inWindow: frontTitle, tty: frontTTY), shown.id != id {
             pickedSessionId = nil
         }
         let active = focusedSession
@@ -336,6 +355,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.agents = (active?.agents ?? []).map { a in
             ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
         }
+        bar.chats = model.sessions.map {
+            BarModel.Chat(id: $0.id, name: Self.short($0.name, 24), color: $0.color, current: $0.current, waiting: $0.waiting)
+        }
+        if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
+            bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 20),
+                                            color: Session.colors[s.colorIndex % Session.colors.count],
+                                            current: s.id == active?.id, waiting: true)
+        }
 
         if let request = currentRequest(active: active) {
             bar.activity = .wait
@@ -366,12 +393,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // request takes the bar over and closes them.
         if let panel = barPanel {
             if currentRequest(active: active) == nil && active != nil {
-                bar.mode = panel == .models ? .models : .agents
+                bar.mode = panel == .models ? .models : panel == .agents ? .agents : .chats
             } else {
                 closeBarPicker()
             }
         }
         touchBar.show(bar)
+    }
+
+    /// A name cut to `n` characters with "…".
+    static func short(_ text: String, _ n: Int) -> String {
+        text.count > n ? String(text.prefix(n - 1)) + "…" : text
     }
 
     private func currentButtons(_ active: Session?) -> [ButtonSpec] {
@@ -503,6 +535,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             barPendingEffort = level
             switchModel("/effort " + level)
             closeBarPickerLater()
+
+        case .chats:
+            DebugLog.tap("chats (bar)")
+            barPanel = .chats
+            closeBarPickerLater(after: 15)
+            setNeedsRefresh()
+
+        case let .pickChat(id):
+            closeBarPicker()
+            model.focusSession(id)
 
         case .closePanel:
             closeBarPicker()
@@ -859,7 +901,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.isAPI, store.account.sessionPercent == nil && active?.costUSD != nil)
         set(\.queue, queue)
         set(\.attachments, active.flatMap { attachments[$0.id] } ?? [])
-        set(\.chatInFront, active != nil && store.session(inWindow: frontTitle)?.id == active?.id)
+        set(\.chatInFront, active != nil && store.session(inWindow: frontTitle, tty: frontTTY)?.id == active?.id)
         // The widget's buttons; the bar has its own switch for them.
         set(\.buttons, config.widgetHides.contains("buttons") ? [] : currentButtons(active))
         set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
@@ -953,12 +995,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         advance(request, with: answer)
     }
 
-    /// Brings that session's VS Code window to the front, then its own
-    /// conversation (two can share a window). Only if no window shows the
-    /// project does it open one — in a new window, never in place of yours.
+    /// Brings that chat to the front: a terminal one's tab (Terminal or
+    /// iTerm); a VS Code one's window, then the conversation itself (two
+    /// can share a window). VS Code is never made to open a new window for
+    /// a chat that's already open somewhere.
     private func openSession(_ id: String) {
         guard let session = store.sessions[id] else { NSSound.beep(); return }
-        DebugLog.tap("open session \(session.projectName ?? id)")
+        DebugLog.tap("open session \(session.displayName)")
         if session.entrypoint == "cowork" {
             // Cowork lives in the Claude desktop app; it has no link to one task.
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.anthropic.claudefordesktop").first {
@@ -968,23 +1011,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return
         }
-        guard let cwd = session.cwd else { NSSound.beep(); return }
-        let raised = session.projectName.map(raiseVSCodeWindow(showing:)) ?? false
-        if !raised {
+        if session.entrypoint != "claude-vscode" {
+            // A terminal chat: its tab, else (VS Code's own terminal) its window.
+            guard let tty = session.tty else { _ = raiseVSCodeWindow(for: session); return }
+            Terminals.focus(tty: tty) { [weak self] found in
+                if !found { _ = self?.raiseVSCodeWindow(for: session) }
+            }
+            return
+        }
+        let raised = raiseVSCodeWindow(for: session)
+        if !raised, let cwd = session.cwd {
+            // Not seen (another Space, a full-screen window): VS Code itself
+            // brings up the window that has the folder — a new one only if none does.
             guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-                  let url = URL(string: "vscode://file" + path + "?windowId=_blank") else { NSSound.beep(); return }
+                  let url = URL(string: "vscode://file" + path) else { NSSound.beep(); return }
             NSWorkspace.shared.open(url)
         }
         // The Claude extension opens a conversation by its id.
-        guard session.entrypoint == "claude-vscode",
-              let url = URL(string: "vscode://anthropic.claude-code/open?session=\(id)") else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (raised ? 0.3 : 2.5)) {
+        guard let url = URL(string: "vscode://anthropic.claude-code/open?session=\(id)") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (raised ? 0.3 : 1.5)) {
             NSWorkspace.shared.open(url)
         }
     }
 
-    /// Finds the VS Code window whose title names the project and raises it.
-    private func raiseVSCodeWindow(showing project: String) -> Bool {
+    /// Raises the VS Code window that shows this chat: by the chat's title,
+    /// else its project's folder, else a folder it sits in.
+    private func raiseVSCodeWindow(for session: Session) -> Bool {
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.microsoft.VSCode").first
         else { return false }
         let ax = AXUIElementCreateApplication(app.processIdentifier)
@@ -992,19 +1044,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return false }
+        let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents.count
+        let folders = session.cwd.map { Array(URL(fileURLWithPath: $0).pathComponents.dropFirst(home)) } ?? []
+        var best: (score: Int, window: AXUIElement)?
         for window in windows {
             var title: CFTypeRef?
             guard AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &title) == .success,
                   let text = title as? String else { continue }
-            let parts = text.components(separatedBy: " — ").flatMap { $0.components(separatedBy: " - ") }
-                .map { $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " (Workspace)", with: "") }
-            guard parts.contains(project) else { continue }
-            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-            app.activate(options: [])
-            return true
+            let parts = SessionStore.titleParts(text)
+            var score = 0
+            if let t = session.title, parts.contains(t) { score = 3 }
+            else if let last = folders.last, parts.contains(last) { score = 2 }
+            else if folders.contains(where: parts.contains) { score = 1 }
+            if score > (best?.score ?? 0) { best = (score, window) }
         }
-        return false
+        guard let window = best?.window else { return false }
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        app.activate(options: [])
+        return true
     }
 
     // MARK: - Voice
@@ -1117,7 +1175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func autoCompact(_ session: Session) {
         guard session.activity == .sleep, !session.waitingNotice,
               !requests.contains(where: { $0.sessionId == session.id }),
-              store.session(inWindow: frontTitle)?.id == session.id,
+              store.session(inWindow: frontTitle, tty: frontTTY)?.id == session.id,
               Date().timeIntervalSince(session.activitySince) > 2 else { return }
         session.contextSnoozedUntil = 101 // until it drops below the threshold
         DebugLog.note("auto-compact \(session.projectName ?? session.id)")
@@ -1178,7 +1236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard session.activity == .sleep, !session.waitingNotice,
               !requests.contains(where: { $0.sessionId == session.id }),
-              store.session(inWindow: frontTitle)?.id == session.id,
+              store.session(inWindow: frontTitle, tty: frontTTY)?.id == session.id,
               Date().timeIntervalSince(session.activitySince) > 1.5,
               Date().timeIntervalSince(queueSentAt ?? .distantPast) > 10 else { return }
         queue.removeFirst()
@@ -1231,7 +1289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Enter, like a screenshot's. Only into that session's own chat.
     private func insertAttachments() {
         guard let active = focusedSession,
-              store.session(inWindow: frontTitle)?.id == active.id,
+              store.session(inWindow: frontTitle, tty: frontTTY)?.id == active.id,
               let files = attachments.removeValue(forKey: active.id), !files.isEmpty else { NSSound.beep(); return }
         DebugLog.tap("insert \(files.count) file(s) into \(active.projectName ?? active.id)")
         widget.releaseKey()

@@ -141,6 +141,8 @@ struct Config: Equatable {
     var widgetPosition: CGPoint?
     /// The tour has opened once (it does by itself on the first launch).
     var tourShown = false
+    /// The settings window: "auto" (the system's), "light" or "dark".
+    var appearance = "auto"
     /// "Not Now" to connecting to Claude Code: don't ask at every launch.
     var setupDeclined = false
     /// Docked in the notch (a drawn one on Macs without it).
@@ -246,6 +248,7 @@ struct Config: Equatable {
         }
         if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
         if let v = obj["tourShown"] as? Bool { config.tourShown = v }
+        if let v = obj["appearance"] as? String, ["auto", "light", "dark"].contains(v) { config.appearance = v }
         if let v = obj["setupDeclined"] as? Bool { config.setupDeclined = v }
         if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
         if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }

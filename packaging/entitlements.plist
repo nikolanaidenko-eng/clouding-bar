@@ -5,5 +5,8 @@
 	<!-- The hardened runtime blocks the microphone unless asked for: dictation. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Asking Terminal and iTerm which tab is in front (by its tty). -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>

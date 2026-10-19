@@ -14,7 +14,11 @@ final class Session {
     var transcriptPath: String?
     /// The Claude process, when the hook could tell. Lets us notice a
     /// session is gone even when SessionEnd never arrived.
-    var claudePid: Int32?
+    var claudePid: Int32? {
+        didSet { if claudePid != oldValue { tty = claudePid.flatMap(Tty.of(pid:)) } }
+    }
+    /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
+    private(set) var tty: String?
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT)
     var entrypoint: String?
     var activity: Activity = .sleep {

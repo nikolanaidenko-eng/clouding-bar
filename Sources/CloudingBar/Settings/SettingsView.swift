@@ -5,17 +5,19 @@ import SwiftUI
 /// Touch Bar, Buttons (and templates), Cowork, Stats. Each section shows
 /// what most people need; the rest waits behind "More", and what only
 /// matters once something is on shows up when it is (owner's request,
-/// 20.10). Cloud in the corner watches the pointer, cheers at every change
-/// and looks away while you type a key; a small one hops along the rows
-/// beside the pointer.
+/// 20.10). Light or dark, as the system or General → Appearance says.
+///
+/// Cloud lives here (SettingsCloud): it sits in the corner while the
+/// pointer rests, hops along the rows as it moves, and flips the switches
+/// itself — it lands on one and the switch goes.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var tab: String
-    @StateObject private var mood = CloudMood()
-    @StateObject private var buddy = RowBuddy()
+    @StateObject private var cloud = SettingsCloud()
 
-    static let tabs = [("general", "General"), ("widget", "Widget"), ("touchbar", "Touch Bar"),
-                       ("buttons", "Buttons"), ("cowork", "Cowork"), ("stats", "Stats")]
+    static let tabs: [(id: String, label: String, tint: UInt32)] = [
+        ("general", "General", 0x8E8E93), ("widget", "Widget", 0x0A84FF), ("touchbar", "Touch Bar", 0xBF5AF2),
+        ("buttons", "Buttons", 0xFF9F0A), ("cowork", "Cowork", 0x30B0C7), ("stats", "Stats", 0x30D158)]
     static let width: CGFloat = 600
 
     init(model: AppModel, tab: String = "general") {
@@ -24,121 +26,295 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                LiveMascot(size: 32, mood: mood)
-                    .frame(width: 32, height: 32)
-                    .overlay(Color.clear.contentShape(Rectangle()).onTapGesture { mood.pokes += 1 })
-                    .help("Clouding Bar")
-                Spacer()
-                HStack(spacing: 0) {
-                    ForEach(Self.tabs, id: \.0) { id, label in
-                        Button(label) {
-                            guard tab != id else { return }
-                            withAnimation(.easeOut(duration: 0.18)) { tab = id }
-                            mood.hops += 1
-                        }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12))
-                            .padding(.horizontal, 10)
-                            .frame(height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(tab == id ? Color(hex: 0x636366) : .clear))
-                            .accessibilityAddTraits(tab == id ? .isSelected : [])
-                    }
-                }
-                .padding(2)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
-                Button { model.showTour() } label: {
-                    Image(systemName: "questionmark").font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(Color.white.opacity(0.1)))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Take the tour: how everything works")
-                .accessibilityLabel("Take the tour")
-            }
-            // Room on the left for the window's close button.
-            .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 11)
-            .overlay(Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5), alignment: .bottom)
-
-            ScrollView {
-                ZStack(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                header
+                ScrollView {
                     Group {
                         switch tab {
                         case "general": GeneralTab(model: model)
                         case "widget": WidgetTab(model: model)
                         case "touchbar": TouchBarTab(model: model)
                         case "buttons": ButtonsTab(model: model)
-                        case "cowork": CoworkTab(model: model, mood: mood)
+                        case "cowork": CoworkTab(model: model, mood: cloud.mood)
                         default: StatsTab(model: model)
                         }
                     }
-                    .padding(.leading, RowBuddy.gutter).padding(.trailing, 18).padding(.vertical, 18)
+                    .padding(.leading, SettingsCloud.gutter).padding(.trailing, 18).padding(.vertical, 18)
                     .transition(.opacity.combined(with: .offset(y: 6)))
-                    if let y = buddy.y {
-                        LiveMascot(size: RowBuddy.size, mood: buddy.mood)
-                            .frame(width: RowBuddy.size, height: RowBuddy.size)
-                            .offset(x: (RowBuddy.gutter - RowBuddy.size) / 2 - 1, y: y - RowBuddy.size / 2)
-                            .animation(.spring(response: 0.42, dampingFraction: 0.58), value: y)
-                            .transition(.scale(scale: 0.3).combined(with: .opacity))
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
                 }
-                .coordinateSpace(name: RowBuddy.space)
-                .environment(\.rowBuddy, buddy)
+            }
+            CloudActor(cloud: cloud)
+        }
+        .coordinateSpace(name: SettingsCloud.space)
+        .environment(\.settingsCloud, cloud)
+        .foregroundColor(.sText)
+        .frame(width: Self.width, height: 560)
+        .background(Color.sBackground)
+        .onAppear { cloud.start() }
+        .onDisappear { cloud.stop() }
+        // Every change gets a cheer.
+        .onChange(of: model.config) { _ in cloud.cheer() }
+        .onChange(of: tab) { _ in cloud.goHome(hop: true) }
+    }
+
+    /// Cloud's corner, the tabs (each with its colour when picked), the tour.
+    private var header: some View {
+        HStack(spacing: 10) {
+            // Cloud's seat: it sits here while the pointer rests.
+            Color.clear.frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+                .onTapGesture { cloud.mood.pokes += 1 }
+                .help("Clouding Bar")
+            Spacer()
+            HStack(spacing: 2) {
+                ForEach(Self.tabs, id: \.id) { t in
+                    let on = tab == t.id
+                    Button(t.label) {
+                        guard tab != t.id else { return }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = t.id }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: on ? .semibold : .regular))
+                    .foregroundColor(on ? .white : .sText)
+                    .padding(.horizontal, 10)
+                    .frame(height: 26)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(on ? Color(hex: t.tint) : .clear))
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.sTrack))
+            Button { model.showTour() } label: {
+                Image(systemName: "questionmark").font(.system(size: 12, weight: .semibold))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(Color.sControl))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Take the tour: how everything works")
+            .accessibilityLabel("Take the tour")
+        }
+        // Room on the left for the window's close button.
+        .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 11)
+        .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
+    }
+}
+
+/// Where Cloud is in the settings window and where it's going. It sits on
+/// its seat in the corner until the pointer moves, then hops — in an arc —
+/// to the row under the pointer; 1.6 s of stillness and it hops home. A
+/// switch or chip pressed: it hops onto it first, and the switch flips as
+/// it lands.
+final class SettingsCloud: ObservableObject {
+    static let gutter: CGFloat = 32
+    static let space = "settings-window"
+    /// Its seat in the header, and how big it is there and on the rows.
+    static let home = CGPoint(x: 40 + 16, y: 11 + 16)
+    static let size: CGFloat = 32
+    static let rowScale: CGFloat = 0.62
+
+    let mood = CloudMood()
+    /// The hop under way: from, to, how high it arcs; `progress` 0 → 1.
+    @Published private(set) var from = SettingsCloud.home
+    @Published private(set) var to = SettingsCloud.home
+    @Published private(set) var arc: CGFloat = 0
+    @Published var progress: CGFloat = 1
+    @Published private(set) var scale: CGFloat = 1
+
+    private var flying = false
+    /// Where to go once the hop in the air lands.
+    private var next: (point: CGPoint, scale: CGFloat, then: (() -> Void)?)?
+    /// The row it last sat by, to go back to after a press.
+    private var rowPoint: CGPoint?
+    /// The row the pointer is over now, if any.
+    private var overRow: CGFloat?
+    private var idle: DispatchWorkItem?
+    private var monitor: Any?
+
+    func start() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { [weak self] e in
+            self?.moved()
+            return e
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        idle?.cancel()
+    }
+
+    /// The pointer moves: back by its row if it went home; a rest later, home.
+    func moved() {
+        if to == Self.home, !flying, let y = overRow {
+            let p = CGPoint(x: Self.gutter / 2, y: y)
+            rowPoint = p
+            hop(to: p, scale: Self.rowScale)
+        }
+        idle?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.goHome() }
+        idle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
+    }
+
+    /// The pointer is over a row whose middle is at `y`.
+    func row(_ y: CGFloat) {
+        overRow = y
+        moved()
+        let p = CGPoint(x: Self.gutter / 2, y: y)
+        rowPoint = p
+        hop(to: p, scale: Self.rowScale)
+    }
+
+    /// The pointer left the row at `y`.
+    func leftRow(_ y: CGFloat) {
+        if overRow == y { overRow = nil }
+    }
+
+    func goHome(hop: Bool = false) {
+        rowPoint = nil
+        if to == Self.home && !flying {
+            if hop { mood.hops += 1 }
+            return
+        }
+        self.hop(to: Self.home, scale: 1)
+    }
+
+    /// A press on the control at `frame`: Cloud lands on it, then `action`.
+    func press(_ frame: CGRect, _ action: @escaping () -> Void) {
+        moved()
+        hop(to: CGPoint(x: frame.midX, y: frame.minY - 4), scale: Self.rowScale, then: { [weak self] in
+            action()
+            self?.mood.pokes += 1
+            // A moment on it, then back by its row.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                guard let self, !self.flying else { return }
+                if let p = self.rowPoint { self.hop(to: p, scale: Self.rowScale) }
+            }
+        })
+    }
+
+    func cheer() { mood.pokes += 1 }
+
+    private func hop(to point: CGPoint, scale s: CGFloat, then: (() -> Void)? = nil) {
+        guard !flying else {
+            // One hop at a time: this one waits for the landing.
+            if let pending = next?.then, then == nil { next = (point, s, pending) } else { next = (point, s, then) }
+            return
+        }
+        let distance = hypot(point.x - to.x, point.y - to.y)
+        guard distance > 3 else { then?(); return }
+        flying = true
+        let duration = min(0.5, 0.2 + Double(distance) / 1400)
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            from = to
+            to = point
+            // Up and over: higher for longer hops, a little bob between rows.
+            arc = min(46, 8 + distance * 0.18)
+            progress = 0
+        }
+        DispatchQueue.main.async {
+            withAnimation(.timingCurve(0.35, 0, 0.3, 1, duration: duration)) {
+                self.progress = 1
+                self.scale = s
             }
         }
-        .foregroundColor(.cbText)
-        .frame(width: Self.width, height: 560)
-        .background(Color(hex: 0x232325))
-        .environment(\.colorScheme, .dark)
-        // Every change gets a cheer.
-        .onChange(of: model.config) { _ in mood.pokes += 1; buddy.mood.pokes += 1 }
-        .onChange(of: tab) { _ in withAnimation(.easeOut(duration: 0.15)) { buddy.y = nil } }
-    }
-}
-
-/// The little Cloud beside the rows: it hops to the row under the pointer.
-final class RowBuddy: ObservableObject {
-    static let gutter: CGFloat = 32
-    static let size: CGFloat = 20
-    static let space = "settings-content"
-    /// The middle of the row it sits by, in the content's space.
-    @Published var y: CGFloat?
-    let mood = CloudMood()
-
-    func point(at y: CGFloat) {
-        guard abs((self.y ?? -100) - y) > 4 else { return }
-        if self.y == nil {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { self.y = y }
-        } else {
-            self.y = y
-            mood.hops += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.02) { [weak self] in
+            guard let self else { return }
+            self.flying = false
+            then?()
+            if let n = self.next {
+                self.next = nil
+                self.hop(to: n.point, scale: n.scale, then: n.then)
+            }
         }
     }
 }
 
-private struct RowBuddyKey: EnvironmentKey { static let defaultValue: RowBuddy? = nil }
+/// Cloud itself, drawn over the window, along its hop's arc.
+struct CloudActor: View {
+    @ObservedObject var cloud: SettingsCloud
+
+    var body: some View {
+        LiveMascot(size: SettingsCloud.size, mood: cloud.mood)
+            .frame(width: SettingsCloud.size, height: SettingsCloud.size)
+            .scaleEffect(cloud.scale)
+            .modifier(HopPath(from: cloud.from, to: cloud.to, arc: cloud.arc, progress: cloud.progress))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Along a parabola from `from` to `to`, `arc` high at its top.
+struct HopPath: AnimatableModifier {
+    let from: CGPoint
+    let to: CGPoint
+    let arc: CGFloat
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let t = progress
+        let x = from.x + (to.x - from.x) * t
+        let y = from.y + (to.y - from.y) * t - arc * 4 * t * (1 - t)
+        return content.offset(x: x - SettingsCloud.size / 2, y: y - SettingsCloud.size / 2)
+    }
+}
+
+private struct SettingsCloudKey: EnvironmentKey { static let defaultValue: SettingsCloud? = nil }
 
 extension EnvironmentValues {
-    var rowBuddy: RowBuddy? {
-        get { self[RowBuddyKey.self] }
-        set { self[RowBuddyKey.self] = newValue }
+    var settingsCloud: SettingsCloud? {
+        get { self[SettingsCloudKey.self] }
+        set { self[SettingsCloudKey.self] = newValue }
     }
 }
 
 /// Tells Cloud which row the pointer is over.
 struct BuddyHover: ViewModifier {
-    @Environment(\.rowBuddy) private var buddy
+    @Environment(\.settingsCloud) private var cloud
 
     func body(content: Content) -> some View {
         content.background(GeometryReader { g in
             Color.clear.contentShape(Rectangle()).onHover { inside in
-                if inside { buddy?.point(at: g.frame(in: .named(RowBuddy.space)).midY) }
+                let y = g.frame(in: .named(SettingsCloud.space)).midY
+                if inside { cloud?.row(y) } else { cloud?.leftRow(y) }
             }
         })
+    }
+}
+
+/// A press that goes by way of Cloud.
+enum CloudPress {
+    /// Runs `action` through Cloud's hop, or at once without Cloud.
+    static func run(_ cloud: SettingsCloud?, _ frame: CGRect, _ action: @escaping () -> Void) {
+        if let cloud, frame != .zero { cloud.press(frame, action) } else { action() }
+    }
+}
+
+/// A button whose press Cloud makes: it hops onto it, then it goes.
+struct CloudButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @Environment(\.settingsCloud) private var cloud
+    @State private var frame: CGRect = .zero
+
+    var body: some View {
+        Button { CloudPress.run(cloud, frame, action) } label: { label() }
+            .buttonStyle(.plain)
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { frame = g.frame(in: .named(SettingsCloud.space)) }
+                    .onChange(of: g.frame(in: .named(SettingsCloud.space))) { frame = $0 }
+            })
     }
 }
 
@@ -161,9 +337,9 @@ struct MoreRows<Content: View>: View {
                 VStack(spacing: 0) { content }
                     .transition(.opacity.combined(with: .offset(y: -6)))
             }
-            Button {
+            CloudButton(action: {
                 withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { open.toggle() }
-            } label: {
+            }) {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
                         .rotationEffect(.degrees(open ? 90 : 0))
@@ -171,16 +347,15 @@ struct MoreRows<Content: View>: View {
                     if !open {
                         Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit())
                             .padding(.horizontal, 5).frame(height: 15)
-                            .background(Capsule().fill(Color.white.opacity(0.1)))
+                            .background(Capsule().fill(Color.sControl))
                     }
                     Spacer(minLength: 0)
                 }
-                .foregroundColor(.cbSecondary)
+                .foregroundColor(.sSecondary)
                 .padding(.horizontal, 12)
                 .frame(height: 34)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .modifier(BuddyHover())
             .accessibilityLabel(open ? "Fewer settings" : "\(count) more settings")
         }
@@ -228,7 +403,8 @@ struct SettingsGroup<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.sGroup))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.sLine, lineWidth: 0.5))
     }
 }
 
@@ -236,14 +412,20 @@ struct SettingsGroup<Content: View>: View {
 struct SettingsSection<Content: View>: View {
     let title: String
     var note = ""
+    /// Its little coloured icon, as in System Settings.
+    var icon: String? = nil
+    var tint: UInt32 = 0x8E8E93
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.cbSecondary)
-                .padding(.leading, 12)
+            HStack(spacing: 7) {
+                if let icon { SectionIcon(symbol: icon, tint: tint) }
+                Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.sSecondary)
+            }
+            .padding(.leading, icon == nil ? 12 : 4)
             SettingsGroup { content }
             if !note.isEmpty {
-                Text(note).font(.system(size: 11)).foregroundColor(.cbMuted)
+                Text(note).font(.system(size: 11)).foregroundColor(.sMuted)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 12)
             }
@@ -262,7 +444,7 @@ struct SettingsRow<Accessory: View>: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 13))
                 if !hint.isEmpty {
-                    Text(hint).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    Text(hint).font(.system(size: 11)).foregroundColor(.sSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -272,8 +454,35 @@ struct SettingsRow<Accessory: View>: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(minHeight: 46)
-        .overlay(divider ? Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5) : nil, alignment: .bottom)
+        .overlay(divider ? Rectangle().fill(Color.sLine).frame(height: 0.5) : nil, alignment: .bottom)
         .modifier(BuddyHover())
+    }
+}
+
+/// A few choices side by side; the picked one lit in `tint`.
+struct SettingsSegments: View {
+    let options: [(id: String, label: String)]
+    let selected: String
+    var tint: UInt32 = 0x0A84FF
+    let pick: (String) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.id) { o in
+                let on = o.id == selected
+                CloudButton(action: { if !on { pick(o.id) } }) {
+                    Text(o.label).font(.system(size: 11, weight: on ? .semibold : .regular))
+                        .foregroundColor(on ? .white : .sText)
+                        .padding(.horizontal, 9).frame(height: 24)
+                        .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color(hex: tint) : .clear))
+                        .contentShape(Rectangle())
+                }
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Color.sTrack))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selected)
     }
 }
 
@@ -282,14 +491,13 @@ struct CBSwitch: View {
     let title: String
     @Binding var on: Bool
     var body: some View {
-        Button { withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { on.toggle() } } label: {
-            Capsule().fill(on ? Color(hex: 0x0A84FF) : Color(hex: 0x48484A))
+        CloudButton(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { on.toggle() } }) {
+            Capsule().fill(on ? Color(hex: 0x0A84FF) : Color.sSwitchOff)
                 .frame(width: 40, height: 24)
                 .overlay(Circle().fill(.white).frame(width: 20, height: 20)
                     .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
                     .padding(2), alignment: on ? .trailing : .leading)
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(on ? "on" : "off")
     }
@@ -300,20 +508,19 @@ struct CBCheckbox: View {
     var hint = ""
     @Binding var on: Bool
     var body: some View {
-        Button { on.toggle() } label: {
+        CloudButton(action: { on.toggle() }) {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 5).fill(on ? Color(hex: 0x0A84FF) : .clear)
-                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Color.clear : Color(hex: 0x636366), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Color.clear : Color.sChipOff, lineWidth: 1))
                     .overlay(Text(on ? "✓" : "").font(.system(size: 12)).foregroundColor(.white))
                     .frame(width: 18, height: 18)
-                Text(title).font(.system(size: 12)) + Text(hint.isEmpty ? "" : " \(hint)").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                Text(title).font(.system(size: 12)) + Text(hint.isEmpty ? "" : " \(hint)").font(.system(size: 12)).foregroundColor(.sSecondary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 40)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(on ? "on" : "off")
     }
@@ -324,15 +531,19 @@ struct Chip: View {
     let on: Bool
     let action: () -> Void
     var body: some View {
-        Button(label, action: action)
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .padding(.horizontal, 10)
-            .frame(height: 26)
-            .background(Capsule().fill(on ? Color(hex: 0x0A84FF) : .clear))
-            .overlay(Capsule().strokeBorder(on ? Color.clear : Color(hex: 0x636366), lineWidth: 1))
-            .fixedSize()
-            .accessibilityAddTraits(on ? .isSelected : [])
+        CloudButton(action: action) {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundColor(on ? .white : .sText)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .background(Capsule().fill(on ? Color(hex: 0x0A84FF) : .clear))
+                .overlay(Capsule().strokeBorder(on ? Color.clear : Color.sChipOff, lineWidth: 1))
+                .contentShape(Capsule())
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: on)
+        }
+        .fixedSize()
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -389,7 +600,11 @@ struct GeneralTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsSection(title: "App") {
+            SettingsSection(title: "App", icon: "gearshape.fill", tint: 0x8E8E93) {
+                SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
+                    SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
+                                     selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
+                }
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
@@ -398,13 +613,13 @@ struct GeneralTab: View {
                 }
             }
 
-            SettingsSection(title: "Claude Code") {
+            SettingsSection(title: "Claude Code", icon: "sparkle", tint: 0xD97757) {
                 SettingsRow(title: "Hooks",
                             hint: model.claudeConnected ? "Claude Code reports here"
                                 : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
                             divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
                     if model.claudeConnected {
-                        Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                        Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                     } else {
                         Button("Connect") { model.connectClaude() }
                     }
@@ -416,7 +631,7 @@ struct GeneralTab: View {
                                     : "Its own limits and permissions, here too",
                                 divider: model.hasVSCode || model.setupMessage != nil) {
                         if model.codexConnected {
-                            Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                            Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {
                             Button("Connect") { model.connectCodex() }
                         }
@@ -427,21 +642,21 @@ struct GeneralTab: View {
                                 hint: "Passed on by a small wrapper · new chats",
                                 divider: model.setupMessage != nil) {
                         if model.vscodeWrapped {
-                            Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                            Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {
                             Button("Set Up") { model.wrapVSCode() }
                         }
                     }
                 }
                 if let message = model.setupMessage {
-                    Text(message).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    Text(message).font(.system(size: 11)).foregroundColor(.sSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                 }
             }
 
-            SettingsSection(title: "Context") {
+            SettingsSection(title: "Context", icon: "gauge.medium", tint: 0xBF5AF2) {
                 SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact",
                             divider: model.config.contextWarning) {
                     HStack(spacing: 10) {
@@ -468,8 +683,11 @@ struct GeneralTab: View {
             .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.contextWarning)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundColor(.cbSecondary)
-                    .padding(.leading, 12)
+                HStack(spacing: 7) {
+                    SectionIcon(symbol: "mic.fill", tint: 0xFF453A)
+                    Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundColor(.sSecondary)
+                }
+                .padding(.leading, 4)
                 VoiceGroup(model: model)
             }
         }
@@ -499,7 +717,7 @@ struct VoiceGroup: View {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
                         Text("This language isn't available offline on this Mac. To use it, your voice is sent to Apple's servers for recognition.")
-                            .font(.system(size: 11)).foregroundColor(Color(hex: 0xD1D1D6)).lineSpacing(3)
+                            .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     CBCheckbox(title: "Allow sending audio to Apple", on: Binding(
@@ -523,7 +741,7 @@ struct WidgetTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsSection(title: "Floating widget") {
+            SettingsSection(title: "Floating widget", icon: "capsule.fill", tint: 0x0A84FF) {
                 SettingsRow(title: "Show the widget", hint: "A pill over your windows; the panel opens from it",
                             divider: model.config.widget) {
                     CBSwitch(title: "Show the widget", on: binding("widget") { $0.widget })
@@ -557,7 +775,7 @@ struct WidgetTab: View {
             }
 
             if model.config.widget {
-                SettingsSection(title: "What it shows") {
+                SettingsSection(title: "What it shows", icon: "eye.fill", tint: 0x30B0C7) {
                     SettingsRow(title: "Numbers") {
                         ToggleChips(items: [hideChip("Session", "session"), listChip("Context", "pillShows", "context"),
                                             listChip("Reset time", "pillShows", "reset"),
@@ -574,11 +792,11 @@ struct WidgetTab: View {
                                                 boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
                         }
                         Text("Pull the pill's outline to resize it; drag one item onto another to swap them. Chat sends to the chat the widget shows, once Claude is free.")
-                            .font(.system(size: 11)).foregroundColor(.cbMuted)
+                            .font(.system(size: 11)).foregroundColor(.sMuted)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 12).padding(.vertical, 10)
-                            .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+                            .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                     }
                 }
                 .transition(.opacity.combined(with: .offset(y: -8)))
@@ -667,7 +885,7 @@ struct TouchBarTab: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             Text("Claude's questions and permission requests always show. Tap the model on the bar to switch it, the subagents to see who's working; the buttons are set up in Buttons.")
-                .font(.system(size: 11)).foregroundColor(.cbMuted)
+                .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
         }
@@ -696,7 +914,7 @@ struct ButtonsTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Touch Bar preview · meters shrink as you add buttons").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                Text("Touch Bar preview · meters shrink as you add buttons").font(.system(size: 11)).foregroundColor(.sSecondary)
                 TouchBarPreview(model: model,
                                 labels: list.map(\.label) + (editing && selected == nil ? [draftName.isEmpty ? "New" : draftName] : []),
                                 highlightLast: editing && selected == nil)
@@ -706,10 +924,10 @@ struct ButtonsTab: View {
                     Button { startEdit(i) } label: {
                         HStack(spacing: 12) {
                             Text(b.label).font(.system(size: 13)).lineLimit(1).frame(width: 90, alignment: .leading)
-                            Text(b.value).font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
+                            Text(b.value).font(.system(size: 12)).foregroundColor(.sSecondary).lineLimit(1)
                             Spacer(minLength: 0)
                             Text(b.type.rawValue + (b.hotkey.map { " · " + HotKeys.display($0) } ?? ""))
-                                .font(.system(size: 12)).foregroundColor(.cbSecondary)
+                                .font(.system(size: 12)).foregroundColor(.sSecondary)
                         }
                         .padding(.horizontal, 12)
                         .frame(minHeight: 40)
@@ -717,16 +935,16 @@ struct ButtonsTab: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+                    .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                 }
                 if editing { editor }
                 HStack(spacing: 2) {
                     Button("+") { startAdd() }.buttonStyle(.plain).font(.system(size: 17))
                         .frame(width: 36, height: 30).accessibilityLabel("Add button")
-                    Button("−") { remove() }.buttonStyle(.plain).font(.system(size: 17)).foregroundColor(.cbSecondary)
+                    Button("−") { remove() }.buttonStyle(.plain).font(.system(size: 17)).foregroundColor(.sSecondary)
                         .frame(width: 36, height: 30).accessibilityLabel("Remove button")
                     Spacer()
-                    Text("Profile").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    Text("Profile").font(.system(size: 11)).foregroundColor(.sSecondary)
                     Picker("", selection: $profile) {
                         Text("Default").tag("")
                         ForEach(profileChoices, id: \.self) { Text($0).tag($0) }
@@ -742,7 +960,7 @@ struct ButtonsTab: View {
                 Text(model.config.profiles[profile] == nil
                      ? "\(profile) uses the default buttons. Change one here to give it its own set."
                      : "Buttons for sessions in \(profile).")
-                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
+                    .font(.system(size: 11)).foregroundColor(.sSecondary)
             }
         }
         .onChange(of: profile) { _ in editing = false; selected = nil }
@@ -767,17 +985,17 @@ struct ButtonsTab: View {
                             list.remove(at: i)
                             model.setConfig("templates", list)
                         }
-                        .buttonStyle(.plain).foregroundColor(.cbSecondary)
+                        .buttonStyle(.plain).foregroundColor(.sSecondary)
                         .accessibilityLabel("Remove template")
                     }
                     .padding(.horizontal, 12).frame(minHeight: 34)
-                    .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+                    .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                 }
                 HStack(spacing: 8) {
                     TextField("New template", text: $newTemplate)
                         .textFieldStyle(.plain).font(.system(size: 12))
                         .padding(.horizontal, 8).frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
                         .onSubmit(addTemplate)
                     Button("Add", action: addTemplate).buttonStyle(.plain).font(.system(size: 12))
                         .disabled(newTemplate.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -801,8 +1019,8 @@ struct ButtonsTab: View {
             TextField("Name", text: $draftName)
                 .textFieldStyle(.plain).font(.system(size: 12))
                 .padding(.horizontal, 8).frame(width: 110, height: 30)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
             Picker("", selection: Binding(get: { draftType }, set: { draftType = $0; typePicked = true })) {
                 ForEach(ButtonSpec.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -815,8 +1033,8 @@ struct ButtonsTab: View {
             TextField(placeholder, text: $draftValue)
                 .textFieldStyle(.plain).font(.system(size: 12))
                 .padding(.horizontal, 8).frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
-                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
                 .onChange(of: draftValue) { v in if !typePicked { draftType = ButtonSpec.guessType(v) } }
             Button(selected == nil ? "Add" : "Save") { commit() }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
@@ -827,7 +1045,7 @@ struct ButtonsTab: View {
         }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+        .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
         .transition(.opacity.combined(with: .offset(y: 6)))
     }
 
@@ -1115,9 +1333,13 @@ struct ShortcutField: NSViewRepresentable {
 
         private func update() {
             label.stringValue = recording ? "Press keys…" : combo.map(HotKeys.display) ?? "Shortcut"
-            label.textColor = recording || combo != nil ? NSColor(hex: 0xF5F5F7) : NSColor(hex: 0xA1A1A6)
-            layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
-            layer?.borderColor = (recording ? NSColor(hex: 0x0A84FF) : NSColor.white.withAlphaComponent(0.18)).cgColor
+            label.textColor = recording || combo != nil ? .labelColor : .secondaryLabelColor
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                layer?.backgroundColor = (dark ? NSColor.black.withAlphaComponent(0.25) : NSColor.white).cgColor
+                layer?.borderColor = (recording ? NSColor(hex: 0x0A84FF)
+                                      : dark ? NSColor.white.withAlphaComponent(0.18) : NSColor.black.withAlphaComponent(0.14)).cgColor
+            }
             setAccessibilityLabel("Shortcut: " + (combo.map(HotKeys.display) ?? "none"))
         }
     }
@@ -1143,28 +1365,16 @@ struct CoworkTab: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Cowork status").font(.system(size: 13))
-                        Text("Claude saves context to a connected folder").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                        Text("Claude saves context to a connected folder").font(.system(size: 11)).foregroundColor(.sSecondary)
                     }
                     Spacer()
-                    HStack(spacing: 0) {
-                        ForEach([("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")], id: \.0) { id, label in
-                            Button(label) { model.setConfig("coworkMode", id) }
-                                .buttonStyle(.plain)
-                                .font(.system(size: 11))
-                                .padding(.horizontal, 9)
-                                .frame(height: 24)
-                                .background(RoundedRectangle(cornerRadius: 5)
-                                    .fill(model.config.coworkMode == id ? Color(hex: 0x636366) : .clear))
-                                .accessibilityAddTraits(model.config.coworkMode == id ? .isSelected : [])
-                        }
-                    }
-                    .padding(2)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.3)))
+                    SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
+                                     selected: model.config.coworkMode, tint: 0x30B0C7) { model.setConfig("coworkMode", $0) }
                 }
-                Text(notes[model.config.coworkMode] ?? "").font(.system(size: 11)).foregroundColor(.cbSecondary)
+                Text(notes[model.config.coworkMode] ?? "").font(.system(size: 11)).foregroundColor(.sSecondary)
             }
             .padding(12)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.sGroup))
 
             if model.config.coworkMode != "off" {
                 SettingsGroup {
@@ -1183,7 +1393,7 @@ struct CoworkTab: View {
                         EmptyView()
                     }
                     if let message = model.coworkMessage {
-                        Text(message).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                        Text(message).font(.system(size: 11)).foregroundColor(.sSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
                     }
@@ -1205,15 +1415,15 @@ struct CoworkTab: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
                             Text("Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.")
-                                .font(.system(size: 11)).foregroundColor(Color(hex: 0xD1D1D6)).lineSpacing(3)
+                                .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         HStack(spacing: 8) {
                             SecureField("sessionKey", text: $key)
                                 .textFieldStyle(.plain).font(.system(size: 12))
                                 .padding(.horizontal, 8).frame(height: 30)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
-                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.white.opacity(0.18), lineWidth: 0.5))
+                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
+                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
                             Button("I understand, turn on") {
                                 model.saveLiveKey(key)
                                 key = ""
