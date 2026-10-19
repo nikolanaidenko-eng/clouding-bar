@@ -33,6 +33,11 @@ struct WeekStats {
     var subagents = 0
     /// The 5-hour limit over the last 24 hours.
     var limitLine: [LimitHistory.Sample] = []
+    /// Per day and hour, for the heat map's hover: minutes Claude worked,
+    /// tokens by project, and the highest the 5-hour limit got.
+    var cellMinutes: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
+    var cellProjects: [[[String: Int]]] = Array(repeating: Array(repeating: [:], count: 24), count: 7)
+    var cellLimit: [[Double?]] = Array(repeating: Array(repeating: nil, count: 24), count: 7)
 
     var isEmpty: Bool { grid.allSatisfy { $0.allSatisfy { $0 == 0 } } }
 
@@ -115,6 +120,7 @@ enum StatsBuilder {
                 for (key, tokens) in file.hours {
                     guard let hour = Int(key), let at = day(hour) else { continue }
                     stats.grid[at.d][at.h] += tokens
+                    stats.cellProjects[at.d][at.h][project, default: 0] += tokens
                     projectTokens[project, default: 0] += tokens
                     stats.weekTokens += tokens
                     if at.d == 6 { activeToday = true; stats.todayTokens += tokens }
@@ -144,6 +150,9 @@ enum StatsBuilder {
         stats.projects = shares(projectTokens)
         stats.models = shares(modelTokens)
         stats.activeMinutes = spans.count * 5
+        for span in spans {
+            if let at = day(span / 12) { stats.cellMinutes[at.d][at.h] += 5 }
+        }
         stats.activeByProject = projectSpans.map { (name: $0.key, minutes: $0.value.count * 5) }
             .sorted { $0.minutes > $1.minutes }.prefix(3).map { $0 }
         stats.subagents = (toolUses["Agent"] ?? 0) + (toolUses["Task"] ?? 0)
@@ -156,8 +165,10 @@ enum StatsBuilder {
         let dayAgo = now.addingTimeInterval(-24 * 3600)
         for s in LimitHistory.load(since: start) {
             let d = cal.dateComponents([.day], from: start, to: cal.startOfDay(for: s.time)).day ?? -1
-            if (0..<7).contains(d), s.percent >= 95 {
-                stats.limitHours.insert(d * 24 + cal.component(.hour, from: s.time))
+            if (0..<7).contains(d) {
+                let h = cal.component(.hour, from: s.time)
+                if s.percent >= 95 { stats.limitHours.insert(d * 24 + h) }
+                stats.cellLimit[d][h] = max(stats.cellLimit[d][h] ?? 0, s.percent)
             }
             let atLimit = s.percent >= 99
             if atLimit && (!wasAtLimit || s.time.timeIntervalSince(lastTime) > 3600) { stats.limitHits += 1 }

@@ -2,13 +2,17 @@ import SwiftUI
 
 /// The settings window (600×560), one tab per place things show up:
 /// General (the app, context, voice), Widget (the pill and the panel),
-/// Touch Bar, Buttons (and templates), Cowork, Stats. Cloud in the corner
-/// keeps you company: it watches the pointer, cheers at every change, and
-/// looks away while you type a key.
+/// Touch Bar, Buttons (and templates), Cowork, Stats. Each section shows
+/// what most people need; the rest waits behind "More", and what only
+/// matters once something is on shows up when it is (owner's request,
+/// 20.10). Cloud in the corner watches the pointer, cheers at every change
+/// and looks away while you type a key; a small one hops along the rows
+/// beside the pointer.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var tab: String
     @StateObject private var mood = CloudMood()
+    @StateObject private var buddy = RowBuddy()
 
     static let tabs = [("general", "General"), ("widget", "Widget"), ("touchbar", "Touch Bar"),
                        ("buttons", "Buttons"), ("cowork", "Cowork"), ("stats", "Stats")]
@@ -59,18 +63,31 @@ struct SettingsView: View {
             .overlay(Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5), alignment: .bottom)
 
             ScrollView {
-                Group {
-                    switch tab {
-                    case "general": GeneralTab(model: model)
-                    case "widget": WidgetTab(model: model)
-                    case "touchbar": TouchBarTab(model: model)
-                    case "buttons": ButtonsTab(model: model)
-                    case "cowork": CoworkTab(model: model, mood: mood)
-                    default: StatsTab(model: model)
+                ZStack(alignment: .topLeading) {
+                    Group {
+                        switch tab {
+                        case "general": GeneralTab(model: model)
+                        case "widget": WidgetTab(model: model)
+                        case "touchbar": TouchBarTab(model: model)
+                        case "buttons": ButtonsTab(model: model)
+                        case "cowork": CoworkTab(model: model, mood: mood)
+                        default: StatsTab(model: model)
+                        }
+                    }
+                    .padding(.leading, RowBuddy.gutter).padding(.trailing, 18).padding(.vertical, 18)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+                    if let y = buddy.y {
+                        LiveMascot(size: RowBuddy.size, mood: buddy.mood)
+                            .frame(width: RowBuddy.size, height: RowBuddy.size)
+                            .offset(x: (RowBuddy.gutter - RowBuddy.size) / 2 - 1, y: y - RowBuddy.size / 2)
+                            .animation(.spring(response: 0.42, dampingFraction: 0.58), value: y)
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                     }
                 }
-                .padding(18)
-                .transition(.opacity.combined(with: .offset(y: 6)))
+                .coordinateSpace(name: RowBuddy.space)
+                .environment(\.rowBuddy, buddy)
             }
         }
         .foregroundColor(.cbText)
@@ -78,7 +95,96 @@ struct SettingsView: View {
         .background(Color(hex: 0x232325))
         .environment(\.colorScheme, .dark)
         // Every change gets a cheer.
-        .onChange(of: model.config) { _ in mood.pokes += 1 }
+        .onChange(of: model.config) { _ in mood.pokes += 1; buddy.mood.pokes += 1 }
+        .onChange(of: tab) { _ in withAnimation(.easeOut(duration: 0.15)) { buddy.y = nil } }
+    }
+}
+
+/// The little Cloud beside the rows: it hops to the row under the pointer.
+final class RowBuddy: ObservableObject {
+    static let gutter: CGFloat = 32
+    static let size: CGFloat = 20
+    static let space = "settings-content"
+    /// The middle of the row it sits by, in the content's space.
+    @Published var y: CGFloat?
+    let mood = CloudMood()
+
+    func point(at y: CGFloat) {
+        guard abs((self.y ?? -100) - y) > 4 else { return }
+        if self.y == nil {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { self.y = y }
+        } else {
+            self.y = y
+            mood.hops += 1
+        }
+    }
+}
+
+private struct RowBuddyKey: EnvironmentKey { static let defaultValue: RowBuddy? = nil }
+
+extension EnvironmentValues {
+    var rowBuddy: RowBuddy? {
+        get { self[RowBuddyKey.self] }
+        set { self[RowBuddyKey.self] = newValue }
+    }
+}
+
+/// Tells Cloud which row the pointer is over.
+struct BuddyHover: ViewModifier {
+    @Environment(\.rowBuddy) private var buddy
+
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            Color.clear.contentShape(Rectangle()).onHover { inside in
+                if inside { buddy?.point(at: g.frame(in: .named(RowBuddy.space)).midY) }
+            }
+        })
+    }
+}
+
+/// Rows that wait behind "More" (owner's request, 20.10): the last line of a
+/// box opens them, and they stay open next time.
+struct MoreRows<Content: View>: View {
+    let count: Int
+    let content: Content
+    @AppStorage private var open: Bool
+
+    init(_ key: String, count: Int, @ViewBuilder content: () -> Content) {
+        self.count = count
+        self.content = content()
+        _open = AppStorage(wrappedValue: false, "settings.more." + key)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if open {
+                VStack(spacing: 0) { content }
+                    .transition(.opacity.combined(with: .offset(y: -6)))
+            }
+            Button {
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { open.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    Text(open ? "Less" : "More").font(.system(size: 12))
+                    if !open {
+                        Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit())
+                            .padding(.horizontal, 5).frame(height: 15)
+                            .background(Capsule().fill(Color.white.opacity(0.1)))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundColor(.cbSecondary)
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .modifier(BuddyHover())
+            .accessibilityLabel(open ? "Fewer settings" : "\(count) more settings")
+        }
+        .clipped()
     }
 }
 
@@ -167,6 +273,7 @@ struct SettingsRow<Accessory: View>: View {
         .padding(.vertical, 6)
         .frame(minHeight: 46)
         .overlay(divider ? Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5) : nil, alignment: .bottom)
+        .modifier(BuddyHover())
     }
 }
 
@@ -175,7 +282,7 @@ struct CBSwitch: View {
     let title: String
     @Binding var on: Bool
     var body: some View {
-        Button { withAnimation(.easeOut(duration: 0.16)) { on.toggle() } } label: {
+        Button { withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { on.toggle() } } label: {
             Capsule().fill(on ? Color(hex: 0x0A84FF) : Color(hex: 0x48484A))
                 .frame(width: 40, height: 24)
                 .overlay(Circle().fill(.white).frame(width: 20, height: 20)
@@ -286,17 +393,14 @@ struct GeneralTab: View {
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
-                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
+                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses", divider: false) {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
-                }
-                SettingsRow(title: "Tour", hint: "How everything works, in seven short pages", divider: false) {
-                    Button("Show") { model.showTour() }
                 }
             }
 
             SettingsSection(title: "Claude Code") {
                 SettingsRow(title: "Hooks",
-                            hint: model.claudeConnected ? "Connected: Claude Code tells Clouding Bar what it's doing"
+                            hint: model.claudeConnected ? "Claude Code reports here"
                                 : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
                             divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
                     if model.claudeConnected {
@@ -308,8 +412,8 @@ struct GeneralTab: View {
                 if model.hasCodex {
                     SettingsRow(title: "Codex",
                                 hint: model.codexConnected
-                                    ? "Connected: its limits, permissions and subagents show here. Trust the hooks once with /hooks in Codex."
-                                    : "OpenAI's Codex can report here too: its own 5-hour and weekly limits, its permissions.",
+                                    ? "Trust the hooks once with /hooks in Codex"
+                                    : "Its own limits and permissions, here too",
                                 divider: model.hasVSCode || model.setupMessage != nil) {
                         if model.codexConnected {
                             Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
@@ -320,7 +424,7 @@ struct GeneralTab: View {
                 }
                 if model.hasVSCode {
                     SettingsRow(title: "5-hour limit in VS Code",
-                                hint: "VS Code runs Claude through Clouding Bar's wrapper, which passes the limit on. New chats only.",
+                                hint: "Passed on by a small wrapper · new chats",
                                 divider: model.setupMessage != nil) {
                         if model.vscodeWrapped {
                             Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
@@ -338,7 +442,8 @@ struct GeneralTab: View {
             }
 
             SettingsSection(title: "Context") {
-                SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact") {
+                SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact",
+                            divider: model.config.contextWarning) {
                     HStack(spacing: 10) {
                         Picker("", selection: Binding(get: { Int(model.config.contextWarnPercent) },
                                                       set: { model.setConfig("contextWarnPercent", $0) })) {
@@ -351,12 +456,16 @@ struct GeneralTab: View {
                         CBSwitch(title: "Context warning", on: binding("contextWarning") { $0.contextWarning })
                     }
                 }
-                SettingsRow(title: "Compact by itself",
-                            hint: "At the warning it types /compact, when Claude is idle and its window is in front",
-                            divider: false) {
-                    CBSwitch(title: "Compact by itself", on: binding("autoCompact") { $0.autoCompact })
+                if model.config.contextWarning {
+                    SettingsRow(title: "Compact by itself",
+                                hint: "Types /compact at the warning, when Claude is idle and its chat is in front",
+                                divider: false) {
+                        CBSwitch(title: "Compact by itself", on: binding("autoCompact") { $0.autoCompact })
+                    }
+                    .transition(.opacity.combined(with: .offset(y: -6)))
                 }
             }
+            .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.contextWarning)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundColor(.cbSecondary)
@@ -373,7 +482,7 @@ struct VoiceGroup: View {
 
     var body: some View {
         SettingsGroup {
-            SettingsRow(title: "Language", hint: "Hold the right ⌥ key alone, or the widget's mic. Text goes in without Enter.",
+            SettingsRow(title: "Language", hint: "Hold the right ⌥ key alone, or use the mic",
                         divider: !model.voiceOffline) {
                 Picker("", selection: Binding(get: { model.config.voiceLanguage },
                                               set: { model.setConfig("voiceLanguage", $0) })) {
@@ -415,20 +524,14 @@ struct WidgetTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "Floating widget") {
-                SettingsRow(title: "Show the widget", hint: "A pill over your windows; the full panel opens from it",
+                SettingsRow(title: "Show the widget", hint: "A pill over your windows; the panel opens from it",
                             divider: model.config.widget) {
                     CBSwitch(title: "Show the widget", on: binding("widget") { $0.widget })
                 }
                 if model.config.widget {
-                    SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
-                        CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
-                    }
-                    SettingsRow(title: "Open on hover", hint: "The full panel after 2 s on the pill; off: click it") {
-                        CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
-                    }
                     SettingsRow(title: "In the notch",
-                                hint: (model.hasNotch ? "Around the camera" : "This Mac has no notch, so one is drawn")
-                                    + ": the numbers sit in it, the panel opens from it. Drag it out to put it anywhere, drag it back to dock.") {
+                                hint: model.hasNotch ? "Around the camera. Drag it out to move it, back in to dock"
+                                    : "A notch is drawn at the top. Drag it out to move it") {
                         CBSwitch(title: "In the notch", on: Binding(
                             get: { model.config.widgetAtNotch && model.config.widgetPosition == nil },
                             set: { on in
@@ -436,40 +539,52 @@ struct WidgetTab: View {
                                 if on { model.resetWidgetPosition() }
                             }))
                     }
-                    SettingsRow(title: "Position",
-                                hint: model.config.widgetPosition != nil ? "Where you dragged it"
-                                    : model.config.widgetAtNotch ? "In the notch" : "Top center, under the menu bar",
-                                divider: false) {
-                        Button("Reset") { model.resetWidgetPosition() }
-                            .disabled(model.config.widgetPosition == nil)
+                    MoreRows("widget", count: 3) {
+                        SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
+                            CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
+                        }
+                        SettingsRow(title: "Open on hover", hint: "Off: click the pill to open it") {
+                            CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
+                        }
+                        SettingsRow(title: "Position",
+                                    hint: model.config.widgetPosition != nil ? "Where you dragged it"
+                                        : model.config.widgetAtNotch ? "In the notch" : "Top center, under the menu bar") {
+                            Button("Reset") { model.resetWidgetPosition() }
+                                .disabled(model.config.widgetPosition == nil)
+                        }
                     }
                 }
             }
 
-            SettingsSection(title: "What it shows",
-                            note: "Each chip turns one thing on or off in the pill, the notch and the panel. The pill shows what fits its size: pull its outline to resize it, drag one item onto another to swap them. Chat: write to Claude from the widget, sent once it's free and its chat is in front; files dropped on the widget go with it.") {
-                SettingsRow(title: "Numbers") {
-                    ToggleChips(items: [hideChip("Session", "session"), listChip("Context", "pillShows", "context"),
-                                        listChip("Reset time", "pillShows", "reset"),
-                                        listChip("Cost", "pillShows", "cost", mirror: "metrics")])
+            if model.config.widget {
+                SettingsSection(title: "What it shows") {
+                    SettingsRow(title: "Numbers") {
+                        ToggleChips(items: [hideChip("Session", "session"), listChip("Context", "pillShows", "context"),
+                                            listChip("Reset time", "pillShows", "reset"),
+                                            listChip("Cost", "pillShows", "cost", mirror: "metrics")])
+                    }
+                    MoreRows("shows", count: 2) {
+                        SettingsRow(title: "Details") {
+                            ToggleChips(items: [listChip("Model", "metrics", "model"), listChip("Lines", "metrics", "lines"),
+                                                listChip("Branch", "metrics", "git"), listChip("Subagents", "metrics", "agents")])
+                        }
+                        SettingsRow(title: "Controls") {
+                            ToggleChips(items: [hideChip("Buttons", "buttons"), boolChip("Chat", "taskQueue") { $0.taskQueue },
+                                                boolChip("Templates", "templatesEnabled") { $0.templatesEnabled },
+                                                boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
+                        }
+                        Text("Pull the pill's outline to resize it; drag one item onto another to swap them. Chat sends to the chat the widget shows, once Claude is free.")
+                            .font(.system(size: 11)).foregroundColor(.cbMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5), alignment: .bottom)
+                    }
                 }
-                SettingsRow(title: "Details") {
-                    ToggleChips(items: [listChip("Model", "metrics", "model"), listChip("Lines", "metrics", "lines"),
-                                        listChip("Branch", "metrics", "git"), listChip("Subagents", "metrics", "agents")])
-                }
-                SettingsRow(title: "Controls", divider: false) {
-                    ToggleChips(items: [hideChip("Buttons", "buttons"), boolChip("Chat", "taskQueue") { $0.taskQueue },
-                                        boolChip("Templates", "templatesEnabled") { $0.templatesEnabled },
-                                        boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
-                }
-            }
-
-            SettingsSection(title: "Panel") {
-                SettingsRow(title: "Sessions list", hint: "Jump between your Claude sessions from the panel", divider: false) {
-                    CBSwitch(title: "Sessions list", on: binding("sessionsList") { $0.sessionsList })
-                }
+                .transition(.opacity.combined(with: .offset(y: -8)))
             }
         }
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: model.config.widget)
     }
 
     // MARK: Chips
@@ -635,19 +750,14 @@ struct ButtonsTab: View {
 
     /// Template phrases: typed into Claude without Enter, with {project},
     /// {branch}, {clipboard} and {date} filled in.
+    /// Off: one line. On: the phrases and a field for a new one.
     private var templatesSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Templates · {project} {branch} {clipboard} {date}")
-                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
-                Spacer()
-                Text(model.config.templatesEnabled ? "In the widget and the menu" : "Off")
-                    .font(.system(size: 11)).foregroundColor(.cbSecondary)
+        SettingsGroup {
+            SettingsRow(title: "Templates", hint: "Phrases typed without Enter · {project} {branch} {clipboard} {date}",
+                        divider: model.config.templatesEnabled) {
                 CBSwitch(title: "Templates", on: settingBinding(model, "templatesEnabled") { $0.templatesEnabled })
-                    .scaleEffect(0.8)
             }
-            .padding(.leading, 12)
-            SettingsGroup {
+            if model.config.templatesEnabled {
                 ForEach(Array(model.config.templates.enumerated()), id: \.offset) { i, t in
                     HStack {
                         Text(t).font(.system(size: 12)).lineLimit(1)
@@ -675,6 +785,7 @@ struct ButtonsTab: View {
                 .padding(.horizontal, 12).padding(.vertical, 6)
             }
         }
+        .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.templatesEnabled)
     }
 
     private func addTemplate() {
@@ -1080,6 +1191,7 @@ struct CoworkTab: View {
             }
 
             SettingsGroup {
+                MoreRows("cowork", count: 1) {
                 SettingsRow(title: "Live limit via claude.ai",
                             hint: "Desktop and Cowork chats · \(model.liveLimitState)", divider: keyOpen) {
                     if model.hasLiveKey {
@@ -1115,6 +1227,7 @@ struct CoworkTab: View {
                     }
                     .padding(12)
                     .transition(.opacity.combined(with: .offset(y: 6)))
+                }
                 }
             }
         }

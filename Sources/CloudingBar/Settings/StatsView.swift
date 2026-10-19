@@ -7,6 +7,8 @@ struct StatsTab: View {
     @ObservedObject var model: AppModel
     @State private var stats: WeekStats?
     @State private var shown = false
+    /// The heat map's square under the pointer: day and hour.
+    @State private var hovered: (d: Int, h: Int)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -19,9 +21,9 @@ struct StatsTab: View {
                         Text(subtitle(stats)).font(.system(size: 11)).foregroundColor(.cbSecondary)
                     }
                     heatMap(stats)
+                    hoverLine(stats)
                 }
                 details(stats)
-                Text(today(stats)).font(.system(size: 11)).foregroundColor(.cbSecondary)
             } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -117,14 +119,14 @@ struct StatsTab: View {
     // MARK: Week
 
     private func subtitle(_ s: WeekStats) -> String {
-        ["The usage limit resets every 5 hours", s.busiest, s.limitHours.isEmpty ? nil : "orange: hours at the limit"]
+        ["Each square is an hour: the brighter, the more Claude worked", s.limitHours.isEmpty ? nil : "orange: at the limit"]
             .compactMap { $0 }.joined(separator: " · ")
     }
 
     /// The heat map fills the tab: 24 hours across, the days' names before.
     private static let labelWidth: CGFloat = 26, cellGap: CGFloat = 3
     private static var cell: CGFloat {
-        let inner = SettingsView.width - 36 // the tab's padding
+        let inner = SettingsView.width - RowBuddy.gutter - 18 // the tab's padding
         return floor((inner - labelWidth - cellGap - 23 * cellGap) / 24)
     }
 
@@ -139,12 +141,19 @@ struct StatsTab: View {
                     Text(fmt.string(from: s.days[d])).font(.system(size: 10)).foregroundColor(.cbSecondary)
                         .frame(width: Self.labelWidth, alignment: .leading)
                     ForEach(0..<24, id: \.self) { h in
+                        let on = hovered.map { $0.d == d && $0.h == h } ?? false
                         RoundedRectangle(cornerRadius: 3)
                             .fill(color(s, d, h, peak))
+                            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.white.opacity(on ? 0.9 : 0), lineWidth: 1.5))
                             .frame(width: Self.cell, height: 13)
-                            .scaleEffect(shown ? 1 : 0.4)
+                            .scaleEffect(shown ? (on ? 1.25 : 1) : 0.4)
                             .opacity(shown ? 1 : 0)
+                            .zIndex(on ? 1 : 0)
                             .animation(.cb(0.26).delay(Double(h * 12 + d * 8) / 1000), value: shown)
+                            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
+                            .onHover { inside in
+                                if inside { hovered = (d, h) } else if on { hovered = nil }
+                            }
                     }
                 }
             }
@@ -162,6 +171,38 @@ struct StatsTab: View {
         .accessibilityLabel("Heat map of Claude Code use by day and hour")
     }
 
+    /// Under the map: the hour and the day under the pointer; else today.
+    private func hoverLine(_ s: WeekStats) -> some View {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US")
+        fmt.dateFormat = "EEEE d MMM"
+        let text: Text
+        if let at = hovered {
+            let tokens = s.grid[at.d][at.h]
+            let projects = s.cellProjects[at.d][at.h].sorted { $0.value > $1.value }.prefix(3).map(\.key)
+            let hour = [String(format: "%d:00–%d:00", at.h, (at.h + 1) % 24),
+                        tokens > 0 ? "\(AppModel.compact(tokens)) tokens" : "nothing",
+                        s.cellMinutes[at.d][at.h] > 0 ? "worked \(s.cellMinutes[at.d][at.h]) min" : nil,
+                        projects.isEmpty ? nil : projects.joined(separator: ", "),
+                        s.cellLimit[at.d][at.h].map { "limit up to \(Int($0.rounded()))%" }]
+                .compactMap { $0 }.joined(separator: " · ")
+            let dayTokens = s.grid[at.d].reduce(0, +)
+            let dayMinutes = s.cellMinutes[at.d].reduce(0, +)
+            let day = [fmt.string(from: s.days[at.d]),
+                       "\(AppModel.compact(dayTokens)) tokens",
+                       dayMinutes > 0 ? "worked \(Self.duration(dayMinutes))" : nil,
+                       s.cellLimit[at.d].compactMap { $0 }.max().map { "limit up to \(Int($0.rounded()))%" }]
+                .compactMap { $0 }.joined(separator: " · ")
+            text = Text(hour).foregroundColor(.cbText) + Text("\n" + day).foregroundColor(.cbSecondary)
+        } else {
+            text = Text(today(s)).foregroundColor(.cbSecondary)
+                + Text("\nPoint at a square to see that hour and day").foregroundColor(.cbMuted)
+        }
+        return text.font(.system(size: 11).monospacedDigit()).lineSpacing(3).lineLimit(2)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .topLeading)
+            .animation(nil, value: hovered.map { $0.d * 24 + $0.h })
+    }
+
     private func color(_ s: WeekStats, _ d: Int, _ h: Int, _ peak: Int) -> Color {
         if s.limitHours.contains(d * 24 + h) { return .cbWarning }
         let v = Double(s.grid[d][h]) / Double(peak)
@@ -172,19 +213,22 @@ struct StatsTab: View {
 
     private func details(_ s: WeekStats) -> some View {
         SettingsGroup {
-            row("Tokens") {
-                Text("\(AppModel.compact(s.weekTokens)) this week · \(AppModel.compact(s.todayTokens)) today")
-            }
-            if !s.models.isEmpty { row("Models") { shares(s.models) } }
-            if !s.projects.isEmpty { row("Projects") { shares(s.projects) } }
-            row("Active") {
+            row("Worked") {
                 Text(([Self.duration(s.activeMinutes)] + s.activeByProject.map { "\($0.name) \(Self.duration($0.minutes))" })
                         .joined(separator: " · "))
             }
-            row("Tools", divider: false) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(s.tools.isEmpty ? "—" : s.tools.map { "\($0.name) \($0.count)" }.joined(separator: " · "))
-                    Text("\(s.subagents) subagent\(s.subagents == 1 ? "" : "s") started").foregroundColor(.cbSecondary)
+            if !s.projects.isEmpty { row("Projects") { shares(s.projects) } }
+            MoreRows("stats", count: 3) {
+                row("Tokens") {
+                    Text("\(AppModel.compact(s.weekTokens)) this week · \(AppModel.compact(s.todayTokens)) today")
+                        + Text(" · text Claude read and wrote").foregroundColor(.cbSecondary)
+                }
+                if !s.models.isEmpty { row("Models") { shares(s.models) } }
+                row("Tools") {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.tools.isEmpty ? "—" : s.tools.map { "\($0.name) \($0.count)" }.joined(separator: " · "))
+                        Text("\(s.subagents) subagent\(s.subagents == 1 ? "" : "s") started").foregroundColor(.cbSecondary)
+                    }
                 }
             }
         }
