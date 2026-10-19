@@ -31,6 +31,10 @@ final class TranscriptWatcher {
         var tokensOut = 0
         var linesAdded = 0
         var linesRemoved = 0
+        /// The reply last counted: Claude Code writes one line per block of
+        /// a reply (thinking, text, each tool call), each with the reply's
+        /// usage, so a reply counts once.
+        var lastMessageId: String?
     }
 
     private let queue = DispatchQueue(label: "cloudingbar.transcripts", qos: .utility)
@@ -154,8 +158,12 @@ final class TranscriptWatcher {
             let cacheWrite = (usage["cache_creation_input_tokens"] as? NSNumber)?.intValue ?? 0
             let cacheRead = (usage["cache_read_input_tokens"] as? NSNumber)?.intValue ?? 0
             update.contextTokens = input + cacheWrite + cacheRead
-            state.tokensIn += input + cacheWrite
-            state.tokensOut += (usage["output_tokens"] as? NSNumber)?.intValue ?? 0
+            let id = message["id"] as? String
+            if id == nil || id != state.lastMessageId {
+                state.tokensIn += input + cacheWrite
+                state.tokensOut += (usage["output_tokens"] as? NSNumber)?.intValue ?? 0
+                state.lastMessageId = id
+            }
             if let model = (obj["requestedModel"] as? String) ?? (message["model"] as? String) {
                 update.model = model
             }

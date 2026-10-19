@@ -48,6 +48,14 @@ struct Inbound {
                 (window["resets_at"] as? NSNumber)?.doubleValue)
     }
 
+    /// The weekly (7-day) limit, on Pro and Max plans.
+    var sevenDay: (used: Double?, resetsAt: Double?)? {
+        guard let limits = raw["rate_limits"] as? [String: Any],
+              let window = limits["seven_day"] as? [String: Any] else { return nil }
+        return ((window["used_percentage"] as? NSNumber)?.doubleValue,
+                (window["resets_at"] as? NSNumber)?.doubleValue)
+    }
+
     var contextUsedPercent: Double? {
         ((raw["context_window"] as? [String: Any])?["used_percentage"] as? NSNumber)?.doubleValue
     }

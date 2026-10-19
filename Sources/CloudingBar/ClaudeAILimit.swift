@@ -7,6 +7,8 @@ import Foundation
 /// a minute. The address is unofficial and may stop working.
 final class ClaudeAILimit {
     var onUpdate: ((_ percent: Double, _ resetsAt: Double?) -> Void)?
+    /// The weekly (7-day) limit, when the plan has one.
+    var onWeek: ((_ percent: Double, _ resetsAt: Double?) -> Void)?
     /// "On", "Key rejected…", etc., for Settings.
     var onState: ((String) -> Void)?
 
@@ -106,13 +108,17 @@ final class ClaudeAILimit {
                 self?.onState?("Unexpected answer from claude.ai")
                 return
             }
-            var resets: Double?
-            if let s = window["resets_at"] as? String {
+            func resets(_ w: [String: Any]) -> Double? {
+                guard let s = w["resets_at"] as? String else { return nil }
                 let f = ISO8601DateFormatter()
                 f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                resets = (f.date(from: s) ?? ISO8601DateFormatter().date(from: s))?.timeIntervalSince1970
+                return (f.date(from: s) ?? ISO8601DateFormatter().date(from: s))?.timeIntervalSince1970
             }
-            self?.onUpdate?(utilization, resets)
+            self?.onUpdate?(utilization, resets(window))
+            if let week = (json as? [String: Any])?["seven_day"] as? [String: Any],
+               let used = (week["utilization"] as? NSNumber)?.doubleValue {
+                self?.onWeek?(used, resets(week))
+            }
             self?.onState?("On")
         }
     }

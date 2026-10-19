@@ -66,7 +66,7 @@ struct SettingsView: View {
                     case "touchbar": TouchBarTab(model: model)
                     case "buttons": ButtonsTab(model: model)
                     case "cowork": CoworkTab(model: model, mood: mood)
-                    default: StatsTab()
+                    default: StatsTab(model: model)
                     }
                 }
                 .padding(18)

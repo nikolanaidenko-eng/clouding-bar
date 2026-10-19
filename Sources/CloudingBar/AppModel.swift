@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
     /// "2 h ago": how old the last known limit is (shown with no session).
     @Published var limitAge: String?
     @Published var contextPercent: Double?
+    /// The weekly (7-day) limit and when it resets ("Thu 14:00").
+    @Published var weekPercent: Double?
+    @Published var weekReset: String?
     @Published var tokensIn: Int?
     @Published var tokensOut: Int?
     @Published var cost: Double?

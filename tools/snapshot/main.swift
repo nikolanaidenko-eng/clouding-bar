@@ -382,6 +382,7 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     m.touchBarPresent = true
     m.knownProjects = ["DiaRoute", "bots"]
     if tab == "general" { m.voiceOffline = false; m.config.voiceLanguage = "uk-UA" }
+    if tab == "stats" { m.weekPercent = 23; m.weekReset = "Thu 14:00" }
     if tab == "cowork" {
         m.config.coworkMode = "thresholds"; m.config.coworkFolder = NSHomeDirectory() + "/Documents/Cowork"
         m.coworkLast = "4 min ago · DiaRoute 31%"

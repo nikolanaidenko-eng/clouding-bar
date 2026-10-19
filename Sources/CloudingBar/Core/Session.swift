@@ -51,7 +51,13 @@ final class Session {
 
     /// "Opus 5.5 1M", from "claude-opus-5-5[1m]".
     var modelName: String? {
-        guard var m = model, !m.isEmpty else { return nil }
+        guard let m = model, !m.isEmpty else { return nil }
+        return Self.displayName(m)
+    }
+
+    /// "claude-opus-5-5[1m]" → "Opus 5.5 1M"; a date stamp is dropped.
+    static func displayName(_ id: String) -> String {
+        var m = id
         let big = m.contains("[1m]")
         m = m.replacingOccurrences(of: "[1m]", with: "").replacingOccurrences(of: "claude-", with: "")
         var words: [String] = []
@@ -138,6 +144,9 @@ final class Session {
 final class Account {
     var sessionPercent: Double?
     var resetsAt: Date?
+    /// The weekly (7-day) limit, when the plan has one.
+    var weekPercent: Double?
+    var weekResetsAt: Date?
     /// When the limit was last reported ("Session · 2 h ago").
     var updatedAt: Date?
 
@@ -149,6 +158,8 @@ final class Account {
         var sessionPercent: Double?
         var sessionResetsAt: Date?
         var updatedAt: Date?
+        var weekPercent: Double?
+        var weekResetsAt: Date?
     }
 
     func load() {
@@ -157,11 +168,14 @@ final class Account {
         sessionPercent = snap.sessionPercent
         resetsAt = snap.sessionResetsAt
         updatedAt = snap.updatedAt
+        weekPercent = snap.weekPercent
+        weekResetsAt = snap.weekResetsAt
         expireIfNeeded()
     }
 
     private func save() {
-        let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt, updatedAt: updatedAt)
+        let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt, updatedAt: updatedAt,
+                            weekPercent: weekPercent, weekResetsAt: weekResetsAt)
         if let data = try? JSONEncoder().encode(snap) {
             try? data.write(to: Self.fileURL, options: .atomic)
         }
@@ -175,14 +189,37 @@ final class Account {
         if let used { LimitHistory.record(used) }
     }
 
-    /// Once the window has reset, the old number means nothing.
+    func applyWeek(used: Double?, resetsAt reset: Double?) {
+        if let used { weekPercent = used }
+        if let reset { weekResetsAt = Date(timeIntervalSince1970: reset) }
+        save()
+    }
+
+    /// Once a window has reset, the old number means nothing.
     @discardableResult
     func expireIfNeeded(now: Date = Date()) -> Bool {
-        guard let r = resetsAt, r <= now else { return false }
-        sessionPercent = 0
-        resetsAt = nil
-        save()
-        return true
+        var changed = false
+        if let w = weekResetsAt, w <= now {
+            weekPercent = 0
+            weekResetsAt = nil
+            changed = true
+        }
+        if let r = resetsAt, r <= now {
+            sessionPercent = 0
+            resetsAt = nil
+            changed = true
+        }
+        if changed { save() }
+        return changed
+    }
+
+    /// When the weekly limit resets: "Thu 14:00".
+    var weekResetLong: String? {
+        guard let r = weekResetsAt else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = Calendar.current.isDateInToday(r) ? "'today' HH:mm" : "EEE HH:mm"
+        return f.string(from: r)
     }
 
     /// "1 h 23 min" until the window resets.

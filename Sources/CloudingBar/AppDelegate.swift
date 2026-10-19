@@ -787,6 +787,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.resetShort, store.account.resetCountdown)
         set(\.resetLong, store.account.resetLong)
         set(\.limitAge, store.account.updatedAt.map { AppModel.ago($0) })
+        set(\.weekPercent, store.account.weekPercent)
+        set(\.weekReset, store.account.weekResetLong)
         set(\.contextPercent, active?.contextPercent(windowOverride: config.contextWindowSize))
         set(\.tokensIn, active?.tokensIn)
         set(\.tokensOut, active?.tokensOut)
@@ -1206,6 +1208,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         liveLimit.onUpdate = { [weak self] percent, resets in
             self?.store.account.apply(used: percent, resetsAt: resets)
+            self?.setNeedsRefresh()
+        }
+        liveLimit.onWeek = { [weak self] percent, resets in
+            self?.store.account.applyWeek(used: percent, resetsAt: resets)
             self?.setNeedsRefresh()
         }
         liveLimit.onState = { [weak self] state in

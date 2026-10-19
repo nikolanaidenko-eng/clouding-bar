@@ -24,6 +24,20 @@ enum LimitHistory {
         }
     }
 
+    /// The weekly limit Claude Desktop saw last ("sd" in its snapshots).
+    static func latestWeek() -> Sample? {
+        let desktop = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
+        guard let data = try? Data(contentsOf: desktop),
+              let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let list = o["samples"] as? [[String: Any]] else { return nil }
+        return list.compactMap { s -> Sample? in
+            guard let t = (s["t"] as? NSNumber)?.doubleValue,
+                  let sd = ((s["u"] as? [String: Any])?["sd"] as? NSNumber)?.doubleValue else { return nil }
+            return Sample(time: Date(timeIntervalSince1970: t / 1000), percent: sd)
+        }.max { $0.time < $1.time }
+    }
+
     static func load(since: Date) -> [Sample] {
         var samples: [Sample] = []
         if let text = try? String(contentsOf: fileURL, encoding: .utf8) {

@@ -22,6 +22,9 @@ final class SessionStore {
         if let used = m.fiveHour {
             account.apply(used: used.used, resetsAt: used.resetsAt)
         }
+        if let week = m.sevenDay {
+            account.applyWeek(used: week.used, resetsAt: week.resetsAt)
+        }
         guard let id = m.sessionId else {
             onChange?()
             return
