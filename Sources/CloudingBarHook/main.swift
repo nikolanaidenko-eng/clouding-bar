@@ -48,7 +48,7 @@ func claudePID() -> Int32? {
         let name = withUnsafePointer(to: &info.kp_proc.p_comm) {
             $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXCOMLEN) + 1) { String(cString: $0) }
         }
-        if name == "claude" { return pid }
+        if name == "claude" || name == "codex" { return pid }
         pid = info.kp_eproc.e_ppid
     }
     return nil
@@ -58,6 +58,8 @@ if let pid = claudePID() { event["claude_pid"] = Int(pid) }
 if let entry = ProcessInfo.processInfo.environment["CLAUDE_CODE_ENTRYPOINT"] {
     event["claude_entrypoint"] = entry
 }
+// Codex calls the same hook with --codex (~/.codex/hooks.json).
+if CommandLine.arguments.contains("--codex") { event["claude_entrypoint"] = "codex" }
 if let effort = ProcessInfo.processInfo.environment["CLAUDE_EFFORT"] {
     event["claude_effort"] = effort
 }

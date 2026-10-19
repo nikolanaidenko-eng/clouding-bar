@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
     /// "2 h ago": how old the last known limit is (shown with no session).
     @Published var limitAge: String?
     @Published var contextPercent: Double?
+    /// "Codex" when the session in front is Codex's (its own limits, no
+    /// Claude model picker); nil for Claude.
+    @Published var agentName: String?
     /// The weekly (7-day) limit and when it resets ("Thu 14:00").
     @Published var weekPercent: Double?
     @Published var weekReset: String?
@@ -152,6 +155,9 @@ final class AppModel: ObservableObject {
     @Published var vscodeWrapped = false
     @Published var setupMessage: String?
     var connectClaude: () -> Void = {}
+    @Published var hasCodex = false
+    @Published var codexConnected = false
+    var connectCodex: () -> Void = {}
     var wrapVSCode: () -> Void = {}
 
     /// The pill's height budget: what was set by pulling its top or bottom.

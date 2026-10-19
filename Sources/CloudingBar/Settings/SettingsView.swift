@@ -298,11 +298,24 @@ struct GeneralTab: View {
                 SettingsRow(title: "Hooks",
                             hint: model.claudeConnected ? "Connected: Claude Code tells Clouding Bar what it's doing"
                                 : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
-                            divider: model.hasVSCode || model.setupMessage != nil) {
+                            divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
                     if model.claudeConnected {
                         Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
                     } else {
                         Button("Connect") { model.connectClaude() }
+                    }
+                }
+                if model.hasCodex {
+                    SettingsRow(title: "Codex",
+                                hint: model.codexConnected
+                                    ? "Connected: its limits, permissions and subagents show here. Trust the hooks once with /hooks in Codex."
+                                    : "OpenAI's Codex can report here too: its own 5-hour and weekly limits, its permissions.",
+                                divider: model.hasVSCode || model.setupMessage != nil) {
+                        if model.codexConnected {
+                            Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                        } else {
+                            Button("Connect") { model.connectCodex() }
+                        }
                     }
                 }
                 if model.hasVSCode {

@@ -150,8 +150,15 @@ final class Account {
     /// When the limit was last reported ("Session · 2 h ago").
     var updatedAt: Date?
 
-    private static var fileURL: URL {
-        Config.directory.appendingPathComponent("last-status.json")
+    /// Claude's (last-status.json) or Codex's (last-status-codex.json).
+    private let fileName: String
+    /// Claude's limit is kept over time for Stats.
+    private let keepsHistory: Bool
+    private var fileURL: URL { Config.directory.appendingPathComponent(fileName) }
+
+    init(fileName: String = "last-status.json", keepsHistory: Bool = true) {
+        self.fileName = fileName
+        self.keepsHistory = keepsHistory
     }
 
     private struct Snapshot: Codable {
@@ -163,7 +170,7 @@ final class Account {
     }
 
     func load() {
-        guard let data = try? Data(contentsOf: Self.fileURL),
+        guard let data = try? Data(contentsOf: fileURL),
               let snap = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         sessionPercent = snap.sessionPercent
         resetsAt = snap.sessionResetsAt
@@ -177,7 +184,7 @@ final class Account {
         let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt, updatedAt: updatedAt,
                             weekPercent: weekPercent, weekResetsAt: weekResetsAt)
         if let data = try? JSONEncoder().encode(snap) {
-            try? data.write(to: Self.fileURL, options: .atomic)
+            try? data.write(to: fileURL, options: .atomic)
         }
     }
 
@@ -186,7 +193,7 @@ final class Account {
         if let reset { resetsAt = Date(timeIntervalSince1970: reset) }
         updatedAt = Date()
         save()
-        if let used { LimitHistory.record(used) }
+        if let used, keepsHistory { LimitHistory.record(used) }
     }
 
     func applyWeek(used: Double?, resetsAt reset: Double?) {

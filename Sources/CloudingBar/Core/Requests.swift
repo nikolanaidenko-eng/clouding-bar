@@ -115,7 +115,8 @@ final class PendingRequest {
     /// Allow, and remember it the way Claude itself suggested. Without a
     /// suggestion it's a plain allow.
     func always() -> [String: Any] {
-        guard let suggestions, !suggestions.isEmpty else { return Self.allow() }
+        // Codex refuses updatedPermissions (it fails closed): a plain allow there.
+        guard entrypoint != "codex", let suggestions, !suggestions.isEmpty else { return Self.allow() }
         return Self.permissionOutput(["behavior": "allow", "updatedPermissions": suggestions])
     }
 

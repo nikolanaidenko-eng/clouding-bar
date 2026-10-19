@@ -69,6 +69,27 @@ These are messages without `hook_event_name`, in the status line's shape:
 - They update a session the app already knows. They never create one.
 - The 5-hour limit belongs to the account, so the newest value wins.
 
+## Codex
+
+OpenAI's Codex runs the same hook, from `~/.codex/hooks.json`, as
+`cloudingbar-hook --codex`; the hook marks its events `"claude_entrypoint":
+"codex"`. Codex has `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`,
+`PreToolUse`, `PostToolUse`, `PermissionRequest`, `SubagentStart` and
+`SubagentStop` (no `Notification`), and runs hooks only after you trust them
+with `/hooks` in Codex.
+
+- Permissions: the same outputs, except **Always** is a plain allow (Codex
+  refuses `updatedPermissions`). Codex holds its own prompt while the hook
+  waits, so its requests are held briefly, like the terminal's.
+- Its questions (`request_user_input`) can't be answered from a hook.
+- Its `transcript_path` is the session's rollout. The app reads
+  `event_msg` / `token_count` lines — `info.last_token_usage.total_tokens`
+  over `info.model_context_window` for the context, and `rate_limits.primary`
+  / `secondary` (`used_percent`, `window_minutes`: 300 or 10080, `resets_at`)
+  for **Codex's own** 5-hour and weekly limits — and `turn_context` lines for
+  the model and effort. While a Codex session is in front, the widget and the
+  bar show Codex's limits.
+
 ## Requests: answers from the bar
 
 Two hook events wait for an answer:

@@ -10,6 +10,9 @@ final class Responder {
 
     fileprivate init(_ connection: Connection) { self.connection = connection }
 
+    /// One with nowhere to answer (the checks).
+    init() { connection = nil }
+
     /// Keep the hook waiting up to `seconds` more.
     func hold(_ seconds: Double) { connection?.send(["hold": seconds]) }
 

@@ -500,7 +500,8 @@ struct Metric {
         var items: [Metric] = []
         if on.contains("model"), let name = model.modelName {
             items.append(Metric(id: "model", icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
-                                action: { [weak model] in
+                                // Codex switches models its own way: no Claude picker there.
+                                action: model.agentName != nil ? nil : { [weak model] in
                                     withAnimation(.cb(0.24)) { model?.pickingModel.toggle(); model?.showingAgents = false }
                                 },
                                 help: "Switch the model or effort"))
@@ -662,7 +663,8 @@ struct MainPanel: View {
             }
             Text(model.statusTitle).font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
             if let project = model.project {
-                Text(project).font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
+                Text([project, model.agentName].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             if model.config.sessionsList {

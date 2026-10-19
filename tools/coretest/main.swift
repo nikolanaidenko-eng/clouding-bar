@@ -175,6 +175,25 @@ do {
     check(Session.launchedId("Async agent launched successfully. agentId: abc123 (use it)") == "abc123", "agents: id from the launch text")
 }
 
+// MARK: Codex
+
+do {
+    var u = TranscriptWatcher.Update(sessionId: "c", modified: Date())
+    let usage = #"{"timestamp":"2026-10-19T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":900000},"last_token_usage":{"total_tokens":54400},"model_context_window":272000},"rate_limits":{"primary":{"used_percent":37.5,"window_minutes":300,"resets_at":1800000000},"secondary":{"used_percent":12,"window_minutes":10080,"resets_at":1800500000}}}}"#
+    let turn = #"{"timestamp":"2026-10-19T12:00:01Z","type":"turn_context","payload":{"model":"gpt-6-luna","effort":"high"}}"#
+    TranscriptWatcher.scanCodex(Data(usage.utf8)[...], into: &u)
+    TranscriptWatcher.scanCodex(Data(turn.utf8)[...], into: &u)
+    check(u.contextTokens == 54400 && u.contextWindow == 272000, "codex: context from the latest reply, not the total")
+    check(u.codexFiveHour?.percent == 37.5 && u.codexWeek?.percent == 12, "codex: its 5-hour and weekly limits, by window length")
+    check(u.model == "gpt-6-luna" && u.effort == "high", "codex: model and effort from the turn")
+    let req = Inbound(raw: ["hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": ["command": "ls"],
+                            "claude_entrypoint": "codex", "permission_suggestions": [["type": "addRules"]]])
+    let pending = PendingRequest(req, responder: Responder())
+    let always = pending?.always()["hookSpecificOutput"] as? [String: Any]
+    check((always?["decision"] as? [String: Any])?["updatedPermissions"] == nil, "codex: Always is a plain allow (no remembered rules)")
+    check(pending?.hostAnswersInParallel == false, "codex: Codex waits on the hook, so it's held briefly")
+}
+
 // MARK: Config
 
 let config = Config()

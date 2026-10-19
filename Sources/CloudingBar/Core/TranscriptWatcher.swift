@@ -20,6 +20,11 @@ final class TranscriptWatcher {
         var tokensOut = 0
         var linesAdded = 0
         var linesRemoved = 0
+        /// Codex rollouts: the model's context window, and Codex's own limits
+        /// (used %, resets at in unix seconds) for its 5-hour and weekly windows.
+        var contextWindow: Int?
+        var codexFiveHour: (percent: Double, resetsAt: Double?)?
+        var codexWeek: (percent: Double, resetsAt: Double?)?
     }
 
     private struct State {
@@ -49,6 +54,9 @@ final class TranscriptWatcher {
     private static let editMark = Data(#""toolUseResult""#.utf8)
     /// What "/model" and "/effort" print: "Set model to …", "Set effort level to …".
     private static let commandMark = Data("<local-command-stdout>Set ".utf8)
+    /// Codex's rollout: usage and limits, and each turn's model and effort.
+    private static let codexUsageMark = Data(#""type":"token_count""#.utf8)
+    private static let codexTurnMark = Data(#""type":"turn_context""#.utf8)
 
     /// Reads what was appended since the last poll. `completion` runs on
     /// the main queue with one update per transcript that changed.
@@ -122,8 +130,43 @@ final class TranscriptWatcher {
         }
     }
 
+    /// One line of a Codex rollout ({"type", "payload"}): a token_count event
+    /// (the latest reply's usage over the model's window, and the limits),
+    /// or a turn's context (its model and effort).
+    static func scanCodex(_ line: Data.SubSequence, into update: inout Update) {
+        guard let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+              let payload = obj["payload"] as? [String: Any] else { return }
+        if obj["type"] as? String == "turn_context" {
+            if let m = payload["model"] as? String { update.model = m }
+            if let e = payload["effort"] as? String { update.effort = e }
+            return
+        }
+        guard payload["type"] as? String == "token_count" else { return }
+        if let info = payload["info"] as? [String: Any] {
+            if let last = info["last_token_usage"] as? [String: Any],
+               let total = (last["total_tokens"] as? NSNumber)?.intValue {
+                update.contextTokens = total
+            }
+            if let window = (info["model_context_window"] as? NSNumber)?.intValue { update.contextWindow = window }
+        }
+        // The windows go by their length: 300 minutes, a week (10080).
+        if let limits = payload["rate_limits"] as? [String: Any] {
+            for key in ["primary", "secondary"] {
+                guard let w = limits[key] as? [String: Any],
+                      let used = (w["used_percent"] as? NSNumber)?.doubleValue else { continue }
+                let minutes = (w["window_minutes"] as? NSNumber)?.intValue ?? 0
+                let value = (percent: used, resetsAt: (w["resets_at"] as? NSNumber)?.doubleValue)
+                if minutes >= 7 * 24 * 60 - 60 { update.codexWeek = value } else if minutes > 0 { update.codexFiveHour = value }
+            }
+        }
+    }
+
     private func scan(_ complete: Data, into update: inout Update, state: inout State) {
         for line in complete.split(separator: 0x0A) {
+            if line.range(of: Self.codexUsageMark) != nil || line.range(of: Self.codexTurnMark) != nil {
+                Self.scanCodex(line, into: &update)
+                continue
+            }
             let isAssistant = line.range(of: Self.assistantMark) != nil
             let isInterrupt = !isAssistant && line.range(of: Self.interruptMark) != nil
             if !isAssistant, line.range(of: Self.commandMark) != nil,

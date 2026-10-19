@@ -5,6 +5,8 @@ import Foundation
 final class SessionStore {
     private(set) var sessions: [String: Session] = [:]
     let account = Account()
+    /// Codex's limits, from its rollouts: a different account from Claude's.
+    let codexAccount = Account(fileName: "last-status-codex.json", keepsHistory: false)
     private let transcripts = TranscriptWatcher()
     private var saveScheduled = false
 
@@ -187,6 +189,9 @@ final class SessionStore {
                 s.linesRemoved = u.linesRemoved
                 if let m = u.model { s.model = m }
                 if let e = u.effort { s.effort = e }
+                if let w = u.contextWindow { s.contextWindowSize = w }
+                if let l = u.codexFiveHour { self.codexAccount.apply(used: l.percent, resetsAt: l.resetsAt) }
+                if let l = u.codexWeek { self.codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt) }
                 s.transcriptChanged = u.modified
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
@@ -202,6 +207,7 @@ final class SessionStore {
 
     func load() {
         account.load()
+        codexAccount.load()
         guard let data = try? Data(contentsOf: Self.fileURL),
               let records = try? JSONDecoder().decode([Session.Record].self, from: data) else { return }
         for r in records {

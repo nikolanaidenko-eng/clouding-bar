@@ -208,6 +208,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func everySecond() {
         ticks += 1
         if store.account.expireIfNeeded() { setNeedsRefresh() }
+        if store.codexAccount.expireIfNeeded() { setNeedsRefresh() }
 
         let now = Date()
         for r in requests where (r.holdUntil ?? .distantFuture) <= now {
@@ -305,8 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         var bar = BarModel()
         bar.buttons = currentButtons(active)
-        bar.sessionPercent = store.account.sessionPercent
-        bar.resetCountdown = store.account.resetCountdown
+        let account = active?.entrypoint == "codex" ? store.codexAccount : store.account
+        bar.sessionPercent = account.sessionPercent
+        bar.resetCountdown = account.resetCountdown
         bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
         bar.activity = activity(of: active)
         bar.quiet = config.doNotDisturb
@@ -462,6 +464,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setNeedsRefresh()
 
         case .models:
+            // Codex switches models its own way: no Claude picker there.
+            guard active?.entrypoint != "codex" else { NSSound.beep(); return }
             DebugLog.tap("model picker (bar)")
             barPanel = .models
             closeBarPickerLater()
@@ -674,6 +678,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self?.refreshSetupStatus()
         }
+        model.connectCodex = { [weak self] in
+            DebugLog.tap("connect to Codex")
+            do {
+                try Setup.connectCodex()
+                self?.model.setupMessage = "Done. Now open Codex once and run /hooks to trust Clouding Bar's hooks — Codex runs them only after that."
+            } catch {
+                self?.model.setupMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
+            }
+            self?.refreshSetupStatus()
+        }
         model.wrapVSCode = { [weak self] in
             DebugLog.tap("VS Code wrapper")
             do {
@@ -688,6 +702,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshSetupStatus() {
         model.claudeConnected = Setup.isConnected
+        model.hasCodex = Setup.hasCodex
+        model.codexConnected = Setup.codexConnected
         model.hasVSCode = Setup.hasVSCode
         model.vscodeWrapped = Setup.vscodeWrapped
     }
@@ -783,12 +799,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.hasSession, !alive.isEmpty)
         set(\.activity, request != nil ? .wait : activity(of: active))
         set(\.project, active?.projectName)
-        set(\.sessionPercent, store.account.sessionPercent)
-        set(\.resetShort, store.account.resetCountdown)
-        set(\.resetLong, store.account.resetLong)
-        set(\.limitAge, store.account.updatedAt.map { AppModel.ago($0) })
-        set(\.weekPercent, store.account.weekPercent)
-        set(\.weekReset, store.account.weekResetLong)
+        // A Codex session in front: Codex's own limits (a different account).
+        let isCodex = active?.entrypoint == "codex"
+        let account = isCodex ? store.codexAccount : store.account
+        set(\.agentName, isCodex ? "Codex" : nil)
+        set(\.sessionPercent, account.sessionPercent)
+        set(\.resetShort, account.resetCountdown)
+        set(\.resetLong, account.resetLong)
+        set(\.limitAge, account.updatedAt.map { AppModel.ago($0) })
+        set(\.weekPercent, account.weekPercent)
+        set(\.weekReset, account.weekResetLong)
         set(\.contextPercent, active?.contextPercent(windowOverride: config.contextWindowSize))
         set(\.tokensIn, active?.tokensIn)
         set(\.tokensOut, active?.tokensOut)
@@ -825,6 +845,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case "claude-vscode": source = "VS Code"
             case "cli": source = "Terminal"
             case "claude-desktop": source = "Desktop"
+            case "codex": source = "Codex"
             default: source = "Claude Code"
             }
             let status = source + " · " + state

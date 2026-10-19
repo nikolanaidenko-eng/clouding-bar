@@ -161,6 +161,74 @@ enum Setup {
         DebugLog.note("setup: Claude Code hooks and status line registered")
     }
 
+    // MARK: Codex
+
+    /// Codex (OpenAI's coding agent) takes nearly the same hooks, in
+    /// ~/.codex/hooks.json: the same command, marked --codex. It runs them
+    /// only once you've trusted them in Codex (/hooks). CLOUDINGBAR_CODEX_HOME
+    /// stands in for ~/.codex in tests.
+    static var codexHome: URL {
+        ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? home.appendingPathComponent(".codex")
+    }
+    static var codexHooksURL: URL { codexHome.appendingPathComponent("hooks.json") }
+    static var codexCommand: String { hook + " --codex" }
+    /// Codex has no Notification or PostToolUseFailure.
+    static let codexEvents = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "PreToolUse",
+                              "PostToolUse", "PermissionRequest", "SubagentStart", "SubagentStop"]
+
+    static var hasCodex: Bool { FileManager.default.fileExists(atPath: codexHome.path) }
+
+    static var codexConnected: Bool {
+        guard let data = try? Data(contentsOf: codexHooksURL),
+              let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let hooks = o["hooks"] as? [String: Any] else { return false }
+        return codexEvents.allSatisfy { event in
+            ((hooks[event] as? [[String: Any]]) ?? []).contains { entry in
+                ((entry["hooks"] as? [[String: Any]]) ?? []).contains { ($0["command"] as? String) == codexCommand }
+            }
+        }
+    }
+
+    /// Adds our hook, for every event Codex has, to ~/.codex/hooks.json
+    /// (merged, backed up first).
+    static func connectCodex() throws {
+        updateHelpers()
+        let fm = FileManager.default
+        let before = try? Data(contentsOf: codexHooksURL)
+        var file: [String: Any] = [:]
+        if let before, !before.allSatisfy({ $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 }) {
+            guard let o = (try? JSONSerialization.jsonObject(with: before)) as? [String: Any] else {
+                throw SetupError.unreadable
+            }
+            file = o
+        }
+        var hooks = file["hooks"] as? [String: Any] ?? [:]
+        for event in codexEvents {
+            var entries = hooks[event] as? [[String: Any]] ?? []
+            let ours = entries.contains { (($0["hooks"] as? [[String: Any]]) ?? []).contains { ($0["command"] as? String) == codexCommand } }
+            if !ours {
+                var h: [String: Any] = ["type": "command", "command": codexCommand]
+                if let t = timeouts[event] { h["timeout"] = t }
+                entries.append(["hooks": [h]])
+            }
+            hooks[event] = entries
+        }
+        file["hooks"] = hooks
+        let after = try JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        guard after != before else { return }
+        try fm.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        if let before {
+            let backups = dir.appendingPathComponent("backups", isDirectory: true)
+            try fm.createDirectory(at: backups, withIntermediateDirectories: true)
+            let stamp = DateFormatter()
+            stamp.dateFormat = "yyyyMMdd-HHmmss"
+            try before.write(to: backups.appendingPathComponent("codex-hooks-\(stamp.string(from: Date())).json"))
+        }
+        try (after + Data("\n".utf8)).write(to: codexHooksURL, options: .atomic)
+        DebugLog.note("setup: Codex hooks registered")
+    }
+
     // MARK: VS Code
 
     /// VS Code runs Claude through our wrapper (claudeCode.claudeProcessWrapper).

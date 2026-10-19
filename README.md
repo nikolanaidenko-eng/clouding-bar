@@ -60,6 +60,12 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - A warning when the **context** fills up, with one tap to `/compact` (or
   let it compact by itself).
 
+**Codex too**
+- Clouding Bar can follow OpenAI's **Codex** as well: its sessions, its own
+  5-hour and weekly limits, its context, and its permission requests
+  (Settings → General → Codex → Connect, then trust the hooks once with
+  `/hooks` in Codex).
+
 **And**
 - A seven-page **tour** on first launch (and from the menu) that plays out
   how everything works.
