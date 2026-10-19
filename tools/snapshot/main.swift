@@ -221,6 +221,19 @@ do { // edit mode, mid-pull
         .frame(width: 600, height: 90).padding(.top, 20))
     renderView(host, size: NSSize(width: 600, height: 90), name: "w-pill-editing")
 }
+// Docked in the notch: drawn (no notch), around a real one, listening, the panel out of it.
+for (name, camera, mode, listening) in [("n-drawn", 0.0, WidgetMode.pill, false), ("n-camera", 190.0, .pill, false),
+                                        ("n-listening", 190.0, .pill, true), ("n-panel", 190.0, .panel, false)] {
+    let m = sampleModel()
+    m.config.metrics = ["model", "agents"]; m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"; m.agents = 2
+    m.config.taskQueue = true
+    if listening { m.listening = true; m.heard = "Перескажи последний ответ коротко" }
+    let st = WidgetState(); st.mode = mode; st.notched = true; st.notchWidth = CGFloat(camera); st.notchHeight = camera > 0 ? 34 : 32
+    let size = NSSize(width: 720, height: mode == .panel ? 330 : 70)
+    let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
+        .frame(width: size.width, height: size.height))
+    renderView(host, size: size, name: name)
+}
 for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.4, 0.0), ("d-island", 1.0, 0.0)] {
     let m = sampleModel()
     let st = WidgetState(); st.mode = .panel; st.hidesHeaderCharacter = true

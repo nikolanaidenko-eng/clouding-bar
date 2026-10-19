@@ -13,6 +13,11 @@ import SwiftUI
 /// A request (permission, question) opens the card by itself and keeps it
 /// open until answered or until you've moused over it and left (not in Do
 /// not disturb). The pill can be dragged anywhere; the strip can't.
+///
+/// Docked in the notch (`widgetAtNotch`) the pill is a black island around
+/// the camera, or a drawn notch on Macs without one, and the panel grows
+/// out of it. Drag the island away and it's the pill again, wherever you
+/// drop it; drag the pill over the notch and it snaps in, docking on release.
 final class WidgetController: NSObject {
     let model: AppModel
     let state = WidgetState()
@@ -37,6 +42,8 @@ final class WidgetController: NSObject {
     private var layoutQueued = false
     /// After a drop: watches for the pointer leaving the panel.
     private var leaveWatch: Timer?
+    /// Being dragged over the notch: it shows docked, and docks on release.
+    private var dockPreview = false
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
@@ -92,7 +99,7 @@ final class WidgetController: NSObject {
     }
 
     /// At rest: the pill (default), or a thin line if you'd rather.
-    private var rest: WidgetMode { model.config.pillAlwaysVisible ? .pill : .strip }
+    private var rest: WidgetMode { model.config.pillAlwaysVisible || atNotch ? .pill : .strip }
 
     /// Called after every model refresh.
     func update() {
@@ -313,10 +320,10 @@ final class WidgetController: NSObject {
         if state.pillTyping { return }
         openWork?.cancel() // holding it: don't open the panel underneath
         let mouse = NSEvent.mouseLocation
-        if state.mode == .pill, model.hasSession, model.request == nil,
+        if state.mode == .pill, model.hasSession, model.request == nil, !docked,
            let rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
             let frame = panel.frame
-            let centered = dragAnchor == nil && model.config.widgetPosition == nil && !atNotch
+            let centered = dragAnchor == nil && model.config.widgetPosition == nil
             fixedEdge = centered ? nil
                 : rim.h == 1 ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
             gesture = .resize(Resize(start: mouse, size: frame.size, h: rim.h, v: rim.v, centered: centered,
@@ -336,6 +343,8 @@ final class WidgetController: NSObject {
             guard moved || hypot(dx, dy) >= 3 else { return }
             gesture = .move(start: start, anchor: startAnchor, moved: true)
             dragAnchor = CGPoint(x: startAnchor.x + dx, y: startAnchor.y + dy)
+            // Over the notch it snaps in, out of it it's the pill again.
+            dockPreview = overNotch(p)
             layout()
         case var .resize(r):
             // The pulled side follows the pointer.
@@ -364,7 +373,14 @@ final class WidgetController: NSObject {
         defer { gesture = nil }
         switch gesture {
         case let .move(_, _, moved):
-            if moved, let a = dragAnchor {
+            if moved && dockPreview {
+                // Let go over the notch: docked.
+                dockPreview = false
+                dragAnchor = nil
+                model.setConfig("widgetPosition", NSNull())
+                model.setConfig("widgetAtNotch", true)
+                layout()
+            } else if moved, let a = dragAnchor {
                 model.setConfig("widgetPosition", [Double(a.x), Double(a.y)])
                 model.setConfig("widgetAtNotch", false)
             } else {
@@ -404,21 +420,41 @@ final class WidgetController: NSObject {
     /// The most height the pill can take: the screen's, under the menu bar.
     private var screenRoom: CGFloat {
         let target = NSScreen.screens.first { $0.frame.contains(anchor) } ?? screen
-        return (atNotch ? target.frame : target.visibleFrame).height
+        return (docked ? target.frame : target.visibleFrame).height
     }
 
     private var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
 
-    /// On Macs with a notch, and only when asked to.
+    /// Docked in the notch (a drawn one on Macs without it).
     private var atNotch: Bool {
-        model.config.widgetAtNotch && dragAnchor == nil && model.config.widgetPosition == nil && hasNotch(screen)
+        model.config.widgetAtNotch && dragAnchor == nil && model.config.widgetPosition == nil
     }
+
+    /// Docked, or dragged over the notch and about to be.
+    private var docked: Bool { atNotch || dockPreview }
 
     static func hasNotch(_ screen: NSScreen?) -> Bool {
         guard #available(macOS 12, *), let screen else { return false }
         return screen.safeAreaInsets.top > 0
     }
-    private func hasNotch(_ screen: NSScreen) -> Bool { Self.hasNotch(screen) }
+
+    /// The camera's width (0: no notch, one is drawn) and the notch's height.
+    static func notch(of screen: NSScreen) -> (width: CGFloat, height: CGFloat) {
+        if #available(macOS 12, *), screen.safeAreaInsets.top > 0 {
+            if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea {
+                return (max(0, r.minX - l.maxX), screen.safeAreaInsets.top)
+            }
+            return (200, screen.safeAreaInsets.top)
+        }
+        return (0, 32)
+    }
+
+    /// Near enough to the notch to dock there: around it, at the very top.
+    private func overNotch(_ p: CGPoint) -> Bool {
+        let f = screen.frame
+        let half = max(150, Self.notch(of: screen).width / 2 + 110)
+        return abs(p.x - f.midX) < half && p.y > f.maxY - 60
+    }
 
     /// With "Automatically hide the menu bar" the default spot is the top
     /// edge, where the menu bar slides in; stay above it there.
@@ -428,16 +464,16 @@ final class WidgetController: NSObject {
 
     private var level: NSWindow.Level {
         let defaultSpot = dragAnchor == nil && model.config.widgetPosition == nil
-        return atNotch || (defaultSpot && menuBarHides) ? .statusBar : .floating
+        return docked || (defaultSpot && menuBarHides) ? .statusBar : .floating
     }
 
     /// The widget's top center.
     private var anchor: CGPoint {
-        if let a = dragAnchor ?? model.config.widgetPosition { return a }
-        if atNotch {
-            // Hang from the notch: the top of the screen, inside the menu bar.
+        if docked {
+            // In the notch: the top of the screen, inside the menu bar.
             return CGPoint(x: screen.frame.midX, y: screen.frame.maxY)
         }
+        if let a = dragAnchor ?? model.config.widgetPosition { return a }
         // Top center, right under the menu bar.
         return CGPoint(x: screen.frame.midX, y: screen.visibleFrame.maxY)
     }
@@ -456,6 +492,14 @@ final class WidgetController: NSObject {
 
     private func layout() {
         guard panel != nil else { return }
+        // The island in the notch, or the pill.
+        let notch = Self.notch(of: screen)
+        if state.notchWidth != notch.width { state.notchWidth = notch.width }
+        if state.notchHeight != notch.height { state.notchHeight = notch.height }
+        if state.notched != docked {
+            withAnimation(.cb(0.26)) { state.notched = docked }
+            return // re-laid out once the view has changed (queueLayout)
+        }
         // While its edge is pulled the pill is exactly as wide as the
         // pointer says (and measuring SwiftUI on every move is slow).
         let size: NSSize
@@ -470,7 +514,7 @@ final class WidgetController: NSObject {
         if let fixed = fixedEdge { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
         // Keep it on a screen.
         let target = NSScreen.screens.first { $0.frame.contains(a) } ?? screen
-        let bounds = atNotch ? target.frame : target.visibleFrame
+        let bounds = docked ? target.frame : target.visibleFrame
         frame.origin.x = min(max(frame.minX, bounds.minX), bounds.maxX - frame.width)
         frame.origin.y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
         panel.level = level

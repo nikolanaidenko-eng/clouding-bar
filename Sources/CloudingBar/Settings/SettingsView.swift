@@ -372,13 +372,19 @@ struct WidgetTab: View {
                     SettingsRow(title: "Open on hover", hint: "The full panel after 2 s on the pill; off: click it") {
                         CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
                     }
-                    if model.hasNotch {
-                        SettingsRow(title: "At the notch", hint: "Hang the widget from the camera notch") {
-                            CBSwitch(title: "At the notch", on: binding("widgetAtNotch") { $0.widgetAtNotch })
-                        }
+                    SettingsRow(title: "In the notch",
+                                hint: (model.hasNotch ? "Around the camera" : "This Mac has no notch, so one is drawn")
+                                    + ": the numbers sit in it, the panel opens from it. Drag it out to put it anywhere, drag it back to dock.") {
+                        CBSwitch(title: "In the notch", on: Binding(
+                            get: { model.config.widgetAtNotch && model.config.widgetPosition == nil },
+                            set: { on in
+                                model.setConfig("widgetAtNotch", on)
+                                if on { model.resetWidgetPosition() }
+                            }))
                     }
                     SettingsRow(title: "Position",
-                                hint: model.config.widgetPosition == nil ? "Top center, under the menu bar" : "Where you dragged it",
+                                hint: model.config.widgetPosition != nil ? "Where you dragged it"
+                                    : model.config.widgetAtNotch ? "In the notch" : "Top center, under the menu bar",
                                 divider: false) {
                         Button("Reset") { model.resetWidgetPosition() }
                             .disabled(model.config.widgetPosition == nil)

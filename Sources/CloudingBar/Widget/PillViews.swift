@@ -923,9 +923,12 @@ struct PillButtonStyle: ButtonStyle {
 /// under the pill's content, so the items get their own clicks and drags.
 struct PillDragHandle: NSViewRepresentable {
     let state: WidgetState
+    /// Off in the notch: it can be dragged out, not resized.
+    var resizable = true
 
     final class HandleView: NSView {
         weak var state: WidgetState?
+        var resizable = true
         override func mouseDown(with event: NSEvent) { state?.pillMouseDown?(event) }
         override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
         override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
@@ -934,6 +937,7 @@ struct PillDragHandle: NSViewRepresentable {
         /// it goes: the nearer end and the bottom (the top from the band
         /// along the top) — one drag sizes it both ways.
         override func resetCursorRects() {
+            guard resizable else { return }
             let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
             let w = bounds.width, h = bounds.height, mid = w / 2
             // y up here: bottom-left and top-right share a diagonal.
@@ -966,7 +970,13 @@ struct PillDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> HandleView {
         let v = HandleView()
         v.state = state
+        v.resizable = resizable
         return v
     }
-    func updateNSView(_ nsView: HandleView, context: Context) {}
+    func updateNSView(_ nsView: HandleView, context: Context) {
+        if nsView.resizable != resizable {
+            nsView.resizable = resizable
+            nsView.window?.invalidateCursorRects(for: nsView)
+        }
+    }
 }

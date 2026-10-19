@@ -38,6 +38,13 @@ final class WidgetState: ObservableObject {
     @Published var pillHover = false
     /// Files are being dragged over the widget.
     @Published var dropHover = false
+    /// Docked in the notch (or dragged over it, about to dock): the pill is
+    /// the black island, the panel grows out of it.
+    @Published var notched = false
+    /// The camera's width (0 on Macs without a notch: one is drawn) and the
+    /// notch's height.
+    @Published var notchWidth: CGFloat = 0
+    @Published var notchHeight: CGFloat = 32
     /// Goes up by one to put the cursor in the panel's message field.
     @Published var focusMessage = 0
     /// How close to an end a press resizes instead of moving.
@@ -105,6 +112,24 @@ struct MascotIcon: NSViewRepresentable {
         if pokes != context.coordinator.pokes {
             context.coordinator.pokes = pokes
             view.poke()
+        }
+    }
+}
+
+/// The open widget's background: glass, or — docked in the notch — black,
+/// flush with the top of the screen and clear of the camera, so the panel
+/// looks grown out of the notch.
+struct PanelMaterial: ViewModifier {
+    @Environment(\.cbNotch) private var notch
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if let notch {
+            content
+                .padding(.top, max(0, notch - 4))
+                .padding(.horizontal, NotchView.shoulder)
+                .background(NotchShape(radius: 22).fill(Color.black))
+        } else {
+            content.modifier(Glass(radius: 18))
         }
     }
 }
@@ -289,7 +314,8 @@ struct WidgetView: View {
         Group {
             switch state.mode {
             case .strip: StripView(model: model)
-            case .pill: PillView(model: model, state: state)
+            case .pill:
+                if state.notched { NotchView(model: model, state: state) } else { PillView(model: model, state: state) }
             case .panel:
                 if model.request != nil { RequestCardView(model: model, state: state) }
                 else if !model.hasSession { EmptyPanel(model: model) }
@@ -299,6 +325,7 @@ struct WidgetView: View {
         }
         .fixedSize()
         .overlay(dropTarget)
+        .environment(\.cbNotch, state.notched ? state.notchHeight : nil)
         .environment(\.colorScheme, .dark)
     }
 
@@ -368,7 +395,7 @@ struct PanelChrome<Content: View>: View {
         VStack(alignment: .leading, spacing: spacing) { content }
             .padding(padding)
             .frame(width: width)
-            .modifier(Glass(radius: 18))
+            .modifier(PanelMaterial())
             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top))
                                         .combined(with: .offset(y: -6)),
                                     removal: .opacity))
@@ -1248,7 +1275,7 @@ struct SessionsPanel: View {
         .foregroundColor(.cbText)
         .padding(EdgeInsets(top: 8, leading: 14, bottom: 14, trailing: 14))
         .frame(width: 320)
-        .modifier(Glass(radius: 18))
+        .modifier(PanelMaterial())
         .transition(.opacity.combined(with: .offset(x: 12)))
     }
 
