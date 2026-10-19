@@ -23,9 +23,7 @@ jobs:
         with:
           workspaces: windows
 
-      - name: Test
-        run: cargo test --workspace
-
+      # The app's build wants the hook next to it, so the hook comes first.
       - name: Build the hook
         run: cargo build --release -p cloudingbar-hook
 
@@ -34,6 +32,9 @@ jobs:
         run: |
           $triple = ((rustc -vV | Select-String "host:").ToString() -split " ")[1]
           Copy-Item target/release/cloudingbar-hook.exe "app/src-tauri/binaries/cloudingbar-hook-$triple.exe"
+
+      - name: Test
+        run: cargo test --workspace
 
       - name: Build the app and its installer
         working-directory: windows/app
