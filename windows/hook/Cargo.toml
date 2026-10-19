@@ -1,0 +1,11 @@
+[package]
+name = "cloudingbar-hook"
+description = "The Claude Code hook command: forwards each event to Clouding Bar and, for permissions and questions, waits for the answer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+interprocess.workspace = true
+cloudingbar-core = { path = "../core" }

@@ -15,6 +15,7 @@ idle, hops while it works and waves when it needs you.
 
 It works in the terminal, in the VS Code extension and with the desktop
 app, on any Mac with macOS 12 or later. A Touch Bar is a bonus, not a must.
+A first version for **Windows** is in [windows/](windows/README.md).
 
 ## What it does
 

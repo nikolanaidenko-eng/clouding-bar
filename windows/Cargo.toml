@@ -1,0 +1,20 @@
+# Clouding Bar for Windows (and anywhere Tauri runs): the same protocol as
+# the macOS app (docs/protocol.md), over a named pipe instead of a unix socket.
+[workspace]
+members = ["core", "hook", "app/src-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+interprocess = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

@@ -1,0 +1,10 @@
+[package]
+name = "cloudingbar-core"
+description = "Clouding Bar's core: the protocol, sessions, limits, requests and hook setup — no UI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

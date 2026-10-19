@@ -1,0 +1,95 @@
+/* Clouding Bar for Windows: the macOS widget's look — dark glass, a pill
+   that opens into a panel, Cloud in the corner. */
+:root {
+  --text: #F5F5F7; --secondary: #A1A1A6; --muted: #8E8E93; --action: #0071E3;
+  --warning: #FF9F0A; --deny: #FF6961; --fill: #E5E5EA; --hairline: rgba(255,255,255,0.14);
+  --glass: rgba(34, 34, 36, 0.94);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: transparent; overflow: hidden; user-select: none; -webkit-user-select: none; }
+body { font: 13px "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--text); }
+#root { display: inline-block; padding: 2px; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: default; }
+.num { font-variant-numeric: tabular-nums; }
+
+.glass { background: var(--glass); border: 0.5px solid var(--hairline); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+
+/* The pill */
+.pill { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 18px 0 8px; border-radius: 22px; white-space: nowrap; }
+.pill .item { display: flex; align-items: center; gap: 8px; }
+.pill .label { font-size: 11px; color: var(--secondary); }
+.pill.waiting { border-color: rgba(255,159,10,0.5); }
+.grab { width: 30px; height: 30px; flex: none; cursor: grab; }
+
+.bar { position: relative; width: 44px; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.14); overflow: hidden; }
+.bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--fill); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+.bar.warn > i { background: var(--warning); } .bar.full > i { background: var(--deny); }
+
+/* The panel */
+.panel { width: 400px; border-radius: 18px; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 12px; }
+.head { display: flex; align-items: center; gap: 8px; height: 28px; }
+.head .title { font-weight: 600; }
+.head .sub { color: var(--secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .spacer { flex: 1; }
+.icon-btn { width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center; color: var(--secondary); }
+.icon-btn:hover { background: rgba(255,255,255,0.08); }
+.meters { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.meter .row { display: flex; justify-content: space-between; align-items: baseline; }
+.meter .name { color: var(--secondary); font-size: 12px; }
+.meter .val { font-weight: 600; }
+.meter .bar { width: 100%; height: 4px; margin: 6px 0 4px; }
+.meter .cap { color: var(--secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 11px; color: var(--secondary); background: rgba(255,255,255,0.06); border-radius: 11px; padding: 3px 9px; }
+.sessions { display: flex; flex-direction: column; background: rgba(255,255,255,0.05); border-radius: 12px; overflow: hidden; }
+.sessions .s { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; }
+.sessions .s + .s { border-top: 0.5px solid rgba(255,255,255,0.07); }
+.sessions .ctx { margin-left: auto; color: var(--secondary); }
+.dot { width: 7px; height: 7px; border-radius: 4px; background: var(--muted); }
+.dot.work { background: var(--fill); } .dot.wait { background: var(--warning); animation: pulse 1.4s ease-in-out infinite; }
+.notice { font-size: 12px; color: var(--secondary); background: rgba(255,255,255,0.05); border-radius: 12px; padding: 10px; display: flex; gap: 10px; align-items: center; }
+
+.btn { height: 32px; padding: 0 14px; border-radius: 9px; background: rgba(255,255,255,0.09); font-weight: 500; }
+.btn:hover { background: rgba(255,255,255,0.14); }
+.btn.primary { background: var(--action); color: #fff; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.deny { color: var(--deny); }
+.btns { display: flex; gap: 6px; } .btns .btn { flex: 1; }
+
+/* Requests */
+.code { font: 12px "Cascadia Mono", Consolas, ui-monospace, monospace; background: rgba(0,0,0,0.3); border-radius: 9px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 4.6em; overflow: hidden; }
+.question { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.options { background: rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
+.option { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; padding: 9px 12px; }
+.option + .option { border-top: 0.5px solid rgba(255,255,255,0.08); }
+.option:hover { background: rgba(255,255,255,0.06); }
+.option .desc { display: block; color: var(--secondary); font-size: 12px; margin-top: 1px; }
+.option .key { color: var(--muted); font-size: 11px; width: 12px; padding-top: 2px; }
+.option .check { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #636366; flex: none; margin-top: 1px; }
+.option.picked .check { background: var(--action); border-color: var(--action); }
+.other { display: flex; gap: 8px; align-items: center; padding: 8px 8px 8px 12px; border-top: 0.5px solid rgba(255,255,255,0.08); }
+.other input { flex: 1; height: 32px; border-radius: 9px; border: 0.5px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: var(--text); padding: 0 10px; font: inherit; outline: none; }
+.other input:focus { border-color: rgba(0,113,227,0.8); }
+.send { width: 32px; height: 32px; border-radius: 16px; background: var(--action); color: #fff; display: grid; place-items: center; }
+.hint { font-size: 11px; color: var(--secondary); }
+
+/* Cloud */
+.cloud .body, .cloud .eyes, .cloud .dots circle, .cloud .zs text { transform-box: fill-box; }
+.cloud.sleep .body { transform-origin: 50% 100%; animation: breathe 3.6s ease-in-out infinite; }
+.cloud.sleep .zs text { animation: drift 3.6s ease-in-out infinite; opacity: 0; }
+.cloud.sleep .zs text:nth-child(2) { animation-delay: 1.2s; } .cloud.sleep .zs text:nth-child(3) { animation-delay: 2.4s; }
+.cloud.work .body { animation: hop .7s cubic-bezier(.3,0,.4,1) infinite; }
+.cloud.work .dots circle { animation: type 1.2s ease-in-out infinite; }
+.cloud.work .dots circle:nth-child(2) { animation-delay: .2s; } .cloud.work .dots circle:nth-child(3) { animation-delay: .4s; }
+.cloud.wait .body { transform-origin: 50% 100%; animation: sway 1.4s ease-in-out infinite; }
+.cloud .badge { transform-origin: center; animation: pulse 1s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.03, 0.95); } }
+@keyframes drift { 0% { opacity: 0; transform: translate(-1px, 2px); } 20%, 70% { opacity: 1; } 100% { opacity: 0; transform: translate(1.5px, -3px); } }
+@keyframes hop { 45% { transform: translateY(-2.2px); } }
+@keyframes type { 50% { opacity: 1; } 0%, 100% { opacity: .25; } }
+@keyframes sway { 25% { transform: rotate(-7deg); } 75% { transform: rotate(7deg); } }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.enter { animation: enter .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes enter { from { opacity: 0; transform: translateY(-6px) scale(.97); } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

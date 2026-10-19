@@ -7,3 +7,10 @@ build/
 HANDOFF.md
 SPEC.md
 DESIGN_BRIEF.md
+
+# Windows (Tauri) build products
+windows/target/
+windows/app/node_modules/
+windows/app/src-tauri/gen/
+windows/app/src-tauri/binaries/*
+!windows/app/src-tauri/binaries/.gitkeep
