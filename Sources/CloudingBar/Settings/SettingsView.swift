@@ -8,8 +8,8 @@ import SwiftUI
 /// 20.10). Light or dark, as the system or General → Appearance says.
 ///
 /// Cloud lives here (SettingsCloud): it sits in the corner while the
-/// pointer rests, hops along the rows as it moves, and flips the switches
-/// itself — it lands on one and the switch goes.
+/// pointer rests, hops from floor to floor of a tab — by the rows — as it
+/// moves, and walks along the tabs, pressing the one you pick.
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     @State private var tab: String
@@ -29,6 +29,7 @@ struct SettingsView: View {
         ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
                 header
+                ScrollViewReader { scroller in
                 ScrollView {
                     Group {
                         switch tab {
@@ -42,6 +43,20 @@ struct SettingsView: View {
                     }
                     .padding(.leading, SettingsCloud.gutter).padding(.trailing, 18).padding(.vertical, 18)
                     .transition(.opacity.combined(with: .offset(y: 6)))
+                }
+                .onAppear {
+                    cloud.reveal = { id in
+                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo("tour." + id, anchor: .center) }
+                    }
+                }
+                // The tour's stop in view, once its tab is drawn.
+                .onChange(of: model.tourStep) { step in
+                    guard let step, SettingsTour.stops.indices.contains(step) else { return }
+                    let id = "tour." + SettingsTour.stops[step].anchor
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .center) }
+                    }
+                }
                 }
             }
             .settingsTour(model: model, cloud: cloud)
@@ -80,7 +95,7 @@ struct SettingsView: View {
             HStack(spacing: 2) {
                 ForEach(Self.tabs, id: \.id) { t in
                     let on = tab == t.id
-                    CloudButton(perch: .above, action: {
+                    CloudButton(byCloud: true, action: {
                         guard tab != t.id else { return }
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = t.id }
                     }) {
@@ -118,9 +133,9 @@ struct SettingsView: View {
 
 /// Where Cloud is in the settings window and where it's going. It sits on
 /// its seat in the corner until the pointer moves, then hops — in an arc —
-/// to the row under the pointer; 1.6 s of stillness and it hops home. A
-/// switch or chip pressed: it hops onto it first, and the switch flips as
-/// it lands.
+/// to the row the pointer stays on, or onto the tab; 2.2 s of stillness and
+/// it hops home. A tab pressed: it jumps onto it, and the tab goes as it
+/// lands.
 final class SettingsCloud: ObservableObject {
     static let gutter: CGFloat = 32
     static let space = "settings-window"
@@ -130,6 +145,8 @@ final class SettingsCloud: ObservableObject {
     static let rowScale: CGFloat = 0.62
 
     let mood = CloudMood()
+    /// Scrolls the tab to a `tourAnchor` (set by the settings view).
+    var reveal: ((String) -> Void)?
     /// The tour leads: Cloud goes where it points and fidgets there; the
     /// pointer doesn't move it.
     var touring = false {
@@ -392,11 +409,12 @@ enum CloudPress {
     }
 }
 
-/// A button whose press Cloud makes: it hops onto it, then it goes. One
-/// of a row of choices (`perch`): Cloud follows the pointer along them.
+/// A settings button that gives a little when pressed. The tabs
+/// (`byCloud`): Cloud walks along their tops after the pointer and makes
+/// the press itself — it jumps onto the tab, lands, and the tab goes. The
+/// switches and chips inside a tab Cloud leaves alone (owner's request, 20.10).
 struct CloudButton<Label: View>: View {
-    enum Perch { case none, above }
-    var perch: Perch = .none
+    var byCloud = false
     let action: () -> Void
     @ViewBuilder let label: () -> Label
     @Environment(\.settingsCloud) private var cloud
@@ -405,7 +423,9 @@ struct CloudButton<Label: View>: View {
     @State private var squished = false
 
     var body: some View {
-        Button { CloudPress.run(cloud, frame, squish: squish, action) } label: {
+        Button {
+            if byCloud { CloudPress.run(cloud, frame, squish: squish, action) } else { squish(); action() }
+        } label: {
             label()
                 .scaleEffect(x: squished ? 0.96 : 1, y: squished ? 0.86 : 1, anchor: .bottom)
         }
@@ -416,7 +436,7 @@ struct CloudButton<Label: View>: View {
                     .onChange(of: g.frame(in: .named(SettingsCloud.space))) { frame = $0 }
             })
             .onHover { inside in
-                guard perch != .none, let cloud else { return }
+                guard byCloud, let cloud else { return }
                 if inside { cloud.perch(frame) } else { cloud.leavePerch() }
             }
     }
@@ -585,7 +605,7 @@ struct SettingsSegments: View {
         HStack(spacing: 0) {
             ForEach(options, id: \.id) { o in
                 let on = o.id == selected
-                CloudButton(perch: .above, action: { if !on { pick(o.id) } }) {
+                CloudButton(action: { if !on { pick(o.id) } }) {
                     Text(o.label).font(.system(size: 11, weight: on ? .semibold : .regular))
                         .foregroundColor(on ? .white : .sText)
                         .padding(.horizontal, 9).frame(height: 24)
@@ -651,7 +671,7 @@ struct Chip: View {
     let action: () -> Void
     @Environment(\.grayButtons) private var gray
     var body: some View {
-        CloudButton(perch: .above, action: action) {
+        CloudButton(action: action) {
             Text(label)
                 .font(.system(size: small ? 11 : 12))
                 .foregroundColor(on ? .white : .sText)
@@ -1085,7 +1105,7 @@ struct ButtonsTab: View {
                 .padding(.horizontal, 4).padding(.vertical, 2)
             }
             .tourAnchor("buttons.list")
-            templatesSection
+            templatesSection.tourAnchor("buttons.templates")
             if !profile.isEmpty {
                 Text(model.config.profiles[profile] == nil
                      ? "\(profile) uses the default buttons. Change one here to give it its own set."

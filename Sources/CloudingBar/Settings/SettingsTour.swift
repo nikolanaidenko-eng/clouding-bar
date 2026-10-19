@@ -3,7 +3,8 @@ import SwiftUI
 /// The tour (owner's request, 20.10: the Spotlight direction of the
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is and what to
-/// try; Cloud hops onto it. Nine stops across the tabs, two things to try.
+/// try; Cloud hops onto it. Twelve stops across the tabs — the Stats tab in
+/// three — and two things to try.
 struct TourStop {
     let tab: String
     /// The `tourAnchor` it lights up.
@@ -22,7 +23,7 @@ struct TourStop {
 enum SettingsTour {
     static let stops: [TourStop] = [
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
-                 text: "Nine spots, about a minute. Everything here can be changed later, and you can skip any time."),
+                 text: "Twelve stops, about two minutes. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "tabs", title: "Everything is in these tabs",
                  text: "The app, the widget, the Touch Bar, your buttons, Cowork and your week in numbers."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
@@ -35,9 +36,15 @@ enum SettingsTour {
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
                  text: "Claude's questions and permission requests show up here too: answer with a tap."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
-                 text: "A phrase, a /command or a link. One tap sends it to the chat you're in."),
-        TourStop(tab: "stats", anchor: "stats.map", title: "How your week went",
-                 text: "Each square is an hour of Claude's work. Point at one to see what happened."),
+                 text: "A phrase, a /command, a key or a link — on the Touch Bar and in the widget. One tap sends it to the chat you're in; give it a shortcut to send it from anywhere."),
+        TourStop(tab: "buttons", anchor: "buttons.templates", title: "Templates",
+                 text: "Phrases you write again and again, typed into the chat without Enter so you can finish them. {project}, {branch}, {clipboard} and {date} are filled in. They live in the widget and the menu bar."),
+        TourStop(tab: "stats", anchor: "stats.limits", title: "Your two limits",
+                 text: "The 5-hour limit, with its last 24 hours as a line, and the weekly one, with how much Claude did each day. Blue is fine, orange from 70%, red from 90%."),
+        TourStop(tab: "stats", anchor: "stats.map", title: "Your week, hour by hour",
+                 text: "Each square is an hour: the brighter, the more Claude worked; orange, you were at the limit. Point at one to see that hour and that day."),
+        TourStop(tab: "stats", anchor: "stats.time", title: "Where the time went",
+                 text: "How long Claude worked, and on which projects. More adds the tokens, the models it used and the tools it reached for."),
         TourStop(tab: "widget", anchor: "widget.more", title: "Everything else is folded away",
                  text: "Behind More: when the widget opens, where it sits, what else it shows. Most people never need it.",
                  tryText: "Open it to finish.", tried: .more, fallback: "widget.show"),
@@ -55,6 +62,7 @@ extension View {
     /// Something the tour can light up.
     func tourAnchor(_ id: String) -> some View {
         anchorPreference(key: TourAnchorKey.self, value: .bounds) { [id: $0] }
+            .id("tour." + id) // to scroll it into view
     }
 
     /// The tour over the settings window, while `model.tourStep` is set.
@@ -98,6 +106,8 @@ struct TourOverlay: View {
     @State private var tried = false
     @State private var startConfig: Config?
     @State private var ring = false
+    /// The stop already scrolled into view.
+    @State private var revealed: Int?
 
     private var stop: TourStop { SettingsTour.stops[step] }
     private var last: Bool { step == SettingsTour.stops.count - 1 }
@@ -108,7 +118,9 @@ struct TourOverlay: View {
 
     var body: some View {
         let s = spot.insetBy(dx: -4, dy: -4)
-        let cardHeight: CGFloat = stop.tryText == nil ? 150 : 172
+        // Roughly: the lines of text it holds.
+        let lines = CGFloat((stop.text.count + 41) / 42)
+        let cardHeight: CGFloat = 112 + lines * 18 + (stop.tryText == nil ? 0 : 22)
         let below = s.maxY + 14 + cardHeight <= size.height - 8
         let x = min(max(16, s.midX - Self.cardWidth / 2), size.width - Self.cardWidth - 16)
         let y = below ? s.maxY + 14 : max(8, s.minY - 14 - cardHeight)
@@ -180,10 +192,10 @@ struct TourOverlay: View {
             .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)).combined(with: .scale(scale: 0.97)),
                                     removal: .opacity))
             HStack(spacing: 6) {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     ForEach(SettingsTour.stops.indices, id: \.self) { i in
                         Capsule().fill(i <= step ? accent : Color(hex: 0xD1D1D6))
-                            .frame(width: i == step ? 14 : 5, height: 5)
+                            .frame(width: i == step ? 12 : 4, height: 4)
                     }
                 }
                 Spacer(minLength: 2)
@@ -214,6 +226,12 @@ struct TourOverlay: View {
     /// The stop's target is drawn: the spotlight slides there, Cloud hops on.
     private func arrive(_ rect: CGRect?) {
         guard let rect, rect != .zero else { return }
+        // Below or above what shows (Stats grows as it loads): scroll to it, once.
+        let inHeader = ["cloud", "tabs", "help"].contains(stop.anchor)
+        if !inHeader, revealed != step, rect.maxY > size.height - 10 || rect.minY < 60 {
+            revealed = step
+            cloud.reveal?(stop.anchor)
+        }
         if spot == .zero {
             var t = Transaction()
             t.disablesAnimations = true

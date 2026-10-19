@@ -13,7 +13,7 @@ struct StatsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            limits
+            limits.tourAnchor("stats.limits")
             if let stats {
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -31,6 +31,7 @@ struct StatsTab: View {
                     }
                     details(stats)
                 }
+                .tourAnchor("stats.time")
             } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
