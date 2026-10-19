@@ -234,6 +234,46 @@ for (name, camera, mode, listening) in [("n-drawn", 0.0, WidgetMode.pill, false)
         .frame(width: size.width, height: size.height))
     renderView(host, size: size, name: name)
 }
+// The notch pulled wider, writing in it, and Claude's requests coming out of it.
+for (name, camera, notchWidth, notchHeight) in [("n-wide-drawn", 0.0, 640.0, 0.0), ("n-wide-camera", 190.0, 760.0, 0.0),
+                                                ("n-wide-rows", 190.0, 560.0, 90.0)] {
+    let m = sampleModel()
+    m.config.metrics = ["model", "agents"]; m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"; m.agents = 2
+    m.config.taskQueue = true
+    m.config.notchWidth = notchWidth; m.config.notchHeight = notchHeight
+    let st = WidgetState(); st.mode = .pill; st.notched = true; st.notchWidth = CGFloat(camera); st.notchHeight = 34
+    let size = NSSize(width: 900, height: 130)
+    let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
+        .frame(width: size.width, height: size.height))
+    renderView(host, size: size, name: name)
+}
+for (name, camera) in [("n-typing-drawn", 0.0), ("n-typing-camera", 190.0)] {
+    let m = sampleModel()
+    m.config.taskQueue = true
+    let st = WidgetState(); st.mode = .pill; st.notched = true; st.notchWidth = CGFloat(camera); st.notchHeight = 34
+    st.pillTyping = true; st.pillDraft = "Проверь тесты и почини что упало"
+    let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
+        .frame(width: 720, height: 110))
+    renderView(host, size: NSSize(width: 720, height: 110), name: name)
+}
+for (name, question) in [("n-permission", false), ("n-question", true)] {
+    let m = sampleModel()
+    if question {
+        var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "DiaRoute")
+        card.question = "Which storage should offline routes use?"
+        card.options = ["SQLite (Recommended)", "MMKV", "AsyncStorage"]
+        card.descriptions = ["Queries by date and area", "Fast key-value, small data", "Simplest, slowest"]
+        m.request = card
+        m.otherDraft = "WatermelonDB, sync later"
+    } else {
+        m.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "npm run build && npm test")
+    }
+    let st = WidgetState(); st.mode = .panel; st.notched = true; st.notchWidth = 0; st.notchHeight = 32
+    let size = NSSize(width: 720, height: question ? 470 : 260)
+    let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
+        .frame(width: size.width, height: size.height))
+    renderView(host, size: size, name: name)
+}
 for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.4, 0.0), ("d-island", 1.0, 0.0)] {
     let m = sampleModel()
     let st = WidgetState(); st.mode = .panel; st.hidesHeaderCharacter = true

@@ -376,6 +376,20 @@ struct PillLayout {
         var shown: Set<Part> = []
         /// Hairlines between kinds, in the content's space.
         var dividers: [CGRect] = []
+
+        /// Room for the camera in the middle (docked in a real notch): what
+        /// would sit under it, from `x` on and above `bottom` (in the
+        /// content's space), moves past it. Rows below the camera keep their place.
+        func makingRoom(at x: CGFloat, width: CGFloat, above bottom: CGFloat) -> Arrangement {
+            guard width > 0 else { return self }
+            var a = self
+            for (id, r) in slots where r.maxX > x && r.minY < bottom { a.slots[id] = r.offsetBy(dx: width, dy: 0) }
+            a.dividers = dividers.map { $0.minX > x && $0.minY < bottom ? $0.offsetBy(dx: width, dy: 0) : $0 }
+            a.board.width += width
+            a.frame.width += width
+            a.natural += width
+            return a
+        }
     }
 
     static func isVertical(width: CGFloat, height: CGFloat) -> Bool { height > max(width, Self.height(rows: 1)) }
@@ -616,13 +630,22 @@ struct PillBoard: View {
     @ObservedObject var state: WidgetState
     @ObservedObject var rearrange: Rearrange
     let budget: CGSize
+    /// In a real notch: the camera's width, kept clear in the middle.
+    var camera: CGFloat = 0
+    /// In the notch: black, square, the island's shape drawn around it.
+    var notched = false
 
     var body: some View {
         let base = model.itemIDs
-        let a = PillLayout(model: model, order: rearrange.order(base)).arrange(width: budget.width, height: budget.height)
-        // While its outline is pulled, the pill follows the pointer exactly.
+        var a = PillLayout(model: model, order: rearrange.order(base)).arrange(width: budget.width, height: budget.height)
+        if camera > 0 {
+            a = a.makingRoom(at: a.frame.width / 2 - a.inset.width, width: camera, above: state.notchHeight - a.inset.height)
+        }
+        // While its outline is pulled, the pill follows the pointer exactly
+        // (in the notch, the island does; the shoulders are outside this).
         let frame = state.pillEditSize.map {
-            CGSize(width: max(PillLayout.minWidth, $0.width), height: max(PillLayout.height(rows: 1), $0.height))
+            CGSize(width: max(PillLayout.minWidth, $0.width - (notched ? 2 * NotchView.shoulder : 0)),
+                   height: max(PillLayout.height(rows: 1), $0.height))
         } ?? a.frame
         rearrange.accepts = { [model, budget] dragged, other in
             // The dragged item has to stay on the pill.
@@ -659,7 +682,7 @@ struct PillBoard: View {
                 .frame(width: frame.width, height: frame.height, alignment: .topLeading)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: notched ? 0 : 22, style: .continuous))
         .animation(.cb(0.2), value: a.ids)
         .animation(.cb(0.28), value: a.vertical)
     }
@@ -923,12 +946,12 @@ struct PillButtonStyle: ButtonStyle {
 /// under the pill's content, so the items get their own clicks and drags.
 struct PillDragHandle: NSViewRepresentable {
     let state: WidgetState
-    /// Off in the notch: it can be dragged out, not resized.
-    var resizable = true
+    /// Off in the notch: it hangs from the top, so only its ends and bottom pull.
+    var fromTop = true
 
     final class HandleView: NSView {
         weak var state: WidgetState?
-        var resizable = true
+        var fromTop = true
         override func mouseDown(with event: NSEvent) { state?.pillMouseDown?(event) }
         override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
         override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
@@ -937,7 +960,6 @@ struct PillDragHandle: NSViewRepresentable {
         /// it goes: the nearer end and the bottom (the top from the band
         /// along the top) — one drag sizes it both ways.
         override func resetCursorRects() {
-            guard resizable else { return }
             let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
             let w = bounds.width, h = bounds.height, mid = w / 2
             // y up here: bottom-left and top-right share a diagonal.
@@ -947,6 +969,7 @@ struct PillDragHandle: NSViewRepresentable {
             addCursorRect(NSRect(x: w - edge, y: 0, width: edge, height: h - rim), cursor: falling)
             addCursorRect(NSRect(x: edge, y: 0, width: mid - edge, height: rim), cursor: rising)
             addCursorRect(NSRect(x: mid, y: 0, width: mid - edge, height: rim), cursor: falling)
+            guard fromTop else { return }
             addCursorRect(NSRect(x: 0, y: h - rim, width: mid, height: rim), cursor: falling)
             addCursorRect(NSRect(x: mid, y: h - rim, width: mid, height: rim), cursor: rising)
         }
@@ -970,12 +993,12 @@ struct PillDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> HandleView {
         let v = HandleView()
         v.state = state
-        v.resizable = resizable
+        v.fromTop = fromTop
         return v
     }
     func updateNSView(_ nsView: HandleView, context: Context) {
-        if nsView.resizable != resizable {
-            nsView.resizable = resizable
+        if nsView.fromTop != fromTop {
+            nsView.fromTop = fromTop
             nsView.window?.invalidateCursorRects(for: nsView)
         }
     }

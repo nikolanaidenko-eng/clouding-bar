@@ -135,8 +135,12 @@ struct Config: Equatable {
     /// Where the pill was dragged: its top center in screen points.
     /// Unset: top center of the screen, right under the menu bar.
     var widgetPosition: CGPoint?
-    /// On Macs with a notch: hang the widget from the notch.
+    /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
+    /// The island's size in the notch, set by pulling its ends or bottom:
+    /// wider, it shows the pill's items around the camera. 0: compact.
+    var notchWidth: Double = 0
+    var notchHeight: Double = 0
     var sessionsList = false
     var doNotDisturb = false
     var contextWarning = true
@@ -232,6 +236,8 @@ struct Config: Equatable {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)
         }
         if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
+        if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
+        if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }
         if let v = obj["doNotDisturb"] as? Bool { config.doNotDisturb = v }
         if let v = obj["contextWarning"] as? Bool { config.contextWarning = v }

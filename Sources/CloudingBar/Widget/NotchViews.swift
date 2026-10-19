@@ -35,32 +35,67 @@ struct NotchView: View {
 
     /// The concave curve at each top corner, where it meets the screen edge.
     static let shoulder: CGFloat = 8
-    /// Each side of the camera, at least.
+    /// Each side of the camera, at least (in a real notch).
     static let ear: CGFloat = 92
 
+    /// The compact island's width: two ears around the camera, or, drawn,
+    /// the two sides with a hairline between.
+    static func compactWidth(camera: CGFloat) -> CGFloat {
+        camera > 0 ? 2 * shoulder + 22 + 2 * ear + camera : 2 * shoulder + 22 + 210
+    }
+
+    /// Pulled wider than the compact island: the pill's items, around the camera.
+    private var wideBudget: CGSize? {
+        let size = state.pillEditSize
+            ?? (model.config.notchWidth > 0 ? CGSize(width: model.config.notchWidth, height: model.config.notchHeight) : nil)
+        guard let size, size.width > Self.compactWidth(camera: state.notchWidth) + 24 else { return nil }
+        return size
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            left.frame(minWidth: Self.ear, alignment: .leading)
-            // The camera (or, drawn, a narrow gap between the two sides).
-            Color.clear.frame(width: max(state.notchWidth, 14))
-            right.frame(minWidth: Self.ear, alignment: .trailing)
+        Group {
+            if state.pillTyping {
+                typing
+            } else if let b = wideBudget, model.hasSession, !model.listening, model.request == nil {
+                wide(b)
+            } else {
+                compact
+            }
         }
         .lineLimit(1)
+        .overlay(state.dropHover ? NotchShape(radius: 16).stroke(Color.cbAction, lineWidth: 2) : nil)
+        .animation(.cb(0.28), value: model.listening)
+        .animation(.cb(0.28), value: model.request?.id)
+        .transition(.opacity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Clouding Bar: \(model.statusTitle)")
+    }
+
+    // MARK: Compact
+
+    /// Cloud and the 5-hour limit, then the context: either side of the
+    /// camera, or, with no camera, side by side.
+    private var compact: some View {
+        let camera = state.notchWidth
+        return HStack(spacing: 0) {
+            left.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .leading)
+            if camera > 0 {
+                Color.clear.frame(width: camera) // the camera
+            } else {
+                Rectangle().fill(Color.white.opacity(0.16)).frame(width: 1, height: 14).padding(.horizontal, 12)
+            }
+            right.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .trailing)
+        }
         .font(.system(size: 12, weight: .semibold).monospacedDigit())
         .foregroundColor(.white)
         .padding(.leading, Self.shoulder + 10)
         .padding(.trailing, Self.shoulder + 12)
-        .padding(.horizontal, state.pillHover ? 3 : 0) // a little give under the pointer
-        .frame(height: state.notchHeight)
-        .background(PillDragHandle(state: state, resizable: false))
+        .padding(.horizontal, state.pillHover && state.pillEditSize == nil ? 3 : 0) // a little give under the pointer
+        .frame(minWidth: state.pillEditSize?.width)
+        .frame(height: state.pillEditSize.map { max(state.notchHeight, $0.height) } ?? state.notchHeight)
+        .background(PillDragHandle(state: state, fromTop: false))
         .background(NotchShape().fill(Color.black))
-        .overlay(state.dropHover ? NotchShape().stroke(Color.cbAction, lineWidth: 2) : nil)
         .animation(.cb(0.22), value: state.pillHover)
-        .animation(.cb(0.28), value: model.listening)
-        .animation(.cb(0.28), value: model.request?.id)
-        .transition(.opacity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Clouding Bar: \(model.statusTitle)")
     }
 
     private var left: some View {
@@ -100,6 +135,37 @@ struct NotchView: View {
         } else {
             Text(PillLayout.percent(model.sessionPercent)).foregroundColor(.cbSecondary)
         }
+    }
+
+    // MARK: Wide
+
+    /// Pulled wider (or lower): the pill's own items, in its order, the
+    /// camera kept clear in the middle; they can be swapped as on the pill.
+    private func wide(_ b: CGSize) -> some View {
+        let camera = state.notchWidth
+        let width = max(PillLayout.minWidth, b.width - camera - 2 * Self.shoulder)
+        // Rows only: never stood up as a column under the notch.
+        let height = min(max(PillLayout.height(rows: 1), b.height), width)
+        return PillBoard(model: model, state: state, rearrange: state.pillRearrange,
+                         budget: CGSize(width: width, height: height), camera: camera, notched: true)
+            .font(.system(size: 13).monospacedDigit())
+            .foregroundColor(.cbText)
+            .padding(.horizontal, Self.shoulder)
+            .background(PillDragHandle(state: state, fromTop: false))
+            .background(NotchShape(radius: 16).fill(Color.black))
+    }
+
+    // MARK: Typing
+
+    /// Writing in the notch: the island widens into a text line.
+    private var typing: some View {
+        PillTyping(model: model, state: state, width: max(380, state.notchWidth + 2 * Self.ear))
+            // In a real notch the line goes under the camera, not behind it.
+            .padding(.top, state.notchWidth > 0 ? state.notchHeight - 8 : 0)
+            .font(.system(size: 13).monospacedDigit())
+            .foregroundColor(.cbText)
+            .padding(.horizontal, Self.shoulder)
+            .background(NotchShape(radius: 16).fill(Color.black))
     }
 }
 

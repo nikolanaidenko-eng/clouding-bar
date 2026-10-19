@@ -325,7 +325,8 @@ struct WidgetView: View {
         }
         .fixedSize()
         .overlay(dropTarget)
-        .environment(\.cbNotch, state.notched ? state.notchHeight : nil)
+        // A real notch: the panel starts under the camera. A drawn one: right away.
+        .environment(\.cbNotch, state.notched ? (state.notchWidth > 0 ? state.notchHeight : 8) : nil)
         .environment(\.colorScheme, .dark)
     }
 
@@ -345,6 +346,24 @@ struct WidgetView: View {
                 .transition(.opacity)
         }
     }
+}
+
+/// The floating widget's window content: the widget at the top center.
+/// The window may be roomier for a moment while one view turns into
+/// another; the widget stays put at the top.
+struct WidgetWindow: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var state: WidgetState
+
+    var body: some View {
+        WidgetView(model: model, state: state)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+extension Animation {
+    /// Between the panel and the sessions: a soft spring, like a sheet.
+    static let cbSwap = Animation.spring(response: 0.42, dampingFraction: 0.88)
 }
 
 /// At rest: a 4 pt line in the state's color, under the menu bar.
@@ -634,7 +653,7 @@ struct MainPanel: View {
             Spacer(minLength: 0)
             if model.config.sessionsList {
                 Button {
-                    withAnimation(.cb(0.26)) { state.mode = .sessions }
+                    withAnimation(.cbSwap) { state.mode = .sessions }
                 } label: {
                     HStack(spacing: 4) {
                         Text("\(model.sessions.count) session\(model.sessions.count == 1 ? "" : "s")")
@@ -1249,7 +1268,7 @@ struct SessionsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
-                Button { withAnimation(.cb(0.26)) { state.mode = .panel } } label: { Icon(kind: .chevronLeft, lineWidth: 2.2) }
+                Button { withAnimation(.cbSwap) { state.mode = .panel } } label: { Icon(kind: .chevronLeft, lineWidth: 2.2) }
                     .buttonStyle(IconButtonStyle())
                     .padding(.leading, -12)
                     .accessibilityLabel("Back")
@@ -1261,7 +1280,12 @@ struct SessionsPanel: View {
             VStack(spacing: 0) {
                 ForEach(model.sessions) { s in
                     Button {
-                        if s.waiting { model.showRequest(s.id); state.mode = .panel } else { model.openSession(s.id) }
+                        if s.waiting {
+                            model.showRequest(s.id)
+                            withAnimation(.cbSwap) { state.mode = .panel }
+                        } else {
+                            model.openSession(s.id)
+                        }
                     } label: { row(s) }
                     .buttonStyle(.plain)
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
@@ -1276,7 +1300,9 @@ struct SessionsPanel: View {
         .padding(EdgeInsets(top: 8, leading: 14, bottom: 14, trailing: 14))
         .frame(width: 320)
         .modifier(PanelMaterial())
-        .transition(.opacity.combined(with: .offset(x: 12)))
+        // In from the right as the panel fades back, like a page turning.
+        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 24)).combined(with: .scale(scale: 0.98, anchor: .top)),
+                                removal: .opacity.combined(with: .offset(x: 24))))
     }
 
     private func row(_ s: AppModel.SessionRow) -> some View {

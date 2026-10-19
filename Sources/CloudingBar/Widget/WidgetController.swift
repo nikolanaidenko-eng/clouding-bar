@@ -23,7 +23,7 @@ final class WidgetController: NSObject {
     let state = WidgetState()
 
     private var panel: WidgetPanel!
-    private var host: HoverHostingView<WidgetView>!
+    private var host: HoverHostingView<WidgetWindow>!
     private var wakeWork: DispatchWorkItem?
     private var openWork: DispatchWorkItem?
     /// After a resize the pointer is still on the pill; don't pop the panel.
@@ -44,13 +44,20 @@ final class WidgetController: NSObject {
     private var leaveWatch: Timer?
     /// Being dragged over the notch: it shows docked, and docks on release.
     private var dockPreview = false
+    /// Switching between pill, panel and sessions: the window keeps the room
+    /// both need for the length of the animation (the clear part doesn't
+    /// show), so the views slide and fade instead of being cut off by a
+    /// window that jumped to its new size; it fits itself afterwards.
+    private var shownMode: WidgetMode = .pill
+    private var settleUntil = Date.distantPast
+    private var settleWork: DispatchWorkItem?
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
     init(model: AppModel) {
         self.model = model
         super.init()
-        host = HoverHostingView(rootView: WidgetView(model: model, state: state))
+        host = HoverHostingView(rootView: WidgetWindow(model: model, state: state))
         host.onHover = { [weak self] inside in self?.hover(inside) }
         panel = WidgetPanel(contentRect: NSRect(x: 0, y: 0, width: 88, height: 10),
                             styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
@@ -320,14 +327,17 @@ final class WidgetController: NSObject {
         if state.pillTyping { return }
         openWork?.cancel() // holding it: don't open the panel underneath
         let mouse = NSEvent.mouseLocation
-        if state.mode == .pill, model.hasSession, model.request == nil, !docked,
-           let rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
+        if state.mode == .pill, model.hasSession, model.request == nil, !model.listening,
+           var rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
             let frame = panel.frame
+            // In the notch it hangs from the top: its ends and bottom pull.
+            if atNotch { rim.v = -1 }
             let centered = dragAnchor == nil && model.config.widgetPosition == nil
             fixedEdge = centered ? nil
                 : rim.h == 1 ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
+            let most = PillLayout(model: model).maxWidth + (atNotch ? state.notchWidth + 2 * NotchView.shoulder : 0)
             gesture = .resize(Resize(start: mouse, size: frame.size, h: rim.h, v: rim.v, centered: centered,
-                                     bottom: frame.minY, most: PillLayout(model: model).maxWidth, raw: frame.size))
+                                     bottom: frame.minY, most: most, raw: frame.size))
             withAnimation(.cb(0.15)) { state.pillEditSize = frame.size }
             layout()
         } else {
@@ -359,7 +369,7 @@ final class WidgetController: NSObject {
             let w = rubber(r.raw.width, PillLayout.minWidth, r.most)
             // Down to the bottom of the screen: once taller than wide, it
             // stands up as a column.
-            let h = rubber(r.raw.height, PillLayout.height(rows: 1), screenRoom)
+            let h = rubber(r.raw.height, atNotch ? state.notchHeight : PillLayout.height(rows: 1), screenRoom)
             state.pillEditSize = CGSize(width: w, height: h)
             // Pulling the top: the bottom stays, so the top moves.
             if r.v == 1 { dragAnchor = CGPoint(x: anchor.x, y: r.bottom + h) }
@@ -386,6 +396,14 @@ final class WidgetController: NSObject {
             } else {
                 set(.panel) // a click opens it right away
             }
+        case let .resize(r) where atNotch:
+            // The island: compact again if pulled in that far.
+            let compact = r.raw.width <= NotchView.compactWidth(camera: state.notchWidth) + 24
+            model.setConfig("notchWidth", compact ? 0 : Double(min(r.most, r.raw.width)))
+            model.setConfig("notchHeight", compact ? 0 : Double(min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))))
+            withAnimation(.cb(0.2)) { state.pillEditSize = nil }
+            queueLayout()
+            suppressOpen = true
         case let .resize(r):
             let height = min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))
             if PillLayout.isVertical(width: r.raw.width, height: height) {
@@ -502,13 +520,24 @@ final class WidgetController: NSObject {
         }
         // While its edge is pulled the pill is exactly as wide as the
         // pointer says (and measuring SwiftUI on every move is slow).
-        let size: NSSize
+        var size: NSSize
         if state.mode == .pill, let e = state.pillEditSize {
             size = NSSize(width: max(PillLayout.minWidth, e.width), height: max(PillLayout.height(rows: 1), e.height))
         } else {
             size = host.fittingSize
         }
         guard size.width > 0, size.height > 0 else { return }
+        if state.mode != shownMode {
+            shownMode = state.mode
+            settleUntil = Date().addingTimeInterval(0.45)
+            settleWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.layout() }
+            settleWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.47, execute: work)
+        }
+        if Date() < settleUntil, gesture == nil, panel.isVisible {
+            size = NSSize(width: max(size.width, panel.frame.width), height: max(size.height, panel.frame.height))
+        }
         let a = anchor
         var frame = NSRect(x: a.x - size.width / 2, y: a.y - size.height, width: size.width, height: size.height)
         if let fixed = fixedEdge { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
