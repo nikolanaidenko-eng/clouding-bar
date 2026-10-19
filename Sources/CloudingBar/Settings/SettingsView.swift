@@ -25,8 +25,7 @@ struct SettingsView: View {
                 LiveMascot(size: 32, mood: mood)
                     .frame(width: 32, height: 32)
                     .overlay(Color.clear.contentShape(Rectangle()).onTapGesture { mood.pokes += 1 })
-                    .help("Cloud")
-                Text("Clouding Bar").font(.system(size: 13, weight: .semibold))
+                    .help("Clouding Bar")
                 Spacer()
                 HStack(spacing: 0) {
                     ForEach(Self.tabs, id: \.0) { id, label in
@@ -45,6 +44,15 @@ struct SettingsView: View {
                 }
                 .padding(2)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
+                Button { model.showTour() } label: {
+                    Image(systemName: "questionmark").font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Take the tour: how everything works")
+                .accessibilityLabel("Take the tour")
             }
             // Room on the left for the window's close button.
             .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 11)

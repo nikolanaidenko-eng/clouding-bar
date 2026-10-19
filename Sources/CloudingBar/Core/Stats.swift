@@ -23,10 +23,10 @@ struct WeekStats {
 
     var headline: String {
         switch limitHits {
-        case 0: return isEmpty ? "No Claude Code this week" : "Didn't hit the limit this week"
-        case 1: return "Hit the limit once this week"
-        case 2: return "Hit the limit twice this week"
-        default: return "Hit the limit \(limitHits) times this week"
+        case 0: return isEmpty ? "No Claude Code this week" : "Didn't hit the 5-hour limit this week"
+        case 1: return "Hit the 5-hour limit once this week"
+        case 2: return "Hit the 5-hour limit twice this week"
+        default: return "Hit the 5-hour limit \(limitHits) times this week"
         }
     }
 }

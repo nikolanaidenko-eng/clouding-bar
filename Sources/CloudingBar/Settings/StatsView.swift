@@ -40,8 +40,15 @@ struct StatsTab: View {
     }
 
     private func subtitle(_ s: WeekStats) -> String {
-        [s.busiest, s.limitHours.isEmpty ? nil : "orange: hours at the limit"].compactMap { $0 }
-            .joined(separator: " · ")
+        ["Claude's usage limit resets every 5 hours", s.busiest, s.limitHours.isEmpty ? nil : "orange: hours at the limit"]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// The heat map fills the tab: 24 hours across, the days' names before.
+    private static let labelWidth: CGFloat = 26, cellGap: CGFloat = 3
+    private static var cell: CGFloat {
+        let inner = SettingsView.width - 36 // the tab's padding
+        return floor((inner - labelWidth - cellGap - 23 * cellGap) / 24)
     }
 
     private func heatMap(_ s: WeekStats) -> some View {
@@ -51,13 +58,13 @@ struct StatsTab: View {
         fmt.dateFormat = "EEE"
         return VStack(alignment: .leading, spacing: 4) {
             ForEach(0..<7, id: \.self) { d in
-                HStack(spacing: 3) {
+                HStack(spacing: Self.cellGap) {
                     Text(fmt.string(from: s.days[d])).font(.system(size: 10)).foregroundColor(.cbSecondary)
-                        .frame(width: 26, alignment: .leading)
+                        .frame(width: Self.labelWidth, alignment: .leading)
                     ForEach(0..<24, id: \.self) { h in
                         RoundedRectangle(cornerRadius: 4)
                             .fill(color(s, d, h, peak))
-                            .frame(width: 15, height: 15)
+                            .frame(width: Self.cell, height: 16)
                             .scaleEffect(shown ? 1 : 0.4)
                             .opacity(shown ? 1 : 0)
                             .animation(.cb(0.26).delay(Double(h * 12 + d * 8) / 1000), value: shown)
@@ -71,7 +78,8 @@ struct StatsTab: View {
                 }
             }
             .font(.system(size: 10)).foregroundColor(.cbSecondary)
-            .padding(.leading, 29).frame(width: 29 + 24 * 18 - 3)
+            .padding(.leading, Self.labelWidth + Self.cellGap)
+            .frame(width: Self.labelWidth + Self.cellGap + 24 * (Self.cell + Self.cellGap) - Self.cellGap)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Heat map of Claude Code use by day and hour")
