@@ -112,7 +112,7 @@ func sampleModel() -> AppModel {
     m.sessions = [
         .init(id: "1", name: "DiaRoute", status: "VS Code · Needs your OK", activity: .wait, context: 31, waiting: true),
         .init(id: "2", name: "bots", status: "Cowork · Working · 2 min", activity: .work, context: 58, waiting: false),
-        .init(id: "3", name: "agent-office", status: "VS Code · Working · 9 min", activity: .work, context: 83, waiting: false),
+        .init(id: "3", name: "side-project", status: "VS Code · Working · 9 min", activity: .work, context: 83, waiting: false),
         .init(id: "4", name: "claudebar", status: "Terminal · Idle · 12 min", activity: .sleep, context: 94, waiting: false),
         .init(id: "5", name: "landing", status: "VS Code · Idle · 1 h", activity: .sleep, context: 12, waiting: false),
     ]

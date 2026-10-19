@@ -178,7 +178,7 @@ do {
 // MARK: Config
 
 let config = Config()
-check(config.effectiveButtons.map(\.label) == ["caveman", "compact", "office"], "default buttons")
+check(config.effectiveButtons.map(\.label) == ["summary", "compact"], "default buttons")
 check(config.questionHoldSeconds == 15, "question hold defaults to 15 s")
 check(config.contextWarnPercent == 80, "context warning at 80%")
 

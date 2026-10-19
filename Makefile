@@ -17,7 +17,7 @@ TARGET = $(shell uname -m)-apple-macosx12.0
 # keychain (added in Xcode → Settings → Accounts), then the self-signed one
 # created by `make signing-identity`, then ad-hoc.
 
-.PHONY: all build bundle install clean signing-identity snapshots test release icon
+.PHONY: all build bundle install clean signing-identity snapshots test release icon demo
 
 all: bundle $(TAP) $(HOOK)
 
@@ -73,6 +73,13 @@ install: bundle $(TAP) $(HOOK)
 # says what it needs once). DRY=1 make release: everything but the notary.
 release:
 	./packaging/release.sh
+
+# docs/demo.gif for the README: the tour's scenes, recorded as they play
+# (a small window shows in a corner of the screen for ~25 s).
+demo:
+	mkdir -p build docs
+	swiftc -O -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift tools/demo/main.swift -o build/demo
+	./build/demo docs/demo.gif
 
 # The app icon (Cloud on a dark tile) → packaging/AppIcon.icns.
 icon:

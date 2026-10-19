@@ -160,7 +160,8 @@ PYEOF
 
 echo
 echo "Done! Launching Clouding Bar…"
-open "$APP_DEST"
+# Right after the old one quit, Launch Services sometimes says no (-600): once more.
+open "$APP_DEST" 2>/dev/null || { sleep 2; open "$APP_DEST"; }
 echo
 echo "First-run checklist:"
 echo "  • macOS will ask for Accessibility access (needed to press keys"

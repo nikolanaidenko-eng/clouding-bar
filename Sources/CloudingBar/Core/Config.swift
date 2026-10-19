@@ -67,14 +67,14 @@ struct Config: Equatable {
         "com.anthropic.claude-code",
     ]
 
-    /// Buttons after the meters. Unset: caveman, compact, office (built
+    /// Buttons after the meters. Unset: summary and compact (built
     /// from the three older keys below, so existing configs keep working).
     var buttons: [ButtonSpec] = []
 
-    var summaryPrompt =
-        "Перескажи свой последний ответ коротко, по пунктам. Только суть, без воды, вступлений и лишней информации."
+    var summaryPrompt = "Sum up your last answer in a few short bullet points: just the essentials."
     var compactCommand = "/compact"
-    var officeURL = "vscode://nikola.agent-office/open"
+    /// A link button after the defaults (unset: none).
+    var officeURL = ""
 
     /// "auto" (show it when the Mac has one), "on" or "off".
     var touchBar = "auto"
@@ -209,7 +209,7 @@ struct Config: Equatable {
     var effectiveButtons: [ButtonSpec] {
         if !buttons.isEmpty { return buttons }
         var list = [
-            ButtonSpec(label: "caveman", type: .phrase, value: summaryPrompt),
+            ButtonSpec(label: "summary", type: .phrase, value: summaryPrompt),
             ButtonSpec(label: "compact", type: .command, value: compactCommand),
         ]
         if !officeURL.isEmpty {

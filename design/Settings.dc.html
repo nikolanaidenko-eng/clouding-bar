@@ -182,7 +182,7 @@ body{margin:0;background:#1B1B1D}
           <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px">
             <span style="flex: 46 1 0; background: #E5E5EA"></span><span style="flex: 27 1 0; background: #AEAEB2"></span><span style="flex: 17 1 0; background: #636366"></span><span style="flex: 10 1 0; background: #3A3A3C"></span>
           </div>
-          <div style="display: flex; gap: 16px; font-size: 11px; color: #A1A1A6; flex-wrap: wrap"><span><span style="color: #F5F5F7">DiaRoute</span> 46%</span><span><span style="color: #F5F5F7">bots</span> 27%</span><span><span style="color: #F5F5F7">agent-office</span> 17%</span><span>other 10%</span></div>
+          <div style="display: flex; gap: 16px; font-size: 11px; color: #A1A1A6; flex-wrap: wrap"><span><span style="color: #F5F5F7">DiaRoute</span> 46%</span><span><span style="color: #F5F5F7">bots</span> 27%</span><span><span style="color: #F5F5F7">side-project</span> 17%</span><span>other 10%</span></div>
         </div>
       </div>
     </sc-if>
@@ -194,7 +194,7 @@ class Component extends DCLogic {
   constructor(props) {
     super(props);
     this.state = { tab: 'general', mode: 'thresholds', more: false, key: false, adding: false, draft: '',
-      list: [ { name: 'caveman', value: 'Summarize your last reply in short bullets', key: 'phrase · ⌃⌥C' }, { name: 'compact', value: '/compact', key: 'command · ⌃⌥K' }, { name: 'office', value: 'vscode://nikola.agent-office/open', key: 'link' } ],
+      list: [ { name: 'caveman', value: 'Summarize your last reply in short bullets', key: 'phrase · ⌃⌥C' }, { name: 'compact', value: '/compact', key: 'command · ⌃⌥K' }, { name: 'office', value: 'vscode://you.your-extension/open', key: 'link' } ],
       on: { pctx: true, preset: true, pcost: false, touchbar: true, widget: true, pill: true, login: true, autocompact: false, queue: false, templates: false, shot: false, warn: true, sessions: false, dnd: false, cost: false, model: false, lines: false, git: false, agents: false } };
   }
   renderVals() {
