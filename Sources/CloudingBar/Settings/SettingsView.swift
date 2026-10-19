@@ -278,8 +278,11 @@ struct GeneralTab: View {
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
-                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses", divider: false) {
+                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
+                }
+                SettingsRow(title: "Tour", hint: "How everything works, in seven short pages", divider: false) {
+                    Button("Show") { model.showTour() }
                 }
             }
 

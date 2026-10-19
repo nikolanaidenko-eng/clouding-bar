@@ -139,6 +139,8 @@ struct Config: Equatable {
     /// Where the pill was dragged: its top center in screen points.
     /// Unset: top center of the screen, right under the menu bar.
     var widgetPosition: CGPoint?
+    /// The tour has opened once (it does by itself on the first launch).
+    var tourShown = false
     /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
     /// The island's size in the notch, set by pulling its ends or bottom:
@@ -241,6 +243,7 @@ struct Config: Equatable {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)
         }
         if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
+        if let v = obj["tourShown"] as? Bool { config.tourShown = v }
         if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
         if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }

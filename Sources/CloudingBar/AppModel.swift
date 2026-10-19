@@ -141,6 +141,7 @@ final class AppModel: ObservableObject {
     var saveLiveKey: (String) -> Void = { _ in }
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
+    var showTour: () -> Void = {}
 
     /// The pill's height budget: what was set by pulling its top or bottom.
     var pillHeightBudget: CGFloat {

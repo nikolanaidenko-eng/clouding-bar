@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = AppModel()
     private lazy var widget = WidgetController(model: model)
     private lazy var settings = SettingsWindow(model: model)
+    private lazy var tour = TourWindow(openSettings: { [weak self] in self?.openSettings() })
     private lazy var drawer = DrawerController(model: model)
     private let voice = VoiceInput()
     private let rightOption = RightOptionHold()
@@ -103,6 +104,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpVoice()
         loadQueue()
         setUpCowork()
+        model.showTour = { [weak self] in self?.showTour() }
+        // The first time: the tour, once everything is up.
+        if !config.tourShown {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                self?.showTour()
+                self?.setConfig("tourShown", true)
+            }
+        }
 
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.everySecond() }
         RunLoop.main.add(timer, forMode: .common)
@@ -552,6 +561,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+        let tourItem = NSMenuItem(title: "Take the Tour…", action: #selector(showTour), keyEquivalent: "")
+        tourItem.target = self
+        menu.addItem(tourItem)
         let resetItem = NSMenuItem(title: "Reset Widget Position", action: #selector(resetWidgetPosition), keyEquivalent: "")
         resetItem.target = self
         menu.addItem(resetItem)
@@ -640,6 +652,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func openSettings() {
         model.openAtLogin = LoginItem.isEnabled
         settings.show()
+    }
+
+    @objc private func showTour() {
+        DebugLog.tap("tour")
+        tour.show()
     }
 
     @objc private func resetWidgetPosition() {

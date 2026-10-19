@@ -407,6 +407,12 @@ do { // Cloud's faces: awake, happy, dizzy, shy
     renderView(row, size: row.frame.size, name: "m-faces")
 }
 
+// The tour, every page.
+for i in 0..<7 {
+    let host = NSHostingView(rootView: TourView(close: {}, openSettings: {}, page: i))
+    renderView(host, size: NSSize(width: TourView.size.width, height: TourView.size.height), name: "t-\(i + 1)")
+}
+
 // Everything stacked in one sheet, 12 px apart on grey, for a quick look.
 let sheetWidth = images.map(\.width).max() ?? 0
 let sheetHeight = images.reduce(0) { $0 + $1.height + 12 }
