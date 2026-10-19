@@ -49,6 +49,7 @@ struct SettingsView: View {
         }
         .coordinateSpace(name: SettingsCloud.space)
         .environment(\.settingsCloud, cloud)
+        .environment(\.grayButtons, model.config.buttonColors == "gray")
         .foregroundColor(.sText)
         .frame(width: Self.width, height: 560)
         .background(Color.sBackground)
@@ -74,6 +75,7 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { cloud.mood.pokes += 1 }
                 .help("Clouding Bar")
+                .tourAnchor("cloud")
             Spacer()
             HStack(spacing: 2) {
                 ForEach(Self.tabs, id: \.id) { t in
@@ -87,7 +89,8 @@ struct SettingsView: View {
                             .foregroundColor(on ? .white : .sText)
                             .padding(.horizontal, 10)
                             .frame(height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Color(hex: t.tint) : .clear))
+                            .background(RoundedRectangle(cornerRadius: 6)
+                                .fill(on ? Color.tint(t.tint, gray: model.config.buttonColors == "gray") : .clear))
                             .contentShape(Rectangle())
                     }
                     .accessibilityAddTraits(on ? .isSelected : [])
@@ -407,11 +410,13 @@ struct CloudButton<Label: View>: View {
 /// Rows that wait behind "More" (owner's request, 20.10): the last line of a
 /// box opens them, and they stay open next time.
 struct MoreRows<Content: View>: View {
+    let key: String
     let count: Int
     let content: Content
     @AppStorage private var open: Bool
 
     init(_ key: String, count: Int, @ViewBuilder content: () -> Content) {
+        self.key = key
         self.count = count
         self.content = content()
         _open = AppStorage(wrappedValue: false, "settings.more." + key)
@@ -443,6 +448,7 @@ struct MoreRows<Content: View>: View {
                 .contentShape(Rectangle())
             }
             .modifier(BuddyHover())
+            .tourAnchor("\(key).more")
             .accessibilityLabel(open ? "Fewer settings" : "\(count) more settings")
         }
         .clipped()
@@ -551,6 +557,7 @@ struct SettingsSegments: View {
     let selected: String
     var tint: UInt32 = 0x0A84FF
     let pick: (String) -> Void
+    @Environment(\.grayButtons) private var gray
 
     var body: some View {
         HStack(spacing: 0) {
@@ -560,7 +567,7 @@ struct SettingsSegments: View {
                     Text(o.label).font(.system(size: 11, weight: on ? .semibold : .regular))
                         .foregroundColor(on ? .white : .sText)
                         .padding(.horizontal, 9).frame(height: 24)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color(hex: tint) : .clear))
+                        .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color.tint(tint, gray: gray) : .clear))
                         .contentShape(Rectangle())
                 }
                 .accessibilityAddTraits(on ? .isSelected : [])
@@ -576,9 +583,10 @@ struct SettingsSegments: View {
 struct CBSwitch: View {
     let title: String
     @Binding var on: Bool
+    @Environment(\.grayButtons) private var gray
     var body: some View {
         CloudButton(action: { withAnimation(.spring(response: 0.28, dampingFraction: 0.62)) { on.toggle() } }) {
-            Capsule().fill(on ? Color(hex: 0x0A84FF) : Color.sSwitchOff)
+            Capsule().fill(on ? (gray ? Color.sGraySwitch : Color(hex: 0x0A84FF)) : Color.sSwitchOff)
                 .frame(width: 40, height: 24)
                 .overlay(Circle().fill(.white).frame(width: 20, height: 20)
                     .shadow(color: .black.opacity(0.3), radius: 1.5, y: 1)
@@ -593,10 +601,11 @@ struct CBCheckbox: View {
     let title: String
     var hint = ""
     @Binding var on: Bool
+    @Environment(\.grayButtons) private var gray
     var body: some View {
         CloudButton(action: { on.toggle() }) {
             HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 5).fill(on ? Color(hex: 0x0A84FF) : .clear)
+                RoundedRectangle(cornerRadius: 5).fill(on ? Color.tint(0x0A84FF, gray: gray) : .clear)
                     .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Color.clear : Color.sChipOff, lineWidth: 1))
                     .overlay(Text(on ? "✓" : "").font(.system(size: 12)).foregroundColor(.white))
                     .frame(width: 18, height: 18)
@@ -618,6 +627,7 @@ struct Chip: View {
     /// Smaller, for a row of many.
     var small = false
     let action: () -> Void
+    @Environment(\.grayButtons) private var gray
     var body: some View {
         CloudButton(perch: .above, action: action) {
             Text(label)
@@ -625,7 +635,7 @@ struct Chip: View {
                 .foregroundColor(on ? .white : .sText)
                 .padding(.horizontal, small ? 8 : 10)
                 .frame(height: small ? 24 : 26)
-                .background(Capsule().fill(on ? Color(hex: 0x0A84FF) : .clear))
+                .background(Capsule().fill(on ? Color.tint(0x0A84FF, gray: gray) : .clear))
                 .overlay(Capsule().strokeBorder(on ? Color.clear : Color.sChipOff, lineWidth: 1))
                 .contentShape(Capsule())
                 .animation(.spring(response: 0.25, dampingFraction: 0.7), value: on)
@@ -693,6 +703,10 @@ struct GeneralTab: View {
                 SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
                     SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
                                      selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
+                }
+                SettingsRow(title: "Colours", hint: "Grey: buttons, tabs and icons without bright colours") {
+                    SettingsSegments(options: [("color", "Colourful"), ("gray", "Grey")],
+                                     selected: model.config.buttonColors, tint: 0xFF9F0A) { model.setConfig("buttonColors", $0) }
                 }
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
@@ -988,6 +1002,7 @@ struct TouchBarTab: View {
 
 struct ButtonsTab: View {
     @ObservedObject var model: AppModel
+    @Environment(\.grayButtons) private var gray
     @State private var profile = ""   // "" = the main list
     @State private var selected: Int?
     @State private var editing = false
@@ -1023,7 +1038,7 @@ struct ButtonsTab: View {
                         }
                         .padding(.horizontal, 12)
                         .frame(minHeight: 40)
-                        .background(selected == i ? Color(hex: 0x0A84FF).opacity(0.25) : .clear)
+                        .background(selected == i ? Color.tint(0x0A84FF, gray: gray).opacity(0.25) : .clear)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -1132,7 +1147,7 @@ struct ButtonsTab: View {
             Button(selected == nil ? "Add" : "Save") { commit() }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
                 .padding(.horizontal, 12).frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 7).fill(Color.cbAction))
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.tint(0x0071E3, gray: gray)))
                 .disabled(draftName.trimmingCharacters(in: .whitespaces).isEmpty
                           || (draftValue.isEmpty && draftType != .screenshot))
         }
@@ -1442,6 +1457,7 @@ struct ShortcutField: NSViewRepresentable {
 
 struct CoworkTab: View {
     @ObservedObject var model: AppModel
+    @Environment(\.grayButtons) private var gray
     var mood: CloudMood? = nil
     @State private var keyOpen = false
     @State private var key = ""
@@ -1524,7 +1540,7 @@ struct CoworkTab: View {
                             }
                             .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
                             .padding(.horizontal, 12).frame(height: 30)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.cbAction))
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.tint(0x0071E3, gray: gray)))
                             .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }

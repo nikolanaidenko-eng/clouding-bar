@@ -78,7 +78,7 @@ release:
 # (a small window shows in a corner of the screen for ~25 s).
 demo:
 	mkdir -p build docs
-	swiftc -O -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift tools/demo/main.swift -o build/demo
+	swiftc -O -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift tools/demo/Scenes.swift tools/demo/main.swift -o build/demo
 	./build/demo docs/demo.gif
 
 # The app icon (Cloud on a dark tile) → packaging/AppIcon.icns.

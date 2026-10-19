@@ -67,8 +67,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   `/hooks` in Codex).
 
 **And**
-- A seven-page **tour** on first launch (and from the menu) that plays out
-  how everything works.
+- A **tour** on first launch (and behind the ? in Settings): the settings
+  window dims but for one thing at a time, a card says what it is, and Cloud
+  hops onto it.
 - **Everything is optional**: each number, detail and control has its own
   switch in Settings.
 - **Stats**: your week in Claude Code, hour by hour, from local transcripts.
@@ -162,8 +163,9 @@ may stop working.
 
 The menu bar icon → **Settings…**
 
-- **General** — open at login, do not disturb, the Claude Code connection,
-  the context warning, the dictation language, the tour.
+- **General** — light or dark, colourful or grey buttons, open at login, do
+  not disturb, the Claude Code connection, the context warning, the
+  dictation language.
 - **Widget** — the pill, the notch, what it shows (a chip for each thing).
 - **Touch Bar** — on or off, what it shows, with a live preview.
 - **Buttons** — your buttons and their shortcuts, a set per project,
@@ -192,7 +194,7 @@ make            # build the app and the helpers into build/
 make install    # …and install them
 make test       # core checks
 make snapshots  # every screen as PNGs in build/snapshots
-make demo       # docs/demo.gif, recorded from the tour's scenes
+make demo       # docs/demo.gif, recorded from animated scenes (tools/demo)
 make release    # universal, Developer ID-signed, notarized .dmg (see packaging/release.sh)
 ```
 

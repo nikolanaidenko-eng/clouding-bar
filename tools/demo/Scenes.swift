@@ -5,10 +5,35 @@ import SwiftUI
 /// tick, questions arrive, the notch grows, a pointer drags and clicks.
 /// Everything happens to a sample model, never to the real one.
 final class TourDirector: ObservableObject {
+    /// The model the scenes play on.
+    static func sampleModel() -> AppModel {
+        let m = AppModel()
+        m.hasSession = true
+        m.activity = .work
+        m.project = "DiaRoute"
+        m.chatName = "Offline routes"
+        m.sessionPercent = 42
+        m.resetShort = "1:23"
+        m.resetLong = "1 h 23 min"
+        m.contextPercent = 31
+        m.contextTokens = 312_400
+        m.contextWindow = 1_000_000
+        m.modelName = "Opus 5.5 1M"
+        m.modelId = "claude-opus-5-5[1m]"
+        m.effort = "xhigh"
+        m.agents = 2
+        m.buttons = Config().effectiveButtons.filter { $0.type != .link }
+        m.config.metrics = ["model", "agents"]
+        m.config.taskQueue = true
+        m.config.pillWidth = 10_000
+        m.config.touchBarShows = ["session", "reset", "context", "model", "buttons", "mic"]
+        return m
+    }
+
     enum Pointer { case arrow, finger }
     enum Bar: Equatable { case normal, permission, question }
 
-    let model = TourView.sampleModel()
+    let model = TourDirector.sampleModel()
     let state = WidgetState()
 
     @Published var page = 0
@@ -78,7 +103,7 @@ final class TourDirector: ObservableObject {
     }
 
     private func reset() {
-        let fresh = TourView.sampleModel()
+        let fresh = TourDirector.sampleModel()
         model.request = nil
         model.activity = .work
         model.sessionPercent = fresh.sessionPercent

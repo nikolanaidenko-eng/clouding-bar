@@ -45,7 +45,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = AppModel()
     private lazy var widget = WidgetController(model: model)
     private lazy var settings = SettingsWindow(model: model)
-    private lazy var tour = TourWindow(openSettings: { [weak self] in self?.openSettings() })
     private lazy var drawer = DrawerController(model: model)
     private let voice = VoiceInput()
     private let rightOption = RightOptionHold()
@@ -111,10 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loadQueue()
         setUpCowork()
         model.showTour = { [weak self] in self?.showTour() }
-        model.showFilm = { [weak self] in
-            DebugLog.tap("tour film")
-            self?.tour.show()
-        }
+
         setUpClaudeCode()
         // The first time: connecting to Claude Code if it isn't yet, then
         // the tour, once everything is up.
@@ -792,7 +788,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// The tour runs in the settings window; the animated one is "Watch it work".
+    /// The tour runs in the settings window.
     @objc private func showTour() {
         DebugLog.tap("tour")
         openSettings()

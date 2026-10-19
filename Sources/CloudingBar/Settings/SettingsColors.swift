@@ -30,6 +30,13 @@ extension Color {
     static let sField = adaptive(light: 0xFFFFFF, dark: 0x000000, lightAlpha: 1, darkAlpha: 0.25)
     static let sFieldLine = adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.14, darkAlpha: 0.18)
     static let sAccent = Color(hex: 0x0A84FF)
+    /// Grey buttons (General → Colours → Grey): what's on or picked, no colour.
+    static let sGrayFill = adaptive(light: 0x6E6E73, dark: 0x636366)
+    static let sGraySwitch = adaptive(light: 0x6E6E73, dark: 0x98989D)
+    static let sGrayIcon = adaptive(light: 0x8E8E93, dark: 0x636366)
+
+    /// A button's colour, or grey when the buttons are to be grey.
+    static func tint(_ hex: UInt32, gray: Bool) -> Color { gray ? .sGrayFill : Color(hex: hex) }
     /// Bars and lines of the charts.
     static let sChart = adaptive(light: 0x0A84FF, dark: 0x64A8FF)
     static let sMeterTrack = adaptive(light: 0x000000, dark: 0xFFFFFF, lightAlpha: 0.08, darkAlpha: 0.12)
@@ -53,13 +60,24 @@ extension NSColor {
 struct SectionIcon: View {
     let symbol: String
     let tint: UInt32
+    @Environment(\.grayButtons) private var gray
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: 10, weight: .semibold))
             .foregroundColor(.white)
             .frame(width: 18, height: 18)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color(hex: tint)))
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(gray ? Color.sGrayIcon : Color(hex: tint)))
             .accessibilityHidden(true)
+    }
+}
+
+private struct GrayButtonsKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    /// The settings' buttons, tabs and icons in grey, no bright colours.
+    var grayButtons: Bool {
+        get { self[GrayButtonsKey.self] }
+        set { self[GrayButtonsKey.self] = newValue }
     }
 }

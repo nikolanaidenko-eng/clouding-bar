@@ -1,49 +1,47 @@
 import SwiftUI
 
-/// The tour (owner's request, 20.10), right in the settings window: it dims
-/// but for one thing at a time, a note in handwriting points at it with an
-/// arrow drawing itself, Cloud hops onto it, and a line underneath says
-/// what it's for. Eight stops across the tabs; one switch to try on the way.
+/// The tour (owner's request, 20.10: the Spotlight direction of the
+/// design canvas), right in the settings window. Everything dims but one
+/// thing, ringed in blue; a white card by it says what it is and what to
+/// try; Cloud hops onto it. Nine stops across the tabs, two things to try.
 struct TourStop {
     let tab: String
-    /// The `tourAnchor` it points at.
+    /// The `tourAnchor` it lights up.
     let anchor: String
-    /// In handwriting, by the arrow.
-    let note: String
+    let title: String
     let text: String
-    /// A setting that, changed here, counts as tried.
-    var tryKey: String? = nil
-    /// Pointed at when `anchor` isn't there (the notch switch, with the widget off).
+    /// "Try it: …", and what counts as tried.
+    var tryText: String? = nil
+    var tried: Tried? = nil
+    /// Lit up when `anchor` isn't there (the notch switch, with the widget off).
     var fallback: String? = nil
+
+    enum Tried { case notch, more }
 }
 
 enum SettingsTour {
     static let stops: [TourStop] = [
-        TourStop(tab: "general", anchor: "tabs", note: "it all lives in these tabs",
-                 text: "Hi, I'm Cloud! Eight quick stops and you know everything. Skip any time."),
-        TourStop(tab: "general", anchor: "hooks", note: "this is how I see Claude",
-                 text: "Connected: Claude Code tells me what it's doing. If not, press Connect — your settings.json is backed up first."),
-        TourStop(tab: "widget", anchor: "widget.show", note: "your pill on the screen",
-                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Hover it for the whole panel."),
-        TourStop(tab: "widget", anchor: "widget.notch", note: "or tuck it in the notch",
-                 text: "Try it: flip the switch. Drag the pill out of the notch to put it anywhere.", tryKey: "notch",
-                 fallback: "widget.show"),
-        TourStop(tab: "touchbar", anchor: "touchbar.preview", note: "the same on the Touch Bar",
-                 text: "Claude's questions and permission requests show up here and in the widget: answer with a tap."),
-        TourStop(tab: "buttons", anchor: "buttons.list", note: "your own buttons",
+        TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
+                 text: "Nine spots, about a minute. Everything here can be changed later, and you can skip any time."),
+        TourStop(tab: "general", anchor: "tabs", title: "Everything is in these tabs",
+                 text: "The app, the widget, the Touch Bar, your buttons, Cowork and your week in numbers."),
+        TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
+                 text: "Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first."),
+        TourStop(tab: "widget", anchor: "widget.show", title: "The floating widget",
+                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Hover it for the panel."),
+        TourStop(tab: "widget", anchor: "widget.notch", title: "Live in the notch",
+                 text: "The numbers sit around the camera and the panel drops out of it. Drag it out to put it anywhere.",
+                 tryText: "Try it: flip the switch.", tried: .notch, fallback: "widget.show"),
+        TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
+                 text: "Claude's questions and permission requests show up here too: answer with a tap."),
+        TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
                  text: "A phrase, a /command or a link. One tap sends it to the chat you're in."),
-        TourStop(tab: "stats", anchor: "stats.map", note: "how your week went",
+        TourStop(tab: "stats", anchor: "stats.map", title: "How your week went",
                  text: "Each square is an hour of Claude's work. Point at one to see what happened."),
-        TourStop(tab: "general", anchor: "help", note: "I'm right here",
-                 text: "The tour is behind the ? any time. Want to see the widget at work?"),
+        TourStop(tab: "widget", anchor: "widget.more", title: "Everything else is folded away",
+                 text: "Behind More: when the widget opens, where it sits, what else it shows. Most people never need it.",
+                 tryText: "Open it to finish.", tried: .more, fallback: "widget.show"),
     ]
-
-    /// The note's handwriting and its colour.
-    static let ink = Color(hex: 0x66E3C4)
-    static func hand(_ size: CGFloat) -> Font {
-        NSFont(name: "Noteworthy-Bold", size: size) != nil ? .custom("Noteworthy-Bold", size: size)
-            : .custom("Bradley Hand", size: size).weight(.bold)
-    }
 }
 
 private struct TourAnchorKey: PreferenceKey {
@@ -54,12 +52,12 @@ private struct TourAnchorKey: PreferenceKey {
 }
 
 extension View {
-    /// Something the tour can point at.
+    /// Something the tour can light up.
     func tourAnchor(_ id: String) -> some View {
         anchorPreference(key: TourAnchorKey.self, value: .bounds) { [id: $0] }
     }
 
-    /// The tour over the settings window, while `step` is set.
+    /// The tour over the settings window, while `model.tourStep` is set.
     func settingsTour(model: AppModel, cloud: SettingsCloud) -> some View {
         overlayPreferenceValue(TourAnchorKey.self) { anchors in
             GeometryReader { g in
@@ -73,77 +71,59 @@ extension View {
     }
 }
 
-/// The dimming with its hole, the note and its arrow, the line of text and
-/// the buttons.
+/// The dimming with its spotlight, the blue ring, the card.
 struct TourOverlay: View {
     @ObservedObject var model: AppModel
     let cloud: SettingsCloud
     let step: Int
     let target: CGRect?
     let size: CGSize
-    @State private var hole: CGRect = .zero
-    @State private var drawn: CGFloat = 0
+    @Environment(\.grayButtons) private var gray
+    @AppStorage("settings.more.widget") private var widgetMore = false
+    @State private var spot: CGRect = .zero
     @State private var tried = false
     @State private var startConfig: Config?
+    @State private var ring = false
 
     private var stop: TourStop { SettingsTour.stops[step] }
     private var last: Bool { step == SettingsTour.stops.count - 1 }
+    private var accent: Color { gray ? Color(hex: 0x6E6E73) : Color(hex: 0x0A64D0) }
+    private var ringColor: Color { gray ? Color(hex: 0x98989D) : Color(hex: 0x0A84FF) }
+
+    static let cardWidth: CGFloat = 284
 
     var body: some View {
-        let h = hole.insetBy(dx: -7, dy: -6)
-        let below = h.midY < size.height * 0.52
-        let noteWidth: CGFloat = 330
-        let noteX = min(max(24, h.midX - 70), size.width - noteWidth - 24)
-        let noteY = below ? h.maxY + 34 : h.minY - 34 - 104
+        let s = spot.insetBy(dx: -4, dy: -4)
+        let cardHeight: CGFloat = stop.tryText == nil ? 150 : 172
+        let below = s.maxY + 14 + cardHeight <= size.height - 8
+        let x = min(max(16, s.midX - Self.cardWidth / 2), size.width - Self.cardWidth - 16)
+        let y = below ? s.maxY + 14 : max(8, s.minY - 14 - cardHeight)
         ZStack(alignment: .topLeading) {
-            // The dimming, with a hole that glides from stop to stop. A click
-            // in the hole goes through (to try the switch); elsewhere it doesn't.
-            Hole(rect: h)
-                .fill(Color.black.opacity(0.66), style: FillStyle(eoFill: true))
-                .contentShape(Hole(rect: h), eoFill: true)
+            // The dimming, a hole where the spotlight is. A click in the hole
+            // goes through (to try the switch); elsewhere it stops.
+            Spotlight(rect: s)
+                .fill(Color(red: 8 / 255, green: 8 / 255, blue: 10 / 255).opacity(0.68), style: FillStyle(eoFill: true))
+                .contentShape(Spotlight(rect: s), eoFill: true)
                 .onTapGesture {}
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(SettingsTour.ink, lineWidth: 2)
-                .frame(width: h.width, height: h.height)
-                .offset(x: h.minX, y: h.minY)
+            // The blue ring, its glow spreading and fading.
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(ringColor, lineWidth: 2)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ringColor.opacity(ring ? 0 : 0.55), lineWidth: ring ? 24 : 2))
+                .frame(width: s.width, height: s.height)
+                .offset(x: s.minX, y: s.minY)
                 .allowsHitTesting(false)
-            // The arrow, from the note to what it's about.
-            Arrow(from: CGPoint(x: noteX + 40, y: below ? noteY - 4 : noteY + 108),
-                  to: CGPoint(x: min(max(h.midX, h.minX + 20), h.maxX - 20), y: below ? h.maxY + 6 : h.minY - 6))
-                .trim(from: 0, to: drawn)
-                .stroke(SettingsTour.ink, style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
-                .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(tried ? "nice!" : stop.note)
-                    .font(SettingsTour.hand(24))
-                    .foregroundColor(SettingsTour.ink)
-                    .rotationEffect(.degrees(-3), anchor: .leading)
-                    .id("note\(step)\(tried)")
-                    .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
-                Text(stop.text)
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.94))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(hex: 0x1C1C1E).opacity(0.92)))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
-                    .id("text\(step)")
-                    .transition(.opacity)
-            }
-            .frame(width: noteWidth, alignment: .leading)
-            .offset(x: noteX, y: noteY)
-            .allowsHitTesting(false)
-            controls
-                .frame(width: size.width)
-                .offset(y: size.height - 58)
+            card
+                .frame(width: Self.cardWidth)
+                .offset(x: x, y: y)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        .animation(.spring(response: 0.5, dampingFraction: 0.82), value: hole)
+        .animation(.timingCurve(0.34, 1.22, 0.64, 1, duration: 0.62), value: spot)
         .onAppear {
             startConfig = model.config
             cloud.touring = true
             arrive(target)
+            withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { ring = true }
         }
         .onDisappear { cloud.touring = false; cloud.goHome() }
         .onChange(of: target) { arrive($0) }
@@ -152,28 +132,91 @@ struct TourOverlay: View {
             startConfig = model.config
         }
         .onChange(of: model.config) { config in
-            // The switch to try was flipped: a cheer, and on.
-            guard stop.tryKey == "notch", !tried, let start = startConfig,
+            guard stop.tried == .notch, !tried, let start = startConfig,
                   config.widgetAtNotch != start.widgetAtNotch else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { tried = true }
-            cloud.cheer(times: 2)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { if model.tourStep == step { go(step + 1) } }
+            didTry()
+        }
+        .onChange(of: widgetMore) { open in
+            if open, stop.tried == .more, !tried { didTry() }
         }
     }
 
-    /// The stop's target is known (its tab drawn): the hole, the arrow, Cloud.
+    /// The white card: which stop, what it is, what to try, and the way on.
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("\(step + 1) OF \(SettingsTour.stops.count)")
+                        .font(.system(size: 11, weight: .semibold)).tracking(0.5)
+                        .foregroundColor(accent)
+                    Spacer(minLength: 0)
+                    if tried {
+                        Text("Nice!").font(.system(size: 11, weight: .bold)).foregroundColor(Color(hex: 0x1D7A3A))
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
+                }
+                Text(stop.title).font(.system(size: 15, weight: .semibold)).foregroundColor(Color(hex: 0x1C1C1E))
+                Text(stop.text).font(.system(size: 12)).foregroundColor(Color(hex: 0x48484A)).lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let t = stop.tryText {
+                    Text(t).font(.system(size: 12, weight: .semibold)).foregroundColor(accent)
+                }
+            }
+            .id(step)
+            .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)).combined(with: .scale(scale: 0.97)),
+                                    removal: .opacity))
+            HStack(spacing: 6) {
+                HStack(spacing: 4) {
+                    ForEach(SettingsTour.stops.indices, id: \.self) { i in
+                        Capsule().fill(i <= step ? accent : Color(hex: 0xD1D1D6))
+                            .frame(width: i == step ? 14 : 5, height: 5)
+                    }
+                }
+                Spacer(minLength: 2)
+                Button("Skip") { go(SettingsTour.stops.count) }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(Color(hex: 0x6E6E73))
+                    .fixedSize()
+                    .keyboardShortcut(.cancelAction)
+                if step > 0 {
+                    Button("Back") { go(step - 1) }
+                        .buttonStyle(CardButtonStyle(fill: .white, text: Color(hex: 0x1C1C1E), border: true))
+                        .fixedSize()
+                }
+                Button(last ? "Done" : "Next") { go(step + 1) }
+                    .buttonStyle(CardButtonStyle(fill: accent, text: .white))
+                    .fixedSize()
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 2)
+            .animation(.spring(response: 0.32, dampingFraction: 0.6), value: step)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white)
+            .shadow(color: .black.opacity(0.45), radius: 20, y: 16))
+        .environment(\.colorScheme, .light)
+        .animation(.easeOut(duration: 0.36), value: step)
+    }
+
+    /// The stop's target is drawn: the spotlight slides there, Cloud hops on.
     private func arrive(_ rect: CGRect?) {
         guard let rect, rect != .zero else { return }
-        if hole == .zero {
+        if spot == .zero {
             var t = Transaction()
             t.disablesAnimations = true
-            withTransaction(t) { hole = rect }
+            withTransaction(t) { spot = rect }
         } else {
-            hole = rect
+            spot = rect
         }
-        drawn = 0
-        withAnimation(.easeInOut(duration: 0.55).delay(0.35)) { drawn = 1 }
-        cloud.visit(rect)
+        // Its own seat: it waves from there; anything else, it hops onto.
+        if stop.anchor == "cloud" { cloud.goHome(hop: true); cloud.cheer(times: 1) } else { cloud.visit(rect) }
+    }
+
+    /// Tried it: "Nice!", a cheer, and on.
+    private func didTry() {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.56)) { tried = true }
+        cloud.cheer(times: 2)
+        let at = step
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { if model.tourStep == at { go(at + 1) } }
     }
 
     private func go(_ next: Int) {
@@ -182,56 +225,28 @@ struct TourOverlay: View {
             model.tourStep = next < SettingsTour.stops.count ? next : nil
         }
     }
-
-    private var controls: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 5) {
-                ForEach(SettingsTour.stops.indices, id: \.self) { i in
-                    Capsule().fill(i == step ? SettingsTour.ink : Color.white.opacity(i < step ? 0.6 : 0.25))
-                        .frame(width: i == step ? 18 : 6, height: 6)
-                }
-            }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: step)
-            Spacer(minLength: 10)
-            Button("Skip") { go(SettingsTour.stops.count) }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white.opacity(0.7))
-                .keyboardShortcut(.cancelAction)
-            if step > 0 {
-                Button("Back") { go(step - 1) }
-                    .buttonStyle(TourButtonStyle(fill: Color.white.opacity(0.14)))
-            }
-            if last {
-                Button("Watch it work") { model.showFilm(); go(step + 1) }
-                    .buttonStyle(TourButtonStyle(fill: Color.white.opacity(0.14)))
-            }
-            Button(last ? "Done" : "Next") { go(step + 1) }
-                .buttonStyle(TourButtonStyle(fill: Color(hex: 0x0A84FF)))
-                .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 42)
-        .background(Capsule().fill(Color(hex: 0x1C1C1E).opacity(0.94)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        .environment(\.colorScheme, .dark)
-        .padding(.horizontal, 24)
-    }
 }
 
-struct TourButtonStyle: ButtonStyle {
+struct CardButtonStyle: ButtonStyle {
     let fill: Color
+    let text: Color
+    var border = false
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 12)
+            .font(.system(size: 12, weight: border ? .regular : .semibold))
+            .foregroundColor(text)
+            .padding(.horizontal, border ? 10 : 12)
             .frame(height: 28)
-            .background(Capsule().fill(fill.opacity(configuration.isPressed ? 0.7 : 1)))
-            .contentShape(Capsule())
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill.opacity(configuration.isPressed ? 0.75 : 1)))
+            .overlay(border ? RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5) : nil)
+            .contentShape(Rectangle())
     }
 }
 
 /// The whole window, less a rounded hole.
-private struct Hole: Shape {
+private struct Spotlight: Shape {
     var rect: CGRect
 
     var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
@@ -241,28 +256,7 @@ private struct Hole: Shape {
 
     func path(in r: CGRect) -> Path {
         var p = Path(r)
-        p.addRoundedRect(in: rect, cornerSize: CGSize(width: 11, height: 11), style: .continuous)
-        return p
-    }
-}
-
-/// A hand-drawn arrow: a gentle curve and its head.
-private struct Arrow: Shape {
-    let from: CGPoint
-    let to: CGPoint
-
-    func path(in r: CGRect) -> Path {
-        var p = Path()
-        p.move(to: from)
-        let bend = CGPoint(x: (from.x + to.x) / 2 + (to.y > from.y ? -36 : 36), y: (from.y + to.y) / 2)
-        p.addQuadCurve(to: to, control: bend)
-        // The head, along the curve's last direction.
-        let angle = atan2(to.y - bend.y, to.x - bend.x)
-        for side in [-1.0, 1.0] {
-            let a = angle + .pi - side * 0.5
-            p.move(to: to)
-            p.addLine(to: CGPoint(x: to.x + 11 * cos(a), y: to.y + 11 * sin(a)))
-        }
+        p.addRoundedRect(in: rect, cornerSize: CGSize(width: 12, height: 12), style: .continuous)
         return p
     }
 }

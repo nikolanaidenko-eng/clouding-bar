@@ -418,6 +418,13 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     m.hasNotch = tab == "widget"
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)")
+    if tab == "general" { // grey buttons
+        let mg = m
+        mg.config.buttonColors = "gray"
+        renderView(NSHostingView(rootView: SettingsView(model: mg, tab: tab)), size: NSSize(width: SettingsView.width, height: 560),
+                   name: "s-general-gray")
+        mg.config.buttonColors = "color"
+    }
     if ["general", "widget", "stats"].contains(tab) {
         let light = NSHostingView(rootView: SettingsView(model: m, tab: tab))
         renderView(light, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)-light", light: true)
@@ -425,14 +432,14 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
 }
 
 // The tour in the settings window, at a few of its stops.
-for step in [0, 1, 3, 4, 5, 6, 7] {
+for step in [0, 1, 2, 4, 5, 7, 8] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.hasNotch = true
     m.tourStep = step
     let host = NSHostingView(rootView: SettingsView(model: m, tab: SettingsTour.stops[step].tab))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560),
-               name: step == 6 ? "s-stats-tour" : "tour-\(step)")
+               name: step == 7 ? "s-stats-tour" : "tour-\(step)")
 }
 
 do { // Cloud's faces: awake, happy, dizzy, shy
@@ -451,12 +458,6 @@ do { // Cloud's faces: awake, happy, dizzy, shy
     renderView(row, size: row.frame.size, name: "m-faces")
 }
 
-// The tour, every page.
-// Each page held at a telling moment of its scene.
-for (i, t) in [(0, 2.5), (1, 2.6), (2, 3.2), (3, 4.6), (3, 6.8), (4, 3.2), (4, 6.2), (5, 3.0), (6, 1.0)] {
-    let host = NSHostingView(rootView: TourView(close: {}, openSettings: {}, page: i, freezeAt: t))
-    renderView(host, size: NSSize(width: TourView.size.width, height: TourView.size.height), name: "t-\(i + 1)-\(t)")
-}
 
 // Everything stacked in one sheet, 12 px apart on grey, for a quick look.
 let sheetWidth = images.map(\.width).max() ?? 0
