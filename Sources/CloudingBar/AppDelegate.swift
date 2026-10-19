@@ -50,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var queueSentAt: Date?
     /// Files dropped on the widget, by session id, waiting for its chat.
     private var attachments: [String: [String]] = [:]
+    /// The Touch Bar shows the model picker; it closes by itself when left alone.
+    private var barPicksModel = false
+    private var barPickerClose: DispatchWorkItem?
+    /// Picked on the bar, until Claude confirms it.
+    private var barPendingModel: String?
+    private var barPendingEffort: String?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
     private var coworkSeen: [String: Date] = [:]
@@ -290,6 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.activity = activity(of: active)
         bar.quiet = config.doNotDisturb
         bar.shows = Set(config.touchBarShows)
+        bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
+        bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
+        bar.effort = barPendingEffort ?? active?.effort
 
         if let request = currentRequest(active: active) {
             bar.activity = .wait
@@ -315,6 +324,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     bar.mode = .contextWarning
                 }
             }
+        }
+        // The model picker, opened from the bar's model button; a request
+        // takes the bar over and closes it.
+        if barPicksModel {
+            if currentRequest(active: active) == nil && active != nil { bar.mode = .models } else { closeBarPicker() }
         }
         touchBar.show(bar)
     }
@@ -424,6 +438,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             active?.contextSnoozedUntil = 101 // until it drops below the threshold
             KeySender.type(config.compactCommand, pressReturn: true)
             setNeedsRefresh()
+
+        case .models:
+            DebugLog.tap("model picker (bar)")
+            barPicksModel = true
+            closeBarPickerLater()
+            setNeedsRefresh()
+
+        case let .pickModel(alias):
+            barPendingModel = alias
+            switchModel("/model " + alias)
+            closeBarPickerLater()
+
+        case let .pickEffort(level):
+            barPendingEffort = level
+            switchModel("/effort " + level)
+            closeBarPickerLater()
+
+        case .closeModels:
+            closeBarPicker()
 
         case .later:
             DebugLog.tap("later (context warning)")
@@ -668,6 +701,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.tokensOut, active?.tokensOut)
         set(\.cost, active?.costUSD)
         set(\.modelName, active?.modelName)
+        set(\.modelId, active?.model)
         set(\.effort, active?.effort)
         set(\.linesAdded, active?.linesAdded ?? 0)
         set(\.linesRemoved, active?.linesRemoved ?? 0)
@@ -953,11 +987,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.refresh()
         }
         model.insertAttachments = { [weak self] in self?.insertAttachments() }
-        model.changeModel = { [weak self] in
-            DebugLog.tap("change model")
-            self?.widget.releaseKey()
-            KeySender.type("/model", pressReturn: true)
-        }
+        model.setModel = { [weak self] alias in self?.switchModel("/model " + alias) }
+        model.setEffort = { [weak self] level in self?.switchModel("/effort " + level) }
     }
 
     private func saveQueue() {
@@ -984,6 +1015,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
         widget.releaseKey()
         KeySender.type(next.text, pressReturn: true)
+    }
+
+    /// /model or /effort, typed into the chat in front like a button's
+    /// command. Claude Code switches at once and notes it in the transcript.
+    private func switchModel(_ command: String) {
+        DebugLog.tap(command)
+        widget.releaseKey()
+        KeySender.type(command, pressReturn: true)
+        setNeedsRefresh()
+    }
+
+    /// The bar's picker closes 12 s after the last tap.
+    private func closeBarPickerLater() {
+        barPickerClose?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.closeBarPicker() }
+        barPickerClose = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
+    }
+
+    private func closeBarPicker() {
+        barPickerClose?.cancel()
+        guard barPicksModel || barPendingModel != nil || barPendingEffort != nil else { return }
+        barPicksModel = false
+        barPendingModel = nil
+        barPendingEffort = nil
+        setNeedsRefresh()
     }
 
     /// Files dropped on the widget wait for the session it shows.

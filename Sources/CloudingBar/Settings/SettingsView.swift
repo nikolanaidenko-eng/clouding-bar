@@ -420,28 +420,29 @@ struct TouchBarTab: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsSection(title: "Touch Bar") {
+        VStack(alignment: .leading, spacing: 14) {
+            TouchBarPreview(model: model)
+                .opacity(model.config.touchBar == "off" ? 0.4 : 1)
+            SettingsGroup {
                 SettingsRow(title: "Show on Touch Bar",
-                            hint: model.touchBarPresent ? "Detected on this Mac" : "No Touch Bar found on this Mac",
-                            divider: false) {
+                            hint: model.touchBarPresent ? "Detected on this Mac" : "No Touch Bar found on this Mac") {
                     CBSwitch(title: "Show on Touch Bar", on: Binding(
                         get: { model.config.touchBar != "off" },
                         set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
                 }
-            }
-
-            SettingsSection(title: "What it shows",
-                            note: "Claude's questions and permission requests always show. The buttons are set up in Buttons.") {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("On the bar").font(.system(size: 13))
                     ChipSet(model: model, key: "touchBarShows",
-                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context")])
-                    ChipSet(model: model, key: "touchBarShows",
-                            options: [("buttons", "Buttons"), ("mic", "Mic"), ("shot", "Screenshot")])
+                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context"),
+                                      ("model", "Model"), ("buttons", "Buttons"), ("shot", "Screenshot"), ("mic", "Mic")])
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            Text("Claude's questions and permission requests always show. Tap the model on the bar to switch it; the buttons are set up in Buttons.")
+                .font(.system(size: 11)).foregroundColor(.cbMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
         }
     }
 }
@@ -469,7 +470,8 @@ struct ButtonsTab: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Touch Bar preview · meters shrink as you add buttons").font(.system(size: 11)).foregroundColor(.cbSecondary)
-                TouchBarPreview(labels: list.map(\.label) + (editing && selected == nil ? [draftName.isEmpty ? "New" : draftName] : []),
+                TouchBarPreview(model: model,
+                                labels: list.map(\.label) + (editing && selected == nil ? [draftName.isEmpty ? "New" : draftName] : []),
                                 highlightLast: editing && selected == nil)
             }
             SettingsGroup {
@@ -670,68 +672,121 @@ struct ButtonsTab: View {
     }
 }
 
-/// The small live Touch Bar from the Buttons tab: chips get added, the
-/// meters lose their words as room runs out (same rule as the real bar).
+/// The Touch Bar as it's set up, with this Mac's numbers: the character,
+/// then whatever Settings → Touch Bar turns on, in the bar's order. Session
+/// and Context share what the rest leaves (3 : 2) and drop their words as
+/// room runs out, the same rule as the real bar.
 struct TouchBarPreview: View {
-    let labels: [String]
+    @ObservedObject var model: AppModel
+    /// The buttons to show; the Buttons tab passes the list being edited.
+    var labels: [String]? = nil
     var highlightLast = false
 
+    private static let pad: CGFloat = 5, gap: CGFloat = 5, character: CGFloat = 36, icon: CGFloat = 30
+
     var body: some View {
-        let used = labels.reduce(CGFloat(0)) { $0 + min(80, 14 + CGFloat($1.count) * 6.2) + 5 }
-        let avail = 512 - 10 - 36 - 14 - 10 - used
-        let wide = avail >= 230, mid = avail >= 130
-        HStack(spacing: 5) {
-            Text("esc").font(.system(size: 10)).frame(width: 36, height: 24)
-                .background(RoundedRectangle(cornerRadius: 5).fill(Color(hex: 0x2C2C2E)))
-            RoundedRectangle(cornerRadius: 5).fill(Color(hex: 0xECEAE5)).frame(width: 14, height: 12)
-            // Session and Context split what the buttons leave, 3 : 2.
-            let room = max(0, avail - 8 - 10)
-            HStack(spacing: 10) {
-                meter(wide ? "Session" : mid ? "5h" : "", value: "42%" + (mid ? " · 1:23" : ""), percent: 0.42)
-                    .frame(width: room * 3 / 5)
-                meter(wide ? "Context" : mid ? "Ctx" : "", value: "31%", percent: 0.31)
-                    .frame(width: room * 2 / 5)
-            }
-            .padding(.horizontal, 4)
-            .animation(.easeOut(duration: 0.3), value: wide)
-            ForEach(Array(labels.enumerated()), id: \.offset) { i, label in
-                Text(label)
-                    .font(.system(size: label.count > 10 ? 9 : 11))
-                    .lineLimit(1).truncationMode(.tail)
-                    .padding(.horizontal, 7)
-                    .frame(height: 24)
-                    .frame(maxWidth: 80)
-                    .fixedSize(horizontal: label.count <= 10, vertical: false)
-                    .background(RoundedRectangle(cornerRadius: 5)
-                        .fill(highlightLast && i == labels.count - 1 ? Color(hex: 0x0A3D78) : Color(hex: 0x2C2C2E)))
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
-            }
-        }
-        .padding(.horizontal, 5)
-        .frame(height: 34)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.black))
-        .clipped()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Touch Bar preview: " + labels.joined(separator: ", "))
+        GeometryReader { geo in bar(width: geo.size.width) }
+            .frame(height: 38)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Touch Bar preview: " + Set(model.config.touchBarShows).sorted().joined(separator: ", "))
     }
 
-    private func meter(_ label: String, value: String, percent: CGFloat) -> some View {
+    private func bar(width: CGFloat) -> some View {
+        let shows = Set(model.config.touchBarShows)
+        let buttons = shows.contains("buttons")
+            ? labels ?? (model.buttons.isEmpty ? model.config.effectiveButtons : model.buttons).map(\.label) : []
+        let modelText = shows.contains("model")
+            ? ModelChoice.label(model: model.modelName ?? "Opus 5.5 1M", effort: model.modelName == nil ? "xhigh" : model.effort)
+            : nil
+        let session = shows.contains("session"), context = shows.contains("context")
+        let buttonWidths = buttons.map { min(84, Self.text($0, 11) + 16) }
+        let modelWidth = modelText.map { min(130, Self.text($0, 10) + 16) } ?? 0
+        let icons = [shows.contains("shot") ? "camera.viewfinder" : nil, shows.contains("mic") ? "mic" : nil].compactMap { $0 }
+        let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + icons.count + (session || context ? 1 : 0)
+        let used = Self.pad * 2 + Self.character + buttonWidths.reduce(0, +) + modelWidth
+            + CGFloat(icons.count) * Self.icon + Self.gap * CGFloat(items - 1)
+        let room = max(0, width - used)
+        return HStack(spacing: Self.gap) {
+            key { MascotIcon(activity: model.activity, size: 22).frame(width: 22, height: 22) }
+                .frame(width: Self.character)
+            if session || context {
+                meters(room: room, session: session, context: context).frame(width: room)
+            }
+            if let modelText {
+                key { Text(modelText).font(.system(size: 10)).lineLimit(1) }.frame(width: modelWidth)
+            }
+            ForEach(Array(buttons.enumerated()), id: \.offset) { i, label in
+                key(fill: highlightLast && i == buttons.count - 1 ? Color(hex: 0x0A3D78) : Color(hex: 0x2C2C2E)) {
+                    Text(label).font(.system(size: 11)).lineLimit(1).truncationMode(.tail).padding(.horizontal, 4)
+                }
+                .frame(width: buttonWidths[i])
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+            ForEach(icons, id: \.self) { name in
+                key { Image(systemName: name).font(.system(size: 11)) }.frame(width: Self.icon)
+            }
+            if !(session || context) { Spacer(minLength: 0) }
+        }
+        .padding(.horizontal, Self.pad)
+        .frame(width: width, height: 38)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.black))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+        .animation(.easeOut(duration: 0.25), value: shows)
+        .animation(.easeOut(duration: 0.25), value: buttons)
+    }
+
+    /// One key of the bar: a dark rounded button.
+    private func key<Label: View>(fill: Color = Color(hex: 0x2C2C2E), @ViewBuilder _ label: () -> Label) -> some View {
+        label()
+            .foregroundColor(.cbText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 6).fill(fill))
+    }
+
+    private func meters(room: CGFloat, session: Bool, context: Bool) -> some View {
+        let both = session && context
+        let inner = max(0, room - 8 - (both ? 10 : 0))
+        let sessionRoom = both ? inner * 3 / 5 : inner
+        let reset = model.config.touchBarShows.contains("reset") ? (model.resetShort ?? "1:23") : nil
+        return HStack(spacing: 10) {
+            if session {
+                meter(sessionRoom >= 140 ? "Session" : sessionRoom >= 80 ? "5h" : "",
+                      value: "\(Int(model.sessionPercent ?? 42))%" + (reset.map { sessionRoom >= 80 ? " · \($0)" : "" } ?? ""),
+                      percent: (model.sessionPercent ?? 42) / 100)
+                    .frame(width: sessionRoom)
+            }
+            if context {
+                let w = both ? inner * 2 / 5 : inner
+                meter(w >= 100 ? "Context" : w >= 60 ? "Ctx" : "", value: "\(Int(model.contextPercent ?? 31))%",
+                      percent: (model.contextPercent ?? 31) / 100)
+                    .frame(width: w)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func meter(_ label: String, value: String, percent: Double) -> some View {
         VStack(spacing: 3) {
             HStack {
                 Text(label).foregroundColor(.cbSecondary).lineLimit(1)
                 Spacer(minLength: 2)
                 Text(value).lineLimit(1)
             }
-            .font(.system(size: 9).monospacedDigit())
+            .font(.system(size: 10).monospacedDigit())
+            .foregroundColor(.cbText)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(hex: 0x2C2C2E))
-                    Capsule().fill(Color.cbFill).frame(width: geo.size.width * percent)
+                    Capsule().fill(Color.cbFill).frame(width: geo.size.width * CGFloat(min(1, max(0, percent))))
                 }
             }
             .frame(height: 3)
         }
+    }
+
+    private static func text(_ s: String, _ size: CGFloat) -> CGFloat {
+        ceil((s as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size)]).width)
     }
 }
 

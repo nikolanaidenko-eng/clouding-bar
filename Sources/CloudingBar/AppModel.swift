@@ -56,7 +56,11 @@ final class AppModel: ObservableObject {
 
     // Small metrics (each shown only when picked in Settings)
     @Published var modelName: String?
+    /// The model's id ("claude-opus-5-5[1m]"), for the picker.
+    @Published var modelId: String?
     @Published var effort: String?
+    /// The model and effort picker is open in the panel.
+    @Published var pickingModel = false
     @Published var linesAdded = 0
     @Published var linesRemoved = 0
     @Published var branch: String?
@@ -111,7 +115,10 @@ final class AppModel: ObservableObject {
     var removeAttachment: (String) -> Void = { _ in }
     /// Types the attached files' paths into the chat in front, without Enter.
     var insertAttachments: () -> Void = {}
-    var changeModel: () -> Void = {}
+    /// Switch the active session's model ("opus[1m]") or effort ("high"):
+    /// typed into its chat as /model or /effort.
+    var setModel: (String) -> Void = { _ in }
+    var setEffort: (String) -> Void = { _ in }
     var chooseCoworkFolder: () -> Void = {}
     var makeCoworkPlugin: () -> Void = {}
     var saveLiveKey: (String) -> Void = { _ in }

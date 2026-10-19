@@ -10,6 +10,8 @@ final class TranscriptWatcher {
         let sessionId: String
         var contextTokens: Int?
         var model: String?
+        /// Set by "/effort" (the hooks bring it too, from the next turn on).
+        var effort: String?
         /// The latest entry is "[Request interrupted by user]".
         var interrupted: Bool?
         var modified: Date
@@ -41,6 +43,8 @@ final class TranscriptWatcher {
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
     private static let interruptMark = Data("[Request interrupted by user".utf8)
     private static let editMark = Data(#""toolUseResult""#.utf8)
+    /// What "/model" and "/effort" print: "Set model to …", "Set effort level to …".
+    private static let commandMark = Data("<local-command-stdout>Set ".utf8)
 
     /// Reads what was appended since the last poll. `completion` runs on
     /// the main queue with one update per transcript that changed.
@@ -118,6 +122,17 @@ final class TranscriptWatcher {
         for line in complete.split(separator: 0x0A) {
             let isAssistant = line.range(of: Self.assistantMark) != nil
             let isInterrupt = !isAssistant && line.range(of: Self.interruptMark) != nil
+            if !isAssistant, line.range(of: Self.commandMark) != nil,
+               let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+               obj["isSidechain"] as? Bool != true,
+               let message = obj["message"] as? [String: Any] {
+                let content = message["content"]
+                let text = content as? String
+                    ?? (content as? [[String: Any]])?.compactMap { $0["text"] as? String }.joined(separator: " ") ?? ""
+                if let model = ModelChoice.modelSet(in: text) { update.model = model }
+                if let effort = ModelChoice.effortSet(in: text) { update.effort = effort }
+                continue
+            }
             if !isAssistant, line.range(of: Self.editMark) != nil,
                let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
                let result = obj["toolUseResult"] as? [String: Any] {

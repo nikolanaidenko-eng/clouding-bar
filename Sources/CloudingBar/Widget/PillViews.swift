@@ -673,6 +673,16 @@ struct PillBoard: View {
             .allowsHitTesting(false)
     }
 
+    /// On the pill the model opens the panel with the model picker.
+    private func opensPicker(_ metric: Metric) -> Metric {
+        var m = metric
+        m.action = { [weak model, weak state] in
+            model?.pickingModel = true
+            state?.openPanel?()
+        }
+        return m
+    }
+
     /// An upright meter: the bar as tall as the slot allows, the number and
     /// what it is under it.
     private func upright(_ percent: Double?, _ label: String, height: CGFloat, delay: Double = 0) -> some View {
@@ -730,7 +740,7 @@ struct PillBoard: View {
                 .opensPanel(state).transition(.opacity)
         case let .metric(id):
             if let m = Metric.list(model).first(where: { $0.id == id }) {
-                MetricChip(metric: m, plain: true).hoverReport(state).transition(.opacity)
+                MetricChip(metric: id == "model" ? opensPicker(m) : m, plain: true).hoverReport(state).transition(.opacity)
             }
         case let .button(i):
             if model.buttons.indices.contains(i) {

@@ -452,7 +452,8 @@ struct Metric {
         var items: [Metric] = []
         if on.contains("model"), let name = model.modelName {
             items.append(Metric(id: "model", icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
-                                action: model.changeModel, help: "Change the model (/model)"))
+                                action: { [weak model] in withAnimation(.cb(0.24)) { model?.pickingModel.toggle() } },
+                                help: "Switch the model or effort"))
         }
         if on.contains("lines") {
             items.append(Metric(id: "lines", icon: "plus.forwardslash.minus", text: "+\(model.linesAdded) −\(model.linesRemoved)"))
@@ -576,6 +577,7 @@ struct MainPanel: View {
             }
             .padding(.trailing, 4)
             toolRows(inner: inner)
+            if model.pickingModel { ModelPicker(model: model).padding(.trailing, 4) }
             messageBox(inner: inner)
                 .padding(.trailing, 4)
         }
@@ -774,6 +776,69 @@ struct MainPanel: View {
     private var tokens: String? {
         guard let i = model.tokensIn, let o = model.tokensOut else { return nil }
         return "\(AppModel.compact(i)) in · \(AppModel.compact(o)) out"
+    }
+}
+
+/// Model and effort, picked right in the panel (owner's request, 19.10): a
+/// tap types /model or /effort into Claude's chat, like a button. The pick
+/// lights up at once; the panel's model line follows when Claude confirms.
+struct ModelPicker: View {
+    @ObservedObject var model: AppModel
+    @State private var pendingModel: String?
+    @State private var pendingEffort: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            row("Model", ModelChoice.models.map { (id: $0.alias, label: $0.label) },
+                selected: pendingModel ?? ModelChoice.alias(of: model.modelId)) { alias in
+                pendingModel = alias
+                model.setModel(alias)
+                forget { pendingModel = nil }
+            }
+            row("Effort", ModelChoice.efforts.map { (id: $0, label: $0) }, selected: pendingEffort ?? model.effort) { level in
+                pendingEffort = level
+                model.setEffort(level)
+                forget { pendingEffort = nil }
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.25)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+        .onChange(of: model.modelId) { _ in pendingModel = nil }
+        .onChange(of: model.effort) { _ in pendingEffort = nil }
+        .transition(.opacity.combined(with: .offset(y: -4)))
+    }
+
+    /// If Claude never confirms (the chat wasn't in front), show what's real again.
+    private func forget(_ clear: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: clear)
+    }
+
+    private func row(_ title: String, _ options: [(id: String, label: String)], selected: String?,
+                     pick: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 11)).foregroundColor(.cbSecondary).frame(width: 38, alignment: .leading)
+            HStack(spacing: 0) {
+                ForEach(options, id: \.id) { option in
+                    let on = selected == option.id
+                    Button { if !on { pick(option.id) } } label: {
+                        Text(option.label).font(.system(size: 11)).lineLimit(1).fixedSize()
+                            .padding(.horizontal, 7)
+                            .frame(height: 22)
+                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Color.cbAction : .clear))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(on ? .white : .cbText)
+                    .help(title == "Model" ? "/model \(option.id)" : "/effort \(option.id)")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .padding(2)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.white.opacity(0.06)))
+            .animation(.easeOut(duration: 0.15), value: selected)
+        }
     }
 }
 

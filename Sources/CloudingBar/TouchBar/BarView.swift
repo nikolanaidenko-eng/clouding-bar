@@ -8,6 +8,8 @@ struct BarModel: Equatable {
         case permission(verb: String, detail: String)
         case question(text: String, options: [String], multiSelect: Bool, picked: Set<Int>)
         case typing(text: String)
+        /// The model and effort picker, opened from the model button.
+        case models
     }
 
     var mode: Mode = .normal
@@ -19,8 +21,13 @@ struct BarModel: Equatable {
     /// Do not disturb: nothing pulses.
     var quiet = false
     /// What shows besides the character: "session", "reset", "context",
-    /// "buttons", "mic", "shot" (Settings → On the Touch Bar).
+    /// "model", "buttons", "mic", "shot" (Settings → Touch Bar).
     var shows: Set<String> = ["session", "reset", "context", "buttons"]
+    /// The model button: "Opus 5.5 1M · xhigh".
+    var modelLabel: String?
+    /// For the picker: the model's alias ("opus[1m]") and the effort.
+    var modelAlias: String?
+    var effort: String?
 }
 
 enum BarAction {
@@ -32,6 +39,8 @@ enum BarAction {
     case compact, later
     /// Normal mode's own mic and screenshot buttons.
     case dictate, screenshot
+    /// The model button opens the picker; a pick types /model or /effort.
+    case models, pickModel(String), pickEffort(String), closeModels
 }
 
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
@@ -41,6 +50,7 @@ enum BarAction {
 ///   question    [character] · ● Question? · option · option · Other…
 ///   typing      [character] · ═ · Other [answer________] · Send · 🎤
 ///   context     [character] · Session ─── · Context ── (red) · Compact · Later
+///   models      [character] · Model  Opus 1M · Opus · … · Effort  low · … · Done
 ///
 /// [character] is a button (where esc used to be) that opens the widget.
 ///
@@ -68,6 +78,10 @@ final class BarView: NSView {
     private var meters: MetersPair?
     private var mini: MiniMetersView?
     private var field: TypingFieldView?
+    /// The model picker didn't fit in one row (the Control Strip is out):
+    /// models and effort take turns, `effortPage` says which shows.
+    private var pagedModels = false
+    private var effortPage = false
     private var pendingAnimations: [(CALayer) -> Void] = []
     private var animatedViews: [NSView] = []
 
@@ -95,6 +109,7 @@ final class BarView: NSView {
 
     func update(_ new: BarModel) {
         let key = Self.structureKey(new)
+        if new.mode != .models { pagedModels = false; effortPage = false }
         model = new
         if key != builtFor {
             builtFor = key
@@ -110,7 +125,8 @@ final class BarView: NSView {
         let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
             + "|" + m.shows.sorted().joined(separator: ",")
         switch m.mode {
-        case .normal: return "normal|\(buttons)"
+        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")"
+        case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
         case .contextWarning: return "context"
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)"
         case let .question(text, options, multi, picked):
@@ -138,6 +154,10 @@ final class BarView: NSView {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
                 add(pair, .flex(weight: 1, min: 80))
+            }
+            if shows.contains("model"), let label = model.modelLabel {
+                let b = BarButton(label, fontSize: 12) { [weak self] in self?.onAction?(.models) }
+                add(b, .shrinkable(min(170, b.fittingWidth(padding: 14))))
             }
             if shows.contains("buttons") {
                 for (i, spec) in model.buttons.enumerated() {
@@ -200,6 +220,46 @@ final class BarView: NSView {
             group.append(other)
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
 
+        case .models:
+            var group: [NSView] = []
+            let models = !pagedModels || !effortPage, efforts = !pagedModels || effortPage
+            if models && !pagedModels {
+                let modelWord = sectionLabel("Model")
+                add(modelWord, .fixed(ceil(modelWord.intrinsicContentSize.width) + 2))
+            }
+            for choice in ModelChoice.models where models {
+                let b = BarButton(choice.label, style: choice.alias == model.modelAlias ? .selected : .normal, fontSize: 12) {
+                    [weak self] in self?.onAction?(.pickModel(choice.alias))
+                }
+                add(b, .shrinkable(b.fittingWidth(padding: 12)))
+                group.append(b)
+            }
+            if efforts && !pagedModels {
+                let effortWord = sectionLabel("Effort")
+                add(effortWord, .fixed(ceil(effortWord.intrinsicContentSize.width) + 8))
+            }
+            for level in ModelChoice.efforts where efforts {
+                let b = BarButton(level, style: level == model.effort ? .selected : .normal, fontSize: 12) {
+                    [weak self] in self?.onAction?(.pickEffort(level))
+                }
+                add(b, .shrinkable(b.fittingWidth(padding: 12)))
+                group.append(b)
+            }
+            if pagedModels {
+                let flip = BarButton(effortPage ? "‹ Model" : "Effort ›", style: .outline, fontSize: 12) { [weak self] in
+                    guard let self else { return }
+                    self.effortPage.toggle()
+                    self.rebuild()
+                }
+                add(flip, .fixed(flip.fittingWidth(padding: 14)))
+                group.append(flip)
+            }
+            add(NSView(), .flex(weight: 1, min: 0))
+            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closeModels) }
+            add(done, .fixed(done.fittingWidth(padding: 14)))
+            group.append(done)
+            group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
+
         case .typing:
             let mini = MiniMetersView()
             self.mini = mini
@@ -219,6 +279,15 @@ final class BarView: NSView {
             add(mic, .fixed(48))
         }
         needsLayout = true
+    }
+
+    /// A small grey word before a group of buttons.
+    private func sectionLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: Palette.labelFont)
+        label.textColor = Palette.secondary
+        label.alignment = .right
+        return label
     }
 
     private func add(_ view: NSView, _ width: Slot.Width) {
@@ -271,6 +340,13 @@ final class BarView: NSView {
         let flexMin = slots.reduce(CGFloat(0)) {
             if case let .flex(_, min) = $1.width { return $0 + min }
             return $0
+        }
+        // The model picker doesn't fit in one row: models and effort take turns.
+        if model.mode == .models && !pagedModels && fixed + gaps + flexMin > available && bounds.width > 0 {
+            pagedModels = true
+            rebuild()
+            layout()
+            return
         }
         // Not enough room: shrinkable slots give way first.
         let overflow = fixed + gaps + flexMin - available

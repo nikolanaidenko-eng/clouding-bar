@@ -115,6 +115,33 @@ check(zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false, "cow
 check(FileManager.default.fileExists(atPath: pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path),
       "cowork plugin has its hook script")
 
+// MARK: Model and effort
+
+check(ModelChoice.alias(of: "claude-opus-5-5[1m]") == "opus[1m]" && ModelChoice.alias(of: "claude-sonnet-5-5") == "sonnet",
+      "model id → alias")
+check(ModelChoice.modelSet(in: "<local-command-stdout>Set model to `claude-opus-5-5[1m]`</local-command-stdout>") == "claude-opus-5-5[1m]",
+      "\"Set model to\" read from the transcript")
+check(ModelChoice.modelSet(in: "Set model to \u{1B}[1mclaude-haiku-5-5\u{1B}[22m") == "claude-haiku-5-5", "…with colour codes")
+check(ModelChoice.effortSet(in: "<local-command-stdout>Set effort level to high: thinks more</local-command-stdout>") == "high",
+      "\"Set effort level to\" read")
+check(ModelChoice.effortSet(in: "Set effort level to ultracode (this session only): xhigh + …") == "xhigh", "ultracode is xhigh")
+do { // the watcher picks both up from a transcript
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let file = dir.appendingPathComponent("model-switch.jsonl")
+    let lines = [
+        #"{"type":"assistant","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+        #"{"type":"user","message":{"role":"user","content":"<local-command-stdout>Set model to `claude-opus-5-5[1m]`</local-command-stdout>"}}"#,
+        #"{"type":"user","message":{"role":"user","content":"<local-command-stdout>Set effort level to max: deepest</local-command-stdout>"}}"#,
+    ]
+    try? (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let watcher = TranscriptWatcher()
+    var got: [TranscriptWatcher.Update] = []
+    let done = DispatchSemaphore(value: 0)
+    watcher.poll([(id: "m", path: file.path)]) { got = $0; done.signal() }
+    while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
+}
+
 // MARK: Config
 
 let config = Config()

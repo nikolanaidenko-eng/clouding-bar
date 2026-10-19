@@ -40,6 +40,10 @@ add("typing-verylong") { $0.activity = .wait; $0.mode = .typing(text: "Watermelo
 add("typing-empty") { $0.activity = .wait; $0.mode = .typing(text: "") }
 add("context-warning") { $0.activity = .sleep; $0.sessionPercent = 74; $0.resetCountdown = "0:41"; $0.contextPercent = 91; $0.mode = .contextWarning }
 add("normal-narrow-controlstrip", width: 685) { _ in }
+add("normal-model") { $0.shows = ["session", "reset", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
+add("models") { $0.mode = .models; $0.modelAlias = "opus[1m]"; $0.effort = "xhigh" }
+add("models-narrow", width: 685) { $0.mode = .models; $0.modelAlias = "sonnet"; $0.effort = "high" }
+add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 
 var images: [CGImage] = []
 for (name, model, width) in cases {
@@ -228,6 +232,13 @@ widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }
+widget("w-panel-model", .panel, size: NSSize(width: 720, height: 300)) {
+    $0.config.metrics = ["model", "lines", "git", "agents"]
+    $0.config.taskQueue = true
+    $0.modelName = "Opus 5.5 1M"; $0.modelId = "claude-opus-5-5[1m]"; $0.effort = "xhigh"
+    $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
+    $0.pickingModel = true
+}
 widget("w-panel-files-insert", .panel, size: NSSize(width: 720, height: 260)) {
     $0.attachments = ["/Users/me/Desktop/Снимок экрана 2026-10-19.png", "/Users/me/DiaRoute/docs/offline-routes.pdf"]
     $0.chatInFront = true
@@ -261,6 +272,14 @@ do { // writing in the pill with files attached
     let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
         .frame(width: 500, height: 90).padding(.top, 20))
     renderView(host, size: NSSize(width: 500, height: 90), name: "w-pill-typing-files")
+}
+do { // the Touch Bar tab with everything on, and the model known
+    let m = sampleModel()
+    m.touchBarPresent = true
+    m.config.touchBarShows = ["session", "reset", "context", "model", "buttons", "shot", "mic"]
+    m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"
+    let host = NSHostingView(rootView: SettingsView(model: m, tab: "touchbar"))
+    renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-touchbar-all")
 }
 for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     let m = sampleModel()

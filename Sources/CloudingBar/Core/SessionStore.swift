@@ -185,6 +185,7 @@ final class SessionStore {
                 s.linesAdded = u.linesAdded
                 s.linesRemoved = u.linesRemoved
                 if let m = u.model { s.model = m }
+                if let e = u.effort { s.effort = e }
                 s.transcriptChanged = u.modified
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
