@@ -393,28 +393,78 @@ struct WidgetTab: View {
             }
 
             SettingsSection(title: "What it shows",
-                            note: "The pill shows what fits its size: pull its outline to resize it, drag one item onto another to swap them.") {
-                SettingsRow(title: "Numbers", hint: "On the pill, next to the 5-hour limit") {
-                    ChipSet(model: model, key: "pillShows",
-                            options: [("context", "Context"), ("reset", "Reset time"), ("cost", "Cost")], mirror: "metrics")
+                            note: "Each chip turns one thing on or off in the pill, the notch and the panel. The pill shows what fits its size: pull its outline to resize it, drag one item onto another to swap them. Chat: write to Claude from the widget, sent once it's free and its chat is in front; files dropped on the widget go with it.") {
+                SettingsRow(title: "Numbers") {
+                    ToggleChips(items: [hideChip("Session", "session"), listChip("Context", "pillShows", "context"),
+                                        listChip("Reset time", "pillShows", "reset"),
+                                        listChip("Cost", "pillShows", "cost", mirror: "metrics")])
                 }
-                SettingsRow(title: "Details", hint: "On the pill and in the panel", divider: false) {
-                    ChipSet(model: model, key: "metrics",
-                            options: [("model", "Model"), ("lines", "Lines"), ("git", "Branch"), ("agents", "Subagents")])
+                SettingsRow(title: "Details") {
+                    ToggleChips(items: [listChip("Model", "metrics", "model"), listChip("Lines", "metrics", "lines"),
+                                        listChip("Branch", "metrics", "git"), listChip("Subagents", "metrics", "agents")])
+                }
+                SettingsRow(title: "Controls", divider: false) {
+                    ToggleChips(items: [hideChip("Buttons", "buttons"), boolChip("Chat", "taskQueue") { $0.taskQueue },
+                                        boolChip("Templates", "templatesEnabled") { $0.templatesEnabled },
+                                        boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
                 }
             }
 
-            SettingsSection(title: "Tools") {
-                SettingsRow(title: "Write to Claude",
-                            hint: "A message field: sent when Claude is free and its chat is in front. Drop files on the widget to send them with it.") {
-                    CBSwitch(title: "Write to Claude", on: binding("taskQueue") { $0.taskQueue })
-                }
-                SettingsRow(title: "Screenshot button", hint: "Pick an area of the screen; its file goes to Claude") {
-                    CBSwitch(title: "Screenshot button", on: binding("screenshot") { $0.screenshot })
-                }
+            SettingsSection(title: "Panel") {
                 SettingsRow(title: "Sessions list", hint: "Jump between your Claude sessions from the panel", divider: false) {
                     CBSwitch(title: "Sessions list", on: binding("sessionsList") { $0.sessionsList })
                 }
+            }
+        }
+    }
+
+    // MARK: Chips
+
+    private func list(_ key: String) -> [String] {
+        switch key {
+        case "pillShows": return model.config.pillShows
+        case "metrics": return model.config.metrics
+        default: return model.config.widgetHides
+        }
+    }
+
+    /// On while `id` is in the list `key` (and `mirror`, kept in step).
+    private func listChip(_ label: String, _ key: String, _ id: String, mirror: String? = nil) -> ToggleChips.Item {
+        let on = list(key).contains(id)
+        return (label, on, {
+            for k in [key] + (mirror.map { [$0] } ?? []) {
+                var l = list(k).filter { $0 != id }
+                if !on { l.append(id) }
+                if l != list(k) { model.setConfig(k, l) }
+            }
+        })
+    }
+
+    /// On unless `id` is in widgetHides (things the widget used to always show).
+    private func hideChip(_ label: String, _ id: String) -> ToggleChips.Item {
+        let on = !model.config.widgetHides.contains(id)
+        return (label, on, {
+            var l = model.config.widgetHides.filter { $0 != id }
+            if on { l.append(id) }
+            model.setConfig("widgetHides", l)
+        })
+    }
+
+    private func boolChip(_ label: String, _ key: String, _ get: @escaping (Config) -> Bool) -> ToggleChips.Item {
+        let on = get(model.config)
+        return (label, on, { model.setConfig(key, !on) })
+    }
+}
+
+/// Chips that each turn one thing on or off.
+struct ToggleChips: View {
+    typealias Item = (label: String, on: Bool, toggle: () -> Void)
+    let items: [Item]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(items.indices, id: \.self) { i in
+                Chip(label: items[i].label, on: items[i].on, action: items[i].toggle)
             }
         }
     }

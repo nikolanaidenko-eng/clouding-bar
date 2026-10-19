@@ -730,7 +730,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.queue, queue)
         set(\.attachments, active.flatMap { attachments[$0.id] } ?? [])
         set(\.chatInFront, active != nil && store.session(inWindow: frontTitle)?.id == active?.id)
-        set(\.buttons, currentButtons(active))
+        // The widget's buttons; the bar has its own switch for them.
+        set(\.buttons, config.widgetHides.contains("buttons") ? [] : currentButtons(active))
         set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
 
         let waitingIds = Set(requests.compactMap(\.sessionId))

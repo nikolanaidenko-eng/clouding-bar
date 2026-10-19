@@ -52,11 +52,20 @@ struct NotchView: View {
         return size
     }
 
+    /// What it's showing; a change springs it to its new size.
+    private var phase: String {
+        "\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)"
+    }
+
     var body: some View {
         Group {
-            if state.pillTyping {
+            if let r = model.request {
+                request(r)
+            } else if state.pillTyping {
                 typing
-            } else if let b = wideBudget, model.hasSession, !model.listening, model.request == nil {
+            } else if model.listening {
+                listening
+            } else if let b = wideBudget, model.hasSession {
                 wide(b)
             } else {
                 compact
@@ -64,8 +73,8 @@ struct NotchView: View {
         }
         .lineLimit(1)
         .overlay(state.dropHover ? NotchShape(radius: 16).stroke(Color.cbAction, lineWidth: 2) : nil)
-        .animation(.cb(0.28), value: model.listening)
-        .animation(.cb(0.28), value: model.request?.id)
+        // Growing for a question or for writing: a springy Dynamic Island.
+        .animation(.spring(response: 0.42, dampingFraction: 0.78), value: phase)
         .transition(.opacity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Clouding Bar: \(model.statusTitle)")
@@ -106,7 +115,7 @@ struct NotchView: View {
                     .offset(x: 5, y: -3), alignment: .topTrailing)
             if model.listening {
                 Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)
-            } else if model.hasSession {
+            } else if model.hasSession && !model.config.widgetHides.contains("session") {
                 MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.2))
                     .frame(width: 26)
                 Text(PillLayout.percent(model.sessionPercent))
@@ -126,13 +135,13 @@ struct NotchView: View {
                 Text(model.statusTitle).font(.system(size: 12))
                 PulseDot(size: 7, still: model.config.doNotDisturb)
             }
-        } else if model.hasSession {
+        } else if model.hasSession && model.config.pillShows.contains("context") {
             HStack(spacing: 8) {
                 Text(PillLayout.percent(model.contextPercent))
                 MeterBar(percent: model.contextPercent, height: 3, track: .white.opacity(0.2), delay: 0.12)
                     .frame(width: 26)
             }
-        } else {
+        } else if !model.hasSession {
             Text(PillLayout.percent(model.sessionPercent)).foregroundColor(.cbSecondary)
         }
     }
@@ -155,17 +164,139 @@ struct NotchView: View {
             .background(NotchShape(radius: 16).fill(Color.black))
     }
 
-    // MARK: Typing
+    // MARK: Grown
 
-    /// Writing in the notch: the island widens into a text line.
+    /// Grown wider and taller for what needs you or what you're writing.
+    static func grownWidth(camera: CGFloat) -> CGFloat { max(460, camera + 2 * ear + 80) }
+    private var inner: CGFloat { Self.grownWidth(camera: state.notchWidth) - 2 * (Self.shoulder + 16) }
+
+    /// The grown island: a header line (under the camera, in a real notch),
+    /// then what it's about. A click on it opens the panel.
+    private func grown<Content: View>(_ title: String, _ subtitle: String?, waiting: Bool,
+                                      @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                MascotIcon(activity: waiting ? .wait : model.activity, size: 22).frame(width: 22, height: 22)
+                Text(title).font(.system(size: 13, weight: .semibold))
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle).font(.system(size: 12)).foregroundColor(.cbSecondary)
+                }
+                Spacer(minLength: 10)
+                if waiting { PulseDot(size: 7, still: model.config.doNotDisturb) }
+            }
+            content()
+        }
+        .lineLimit(1)
+        .foregroundColor(.white)
+        .padding(.top, state.notchWidth > 0 ? state.notchHeight + 4 : 10)
+        .padding(.bottom, 12)
+        .padding(.horizontal, Self.shoulder + 16)
+        .frame(width: Self.grownWidth(camera: state.notchWidth), alignment: .leading)
+        .background(PillDragHandle(state: state, fromTop: false))
+        .background(NotchShape(radius: 22).fill(Color.black))
+        .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
+    }
+
+    /// Claude asks or needs an OK: the question (or the command) and the
+    /// answers, right in the notch.
+    @ViewBuilder private func request(_ r: AppModel.RequestCard) -> some View {
+        if r.kind == .permission {
+            grown("Needs your OK", [r.project, r.verb == "Run" ? "run in terminal" : r.verb.lowercased()]
+                    .compactMap { $0 }.joined(separator: " · "), waiting: true) {
+                Text(r.detail)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    answer("Allow", style: .primary) { model.perform(.allow) }
+                    answer("Always allow") { model.perform(.always) }
+                    answer("Deny", style: .deny) { model.perform(.deny) }
+                }
+            }
+        } else {
+            grown("Claude asks", [r.project, r.count > 1 ? "\(r.index + 1) of \(r.count)" : nil]
+                    .compactMap { $0 }.joined(separator: " · "), waiting: true) {
+                Text(r.question)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                options(r)
+            }
+        }
+    }
+
+    /// The options as chips that wrap; "Other…" opens the panel to type.
+    private func options(_ r: AppModel.RequestCard) -> some View {
+        let send = r.multiSelect && !r.picked.isEmpty ? "Send \(r.picked.count)" : nil
+        var items = r.options.enumerated().map { (id: "o\($0.offset)", width: Self.chip($0.element)) }
+        if let send { items.append((id: "send", width: Self.chip(send))) }
+        items.append((id: "other", width: Self.chip("Other…")))
+        let board = flowSlots(items, width: inner, rowHeight: 26, gap: 6, rowGap: 6)
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(r.options.enumerated()), id: \.offset) { i, label in
+                let slot = board.slots["o\(i)"] ?? .zero
+                answer(label, style: r.picked.contains(i) ? .picked : .normal, fill: true) { model.perform(.option(i)) }
+                    .frame(width: slot.width)
+                    .offset(x: slot.minX, y: slot.minY)
+            }
+            if let send, let slot = board.slots["send"] {
+                answer(send, style: .primary, fill: true) { model.perform(.sendPicked) }
+                    .frame(width: slot.width).offset(x: slot.minX, y: slot.minY)
+            }
+            if let slot = board.slots["other"] {
+                answer("Other…", style: .outline, fill: true) { state.openPanel?() }
+                    .frame(width: slot.width).offset(x: slot.minX, y: slot.minY)
+            }
+        }
+        .frame(width: inner, height: board.size.height, alignment: .topLeading)
+    }
+
+    private enum AnswerStyle { case normal, primary, deny, picked, outline }
+
+    /// `fill`: as wide as the slot it's given (the options); else as its words.
+    private func answer(_ label: String, style: AnswerStyle = .normal, fill: Bool = false,
+                        _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(.system(size: 12, weight: style == .primary ? .semibold : .regular)).lineLimit(1)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 26)
+                .background(Capsule().fill(style == .primary ? Color.cbAction
+                                           : style == .picked ? Color.cbAction.opacity(0.45)
+                                           : style == .outline ? Color.clear : Color.white.opacity(0.12)))
+                .overlay(style == .outline ? Capsule().strokeBorder(Color.white.opacity(0.3), lineWidth: 1) : nil)
+                .foregroundColor(style == .deny ? .cbDeny : .white)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize(horizontal: !fill, vertical: false)
+    }
+
+    private static func chip(_ label: String) -> CGFloat {
+        min(400, MainPanel.textWidth(label, 12) + 22)
+    }
+
+    /// Writing in the notch: it grows into a text line.
     private var typing: some View {
-        PillTyping(model: model, state: state, width: max(380, state.notchWidth + 2 * Self.ear))
-            // In a real notch the line goes under the camera, not behind it.
-            .padding(.top, state.notchWidth > 0 ? state.notchHeight - 8 : 0)
-            .font(.system(size: 13).monospacedDigit())
-            .foregroundColor(.cbText)
-            .padding(.horizontal, Self.shoulder)
-            .background(NotchShape(radius: 16).fill(Color.black))
+        grown("Write to Claude", model.project, waiting: false) {
+            PillTyping(model: model, state: state, width: inner, inline: true)
+        }
+    }
+
+    /// Dictating: the words as they come.
+    private var listening: some View {
+        grown("Listening…", nil, waiting: false) {
+            HStack(alignment: .top, spacing: 8) {
+                Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)
+                Text(model.heard.isEmpty ? "Speak — it stops by itself after a pause" : model.heard)
+                    .font(.system(size: 13))
+                    .foregroundColor(model.heard.isEmpty ? .cbSecondary : .white)
+                    .lineLimit(3)
+                    .truncationMode(.head)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 

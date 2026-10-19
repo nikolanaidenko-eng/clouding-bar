@@ -229,7 +229,7 @@ for (name, camera, mode, listening) in [("n-drawn", 0.0, WidgetMode.pill, false)
     m.config.taskQueue = true
     if listening { m.listening = true; m.heard = "Перескажи последний ответ коротко" }
     let st = WidgetState(); st.mode = mode; st.notched = true; st.notchWidth = CGFloat(camera); st.notchHeight = camera > 0 ? 34 : 32
-    let size = NSSize(width: 720, height: mode == .panel ? 330 : 70)
+    let size = NSSize(width: 720, height: mode == .panel ? 330 : listening ? 140 : 70)
     let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
         .frame(width: size.width, height: size.height))
     renderView(host, size: size, name: name)
@@ -273,6 +273,35 @@ for (name, question) in [("n-permission", false), ("n-question", true)] {
     let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
         .frame(width: size.width, height: size.height))
     renderView(host, size: size, name: name)
+}
+// The notch grown: a question, an OK, and the same around a real camera.
+for (name, camera, question) in [("n-grown-ask", 0.0, true), ("n-grown-ok", 0.0, false), ("n-grown-ask-camera", 190.0, true)] {
+    let m = sampleModel()
+    if question {
+        var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "DiaRoute")
+        card.question = "Which storage should offline routes use? They need queries by date and area."
+        card.options = ["SQLite (Recommended)", "MMKV", "AsyncStorage", "WatermelonDB"]
+        card.index = 0; card.count = 2
+        m.request = card
+    } else {
+        m.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "npm run build && npm test -- --watch=false")
+    }
+    let st = WidgetState(); st.mode = .pill; st.notched = true; st.notchWidth = CGFloat(camera); st.notchHeight = camera > 0 ? 34 : 32
+    let host = NSHostingView(rootView: VStack(spacing: 0) { WidgetView(model: m, state: st); Spacer(minLength: 0) }
+        .frame(width: 720, height: 230))
+    renderView(host, size: NSSize(width: 720, height: 230), name: name)
+}
+do { // everything optional switched off but a few
+    let m = sampleModel()
+    m.config.widgetHides = ["session", "mic", "buttons"]; m.config.pillShows = ["context"]
+    m.config.metrics = ["model"]; m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"; m.config.pillWidth = 10_000
+    m.buttons = []
+    let st = WidgetState(); st.mode = .pill
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }.frame(width: 500, height: 80).padding(.top, 10))
+    renderView(host, size: NSSize(width: 500, height: 80), name: "w-pill-hides")
+    let st2 = WidgetState(); st2.mode = .panel
+    let host2 = NSHostingView(rootView: VStack { WidgetView(model: m, state: st2); Spacer() }.frame(width: 500, height: 200).padding(.top, 10))
+    renderView(host2, size: NSSize(width: 500, height: 200), name: "w-panel-hides")
 }
 for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.4, 0.0), ("d-island", 1.0, 0.0)] {
     let m = sampleModel()

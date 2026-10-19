@@ -48,7 +48,7 @@ final class WidgetController: NSObject {
     /// both need for the length of the animation (the clear part doesn't
     /// show), so the views slide and fade instead of being cut off by a
     /// window that jumped to its new size; it fits itself afterwards.
-    private var shownMode: WidgetMode = .pill
+    private var shownPhase = ""
     private var settleUntil = Date.distantPast
     private var settleWork: DispatchWorkItem?
 
@@ -114,7 +114,8 @@ final class WidgetController: NSObject {
         if id != shownRequest {
             shownRequest = id
             if id != nil {
-                if !model.config.doNotDisturb {
+                // In the notch the island itself grows to show it.
+                if !model.config.doNotDisturb && !atNotch {
                     pinned = true
                     set(.pill)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -527,8 +528,11 @@ final class WidgetController: NSObject {
             size = host.fittingSize
         }
         guard size.width > 0, size.height > 0 else { return }
-        if state.mode != shownMode {
-            shownMode = state.mode
+        // Pill, panel, sessions — or the notch growing for a question, for
+        // writing, for dictation.
+        let phase = "\(state.mode)|\(state.notched)|\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)"
+        if phase != shownPhase {
+            shownPhase = phase
             settleUntil = Date().addingTimeInterval(0.45)
             settleWork?.cancel()
             let work = DispatchWorkItem { [weak self] in self?.layout() }

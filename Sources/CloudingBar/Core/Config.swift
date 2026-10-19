@@ -130,8 +130,12 @@ struct Config: Equatable {
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
-    /// What the pill shows besides the session limit: "context", "reset", "cost".
+    /// What the pill (and the panel) shows besides the session limit:
+    /// "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
+    /// What the widget leaves out of what it always used to show:
+    /// "session" (the 5-hour limit), "buttons", "mic".
+    var widgetHides: [String] = []
     /// Where the pill was dragged: its top center in screen points.
     /// Unset: top center of the screen, right under the menu bar.
     var widgetPosition: CGPoint?
@@ -230,6 +234,7 @@ struct Config: Equatable {
         if let v = obj["pillHeight"] as? NSNumber { config.pillHeight = v.doubleValue }
         if let v = obj["itemOrder"] as? [String] { config.itemOrder = v }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
+        if let v = obj["widgetHides"] as? [String] { config.widgetHides = v }
         if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {

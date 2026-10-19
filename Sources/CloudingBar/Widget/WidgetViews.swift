@@ -583,7 +583,10 @@ struct MainPanel: View {
     private var showTemplates: Bool { model.config.templatesEnabled && !model.config.templates.isEmpty }
 
     /// Templates · screenshot · mic, after the metrics.
-    private var extras: [String] { (showTemplates ? ["templates"] : []) + (model.config.screenshot ? ["shot"] : []) + ["mic"] }
+    private var extras: [String] {
+        (showTemplates ? ["templates"] : []) + (model.config.screenshot ? ["shot"] : [])
+            + (model.config.widgetHides.contains("mic") ? [] : ["mic"])
+    }
 
     /// The metrics row: metrics and templates · screenshot · mic, in the
     /// owner's order (drag one onto another to swap them).
@@ -624,17 +627,28 @@ struct MainPanel: View {
         let inner = width - Self.chrome
         PanelChrome(padding: EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 8), spacing: 10, width: width) {
             header
-            HStack(alignment: .top, spacing: 16) {
-                MeterBlock(title: "Session", percent: model.sessionPercent,
-                           caption: model.resetLong.map { "Resets in \($0)" })
-                MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
+            // What Settings → Widget leaves on.
+            let showsSession = !model.config.widgetHides.contains("session")
+            let showsContext = model.config.pillShows.contains("context")
+            if showsSession || showsContext {
+                HStack(alignment: .top, spacing: 16) {
+                    if showsSession {
+                        MeterBlock(title: "Session", percent: model.sessionPercent,
+                                   caption: model.config.pillShows.contains("reset") ? model.resetLong.map { "Resets in \($0)" } : nil)
+                    }
+                    if showsContext {
+                        MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
+                    }
+                }
+                .padding(.trailing, 4)
             }
-            .padding(.trailing, 4)
-            toolRows(inner: inner)
+            if !tools(model.itemIDs).isEmpty { toolRows(inner: inner) }
             if model.pickingModel { ModelPicker(model: model).padding(.trailing, 4) }
             if model.showingAgents { AgentsList(model: model).padding(.trailing, 4) }
-            messageBox(inner: inner)
-                .padding(.trailing, 4)
+            if model.config.taskQueue || !model.buttons.isEmpty || !model.attachments.isEmpty {
+                messageBox(inner: inner)
+                    .padding(.trailing, 4)
+            }
         }
         .animation(.cb(0.28), value: width)
         // Files just dropped: the cursor waits in the field for a message.

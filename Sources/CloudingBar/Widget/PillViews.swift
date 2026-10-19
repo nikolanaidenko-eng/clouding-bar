@@ -243,7 +243,9 @@ struct PillLayout {
             ceil((t as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)]).width) + 3
         }
         let shows = model.config.pillShows
-        var list: [(part: Part, width: CGFloat, id: String)] = [(.session, text(Self.percent(model.sessionPercent)), "session")]
+        let hides = Set(model.config.widgetHides)
+        var list: [(part: Part, width: CGFloat, id: String)] = []
+        if !hides.contains("session") { list.append((.session, text(Self.percent(model.sessionPercent)), "session")) }
         if shows.contains("context"), let c = model.contextPercent {
             list.append((.context, text("ctx", 11) + 6 + text(Self.percent(c)), "context"))
         }
@@ -262,15 +264,19 @@ struct PillLayout {
         }
         if model.config.templatesEnabled && !model.config.templates.isEmpty { list.append((.templates, 26, "templates")) }
         if model.config.screenshot { list.append((.shot, 26, "shot")) }
-        list.append((.mic, 26, "mic"))
+        if !hides.contains("mic") { list.append((.mic, 26, "mic")) }
         list = list.enumerated().sorted { a, b in
             let ra = rank(a.element.id), rb = rank(b.element.id)
             return ra != rb ? ra < rb : a.offset < b.offset
         }.map(\.element)
         // The bars come right after the last number.
         let numbers: Set<Part> = [.session, .context, .reset, .cost]
-        var at = (list.lastIndex { numbers.contains($0.part) } ?? 0) + 1
-        list.insert((.sessionBar, Self.barWidth + 8, "sessionBar"), at: at)
+        var at = (list.lastIndex { numbers.contains($0.part) } ?? -1) + 1
+        if list.contains(where: { $0.part == .session }) {
+            list.insert((.sessionBar, Self.barWidth + 8, "sessionBar"), at: at)
+        } else {
+            at -= 1
+        }
         if list.contains(where: { $0.part == .context }) {
             at += 1
             list.insert((.contextBar, Self.barWidth + 6, "contextBar"), at: at)
@@ -863,12 +869,16 @@ struct PillTyping: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     let width: CGFloat
+    /// Inside the grown notch: no character (its header has one), no padding.
+    var inline = false
     @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
-            MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
-                .allowsHitTesting(false)
+            if !inline {
+                MascotIcon(activity: model.activity, size: 30).frame(width: 30, height: 30)
+                    .allowsHitTesting(false)
+            }
             if !model.attachments.isEmpty {
                 HStack(spacing: 3) {
                     Image(systemName: "paperclip").font(.system(size: 11))
@@ -890,9 +900,9 @@ struct PillTyping: View {
                                              foreground: .white, size: 28))
                 .accessibilityLabel("Send")
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 8)
-        .frame(width: width, height: 44)
+        .padding(.leading, inline ? 0 : 10)
+        .padding(.trailing, inline ? 0 : 8)
+        .frame(width: width, height: inline ? 30 : 44)
         .onAppear { DispatchQueue.main.async { focused = true } }
         .transition(.opacity)
     }
