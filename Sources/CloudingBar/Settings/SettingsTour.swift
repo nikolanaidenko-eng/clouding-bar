@@ -58,15 +58,29 @@ extension View {
     }
 
     /// The tour over the settings window, while `model.tourStep` is set.
+    /// (The overlay's closure runs again only when the anchors move, so the
+    /// step is read inside, by a view that watches the model.)
     func settingsTour(model: AppModel, cloud: SettingsCloud) -> some View {
         overlayPreferenceValue(TourAnchorKey.self) { anchors in
             GeometryReader { g in
-                if let step = model.tourStep, SettingsTour.stops.indices.contains(step) {
-                    let stop = SettingsTour.stops[step]
-                    let anchor = anchors[stop.anchor] ?? stop.fallback.flatMap { anchors[$0] }
-                    TourOverlay(model: model, cloud: cloud, step: step, target: anchor.map { g[$0] }, size: g.size)
-                }
+                TourLayer(model: model, cloud: cloud, rects: anchors.mapValues { g[$0] }, size: g.size)
             }
+        }
+    }
+}
+
+/// The tour at its stop, or nothing.
+struct TourLayer: View {
+    @ObservedObject var model: AppModel
+    let cloud: SettingsCloud
+    let rects: [String: CGRect]
+    let size: CGSize
+
+    var body: some View {
+        if let step = model.tourStep, SettingsTour.stops.indices.contains(step) {
+            let stop = SettingsTour.stops[step]
+            TourOverlay(model: model, cloud: cloud, step: step,
+                        target: rects[stop.anchor] ?? stop.fallback.flatMap { rects[$0] }, size: size)
         }
     }
 }

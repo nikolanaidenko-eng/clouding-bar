@@ -80,7 +80,7 @@ struct SettingsView: View {
             HStack(spacing: 2) {
                 ForEach(Self.tabs, id: \.id) { t in
                     let on = tab == t.id
-                    CloudButton(perch: .below, action: {
+                    CloudButton(perch: .above, action: {
                         guard tab != t.id else { return }
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = t.id }
                     }) {
@@ -151,12 +151,12 @@ final class SettingsCloud: ObservableObject {
     @Published private(set) var arc: CGFloat = 0
     @Published var progress: CGFloat = 1
     @Published private(set) var scale: CGFloat = 1
+    /// Pressing down on a control it landed on.
+    @Published private(set) var push: CGFloat = 0
 
     private var flying = false
     /// Where to go once the hop in the air lands.
     private var next: (point: CGPoint, scale: CGFloat, then: (() -> Void)?)?
-    /// The row it last sat by, to go back to after a press.
-    private var rowPoint: CGPoint?
     /// The row the pointer is over now, if any, and the choice (a tab, a
     /// chip) it's on.
     private var overRow: CGFloat?
@@ -192,22 +192,35 @@ final class SettingsCloud: ObservableObject {
         }
     }
 
-    /// The pointer moves: back by its row if it went home; a rest later, home.
+    /// Where the pointer is: the top of a choice it's on, else by its row.
+    private var target: CGPoint? { overPerch ?? overRow.map { CGPoint(x: Self.gutter / 2, y: $0) } }
+    /// Cloud goes where the pointer is only once it stays a moment, so a
+    /// pass of the mouse doesn't drag it along.
+    private var settle: DispatchWorkItem?
+    private var settling = false
+    static let rowDwell = 0.3, perchDwell = 0.18, rest = 2.2
+
+    private func follow(after delay: Double) {
+        settle?.cancel()
+        settling = true
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.settling = false
+            guard !self.touring, let p = self.target else { return }
+            self.hop(to: p, scale: Self.rowScale)
+        }
+        settle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// The pointer moves: out of the corner if it's over something; a rest later, home.
     func moved() {
         guard !touring else { return }
-        if to == Self.home, !flying {
-            if let p = overPerch {
-                hop(to: p, scale: Self.rowScale)
-            } else if let y = overRow {
-                let p = CGPoint(x: Self.gutter / 2, y: y)
-                rowPoint = p
-                hop(to: p, scale: Self.rowScale)
-            }
-        }
+        if to == Self.home, !flying, !settling, target != nil { follow(after: Self.rowDwell) }
         idle?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.goHome() }
         idle = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.rest, execute: work)
     }
 
     /// The pointer is over a row whose middle is at `y`.
@@ -215,39 +228,23 @@ final class SettingsCloud: ObservableObject {
         overRow = y
         guard !touring else { return }
         moved()
-        let p = CGPoint(x: Self.gutter / 2, y: y)
-        rowPoint = p
-        hop(to: p, scale: Self.rowScale)
+        if overPerch == nil { follow(after: Self.rowDwell) }
     }
 
-    /// The pointer is on one of a row of choices: Cloud sits on it (or,
-    /// for the tabs, under it), and so walks along them.
-    func perch(_ frame: CGRect, below: Bool) {
+    /// The pointer is on one of a row of choices (a tab, a chip): Cloud sits
+    /// on its top edge, and so walks along them.
+    func perch(_ frame: CGRect) {
         guard frame != .zero, !touring else { return }
-        unperch?.cancel()
-        let p = below ? CGPoint(x: frame.midX, y: frame.maxY + 13) : CGPoint(x: frame.midX, y: frame.minY - 4)
-        overPerch = p
+        overPerch = CGPoint(x: frame.midX, y: max(10, frame.minY - 4))
         moved()
-        hop(to: p, scale: Self.rowScale)
+        follow(after: Self.perchDwell)
     }
 
-    /// Off the choice: back by its row, unless the pointer is already on the next one.
+    /// Off the choice: by its row again, unless the pointer is on the next one.
     func leavePerch() {
         overPerch = nil
         guard !touring else { return }
-        unperch?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.overPerch == nil, self.to != Self.home else { return }
-            if let y = self.overRow {
-                let p = CGPoint(x: Self.gutter / 2, y: y)
-                self.rowPoint = p
-                self.hop(to: p, scale: Self.rowScale)
-            } else {
-                self.goHome()
-            }
-        }
-        unperch = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+        follow(after: 0.22)
     }
 
     /// The pointer left the row at `y`.
@@ -256,7 +253,8 @@ final class SettingsCloud: ObservableObject {
     }
 
     func goHome(hop: Bool = false) {
-        rowPoint = nil
+        settle?.cancel()
+        settling = false
         if to == Self.home && !flying {
             if hop { mood.hops += 1 }
             return
@@ -264,39 +262,49 @@ final class SettingsCloud: ObservableObject {
         self.hop(to: Self.home, scale: 1)
     }
 
-    /// A press on the control at `frame`: Cloud lands on it, then `action`.
-    func press(_ frame: CGRect, _ action: @escaping () -> Void) {
+    /// A press on the control at `frame`: Cloud jumps onto it (or, sitting on
+    /// it already, jumps up), lands, the control gives a little — `squish` —
+    /// and `action` runs.
+    func press(_ frame: CGRect, squish: @escaping () -> Void, _ action: @escaping () -> Void) {
+        settle?.cancel()
+        settling = false
         moved()
-        hop(to: CGPoint(x: frame.midX, y: frame.minY - 4), scale: Self.rowScale, then: { [weak self] in
+        let top = CGPoint(x: frame.midX, y: max(10, frame.minY - 4))
+        let land = { [weak self] in
+            guard let self else { return }
+            withAnimation(.easeOut(duration: 0.07)) { self.push = 3 }
+            squish()
             action()
-            self?.mood.pokes += 1
-            // A moment on it, then back by its row.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-                guard let self, !self.flying, !self.touring else { return }
-                if let p = self.rowPoint { self.hop(to: p, scale: Self.rowScale) }
+            self.mood.pokes += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { self.push = 0 }
             }
-        })
+        }
+        let already = !flying && hypot(top.x - to.x, top.y - to.y) < 8
+        hop(to: top, scale: Self.rowScale, arc: already ? 14 : nil, force: already, then: land)
     }
 
     func cheer() { mood.pokes += 1 }
 
-    private func hop(to point: CGPoint, scale s: CGFloat, then: (() -> Void)? = nil) {
+    /// `force`: hop even on the spot (a jump up and down, `arc` high).
+    private func hop(to point: CGPoint, scale s: CGFloat, arc arcOverride: CGFloat? = nil, force: Bool = false,
+                     then: (() -> Void)? = nil) {
         guard !flying else {
             // One hop at a time: this one waits for the landing.
             if let pending = next?.then, then == nil { next = (point, s, pending) } else { next = (point, s, then) }
             return
         }
         let distance = hypot(point.x - to.x, point.y - to.y)
-        guard distance > 3 else { then?(); return }
+        guard distance > 3 || force else { then?(); return }
         flying = true
-        let duration = min(0.5, 0.2 + Double(distance) / 1400)
+        let duration = force ? 0.26 : min(0.5, 0.2 + Double(distance) / 1400)
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) {
             from = to
             to = point
             // Up and over: higher for longer hops, a little bob between rows.
-            arc = min(46, 8 + distance * 0.18)
+            arc = arcOverride ?? min(46, 8 + distance * 0.18)
             progress = 0
         }
         DispatchQueue.main.async {
@@ -326,6 +334,7 @@ struct CloudActor: View {
             .frame(width: SettingsCloud.size, height: SettingsCloud.size)
             .scaleEffect(cloud.scale)
             .modifier(HopPath(from: cloud.from, to: cloud.to, arc: cloud.arc, progress: cloud.progress))
+            .offset(y: cloud.push)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -377,23 +386,29 @@ struct BuddyHover: ViewModifier {
 /// A press that goes by way of Cloud.
 enum CloudPress {
     /// Runs `action` through Cloud's hop, or at once without Cloud.
-    static func run(_ cloud: SettingsCloud?, _ frame: CGRect, _ action: @escaping () -> Void) {
-        if let cloud, frame != .zero { cloud.press(frame, action) } else { action() }
+    static func run(_ cloud: SettingsCloud?, _ frame: CGRect, squish: @escaping () -> Void = {},
+                    _ action: @escaping () -> Void) {
+        if let cloud, frame != .zero { cloud.press(frame, squish: squish, action) } else { action() }
     }
 }
 
 /// A button whose press Cloud makes: it hops onto it, then it goes. One
 /// of a row of choices (`perch`): Cloud follows the pointer along them.
 struct CloudButton<Label: View>: View {
-    enum Perch { case none, above, below }
+    enum Perch { case none, above }
     var perch: Perch = .none
     let action: () -> Void
     @ViewBuilder let label: () -> Label
     @Environment(\.settingsCloud) private var cloud
     @State private var frame: CGRect = .zero
+    /// Cloud landed on it: pressed down a little.
+    @State private var squished = false
 
     var body: some View {
-        Button { CloudPress.run(cloud, frame, action) } label: { label() }
+        Button { CloudPress.run(cloud, frame, squish: squish, action) } label: {
+            label()
+                .scaleEffect(x: squished ? 0.96 : 1, y: squished ? 0.86 : 1, anchor: .bottom)
+        }
             .buttonStyle(.plain)
             .background(GeometryReader { g in
                 Color.clear
@@ -402,8 +417,15 @@ struct CloudButton<Label: View>: View {
             })
             .onHover { inside in
                 guard perch != .none, let cloud else { return }
-                if inside { cloud.perch(frame, below: perch == .below) } else { cloud.leavePerch() }
+                if inside { cloud.perch(frame) } else { cloud.leavePerch() }
             }
+    }
+
+    private func squish() {
+        withAnimation(.easeOut(duration: 0.07)) { squished = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.45)) { squished = false }
+        }
     }
 }
 
