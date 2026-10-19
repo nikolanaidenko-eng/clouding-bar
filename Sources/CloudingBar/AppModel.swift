@@ -9,6 +9,11 @@ final class AppModel: ObservableObject {
         let id: UUID
         let kind: Kind
         let project: String?
+        /// The chat it comes from ("Status bar") and its colour.
+        var chat: String?
+        var color: UInt32?
+        /// From a chat other than the one the widget shows.
+        var elsewhere = false
         // permission
         var verb = ""
         var detail = ""
@@ -24,11 +29,17 @@ final class AppModel: ObservableObject {
 
     struct SessionRow: Identifiable, Equatable {
         let id: String
+        /// Its title, else its project.
         let name: String
         let status: String
         let activity: Activity
         let context: Double?
         let waiting: Bool
+        /// "GitHub · VS Code"
+        var place = ""
+        var color: UInt32 = 0x0A84FF
+        /// The one the widget shows.
+        var current = false
     }
 
     @Published var config = Config()
@@ -39,12 +50,22 @@ final class AppModel: ObservableObject {
     @Published var hasSession = false
     @Published var activity: Activity = .sleep
     @Published var project: String?
+    /// The chat the widget shows: its title (or project), colour, and
+    /// where it runs ("GitHub · VS Code").
+    @Published var chatName: String?
+    @Published var chatColor: UInt32 = 0x0A84FF
+    @Published var chatPlace: String?
+    /// "Working · 3 min", "Idle · 12 min".
+    @Published var chatStatus: String?
     @Published var sessionPercent: Double?
     @Published var resetShort: String?
     @Published var resetLong: String?
     /// "2 h ago": how old the last known limit is (shown with no session).
     @Published var limitAge: String?
     @Published var contextPercent: Double?
+    /// Tokens in the context now, and the window ("327k of 1M").
+    @Published var contextTokens: Int?
+    @Published var contextWindow: Int?
     /// "Codex" when the session in front is Codex's (its own limits, no
     /// Claude model picker); nil for Claude.
     @Published var agentName: String?
@@ -124,6 +145,8 @@ final class AppModel: ObservableObject {
     var perform: (BarAction) -> Void = { _ in }
     var answerText: (String) -> Void = { _ in }
     var openSession: (String) -> Void = { _ in }
+    /// Follow this chat in the widget and bring it to the front.
+    var focusSession: (String) -> Void = { _ in }
     var showRequest: (String) -> Void = { _ in }
     var setConfig: (String, Any) -> Void = { _, _ in }
     var setOpenAtLogin: (Bool) -> Void = { _ in }
@@ -190,6 +213,17 @@ final class AppModel: ObservableObject {
         case ..<1_000: return "\(n)"
         case ..<1_000_000: return String(format: "%.1fk", Double(n) / 1_000)
         default: return String(format: "%.1fM", Double(n) / 1_000_000)
+        }
+    }
+
+    /// "327k", "1M", "1.2M": a context size at a glance.
+    static func short(_ n: Int) -> String {
+        switch n {
+        case ..<1_000: return "\(n)"
+        case ..<1_000_000: return "\(n / 1_000)k"
+        default:
+            let m = Double(n) / 1_000_000
+            return m == m.rounded() ? "\(Int(m))M" : String(format: "%.1fM", m)
         }
     }
 

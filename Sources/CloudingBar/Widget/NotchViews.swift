@@ -32,6 +32,8 @@ struct NotchShape: Shape {
 struct NotchView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    /// Just switched to another chat: its name shows for a moment.
+    @State private var flash: String?
 
     /// The concave curve at each top corner, where it meets the screen edge.
     static let shoulder: CGFloat = 8
@@ -72,6 +74,13 @@ struct NotchView: View {
             }
         }
         .lineLimit(1)
+        .onChange(of: model.chatName) { name in
+            guard model.sessions.count > 1, let name else { return }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { flash = name }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                if flash == name { withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) { flash = nil } }
+            }
+        }
         .overlay(state.dropHover ? NotchShape(radius: 16).stroke(Color.cbAction, lineWidth: 2) : nil)
         // Growing for a question or for writing: a springy Dynamic Island.
         .animation(.spring(response: 0.42, dampingFraction: 0.78), value: phase)
@@ -113,6 +122,10 @@ struct NotchView: View {
                 .frame(width: 20, height: 20)
                 .overlay(FileBadge(text: state.dropHover ? "+" : model.attachments.isEmpty ? nil : "\(model.attachments.count)")
                     .offset(x: 5, y: -3), alignment: .topTrailing)
+            // Several chats: this one's colour, by Cloud.
+            if model.sessions.count > 1 && !model.listening {
+                ChatDot(color: model.chatColor, size: 6).help(model.chatName ?? "")
+            }
             if model.listening {
                 Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)
             } else if model.hasSession && !model.config.widgetHides.contains("session") {
@@ -135,6 +148,12 @@ struct NotchView: View {
                 Text(model.statusTitle).font(.system(size: 12))
                 PulseDot(size: 7, still: model.config.doNotDisturb)
             }
+        } else if let name = flash {
+            HStack(spacing: 6) {
+                ChatDot(color: model.chatColor, size: 6)
+                Text(name).font(.system(size: 12)).frame(maxWidth: 150, alignment: .trailing)
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
         } else if model.hasSession && model.config.pillShows.contains("context") {
             HStack(spacing: 8) {
                 Text(PillLayout.percent(model.contextPercent))
@@ -173,11 +192,13 @@ struct NotchView: View {
     /// The grown island: a header line (under the camera, in a real notch),
     /// then what it's about. A click on it opens the panel.
     private func grown<Content: View>(_ title: String, _ subtitle: String?, waiting: Bool,
+                                      chat: (name: String, color: UInt32, elsewhere: Bool)? = nil,
                                       @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 MascotIcon(activity: waiting ? .wait : model.activity, size: 22).frame(width: 22, height: 22)
                 Text(title).font(.system(size: 13, weight: .semibold))
+                if let chat { ChatTag(name: chat.name, color: chat.color, elsewhere: chat.elsewhere, maxWidth: 150) }
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle).font(.system(size: 12)).foregroundColor(.cbSecondary)
                 }
@@ -200,9 +221,9 @@ struct NotchView: View {
     /// Claude asks or needs an OK: the question (or the command) and the
     /// answers, right in the notch.
     @ViewBuilder private func request(_ r: AppModel.RequestCard) -> some View {
+        let chat = r.chat.map { (name: $0, color: r.color ?? 0x0A84FF, elsewhere: r.elsewhere) }
         if r.kind == .permission {
-            grown("Needs your OK", [r.project, r.verb == "Run" ? "run in terminal" : r.verb.lowercased()]
-                    .compactMap { $0 }.joined(separator: " · "), waiting: true) {
+            grown("Needs your OK", r.verb == "Run" ? "run in terminal" : r.verb.lowercased(), waiting: true, chat: chat) {
                 Text(r.detail)
                     .font(.system(size: 12, design: .monospaced))
                     .lineLimit(2)
@@ -214,8 +235,7 @@ struct NotchView: View {
                 }
             }
         } else {
-            grown("Claude asks", [r.project, r.count > 1 ? "\(r.index + 1) of \(r.count)" : nil]
-                    .compactMap { $0 }.joined(separator: " · "), waiting: true) {
+            grown("Claude asks", r.count > 1 ? "\(r.index + 1) of \(r.count)" : nil, waiting: true, chat: chat) {
                 Text(r.question)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(3)
@@ -278,7 +298,8 @@ struct NotchView: View {
 
     /// Writing in the notch: it grows into a text line.
     private var typing: some View {
-        grown("Write to Claude", model.project, waiting: false) {
+        grown("Write to", nil, waiting: false,
+              chat: model.chatName.map { (name: $0, color: model.chatColor, elsewhere: false) }) {
             PillTyping(model: model, state: state, width: inner, inline: true)
         }
     }

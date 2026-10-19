@@ -33,6 +33,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ticks = 0
     private var refreshQueued = false
     private var lastActiveId: String?
+    /// The chat picked in the widget, and when: it's followed until you
+    /// go to another chat yourself.
+    private var pickedSessionId: String?
+    private var pickedAt = Date.distantPast
     /// A session whose request was picked in the widget's sessions list.
     private var preferredRequestSession: String?
 
@@ -278,12 +282,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.async { [weak self] in self?.refresh() }
     }
 
+    /// The chat the widget and the bar follow (SessionStore.focus): just
+    /// after a pick in the widget, that one, while its window comes up.
+    private var focusedSession: Session? {
+        if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) < 4,
+           let s = store.sessions[id], s.isAlive() { return s }
+        return store.focus(windowTitle: frontTitle, sticky: [pickedSessionId, lastActiveId].compactMap { $0 })
+    }
+
     private func refresh() {
         refreshQueued = false
-        let active = store.activeSession(windowTitle: frontTitle)
+        // Gone to another chat yourself: the pick is over.
+        if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) >= 4,
+           let shown = store.session(inWindow: frontTitle), shown.id != id {
+            pickedSessionId = nil
+        }
+        let active = focusedSession
         if active?.id != lastActiveId {
             lastActiveId = active?.id
-            DebugLog.note("active session: \(active?.projectName ?? "none") (\(active?.id.prefix(8) ?? "-"))")
+            DebugLog.note("active session: \(active?.displayName ?? "none") (\(active?.id.prefix(8) ?? "-"))")
         }
 
         if config.widget { widget.show() } else { widget.hide() }
@@ -378,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Taps
 
     private func perform(_ action: BarAction) {
-        let active = store.activeSession(windowTitle: frontTitle)
+        let active = focusedSession
         let request = currentRequest(active: active)
 
         switch action {
@@ -754,6 +771,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.perform = { [weak self] in self?.perform($0) }
         model.answerText = { [weak self] in self?.answerTyped($0) }
         model.openSession = { [weak self] in self?.openSession($0) }
+        model.focusSession = { [weak self] id in
+            guard let self, self.store.sessions[id] != nil else { return }
+            DebugLog.tap("focus session \(self.store.sessions[id]?.displayName ?? id)")
+            self.pickedSessionId = id
+            self.pickedAt = Date()
+            if self.preferredRequestSession != nil && self.preferredRequestSession != id { self.preferredRequestSession = nil }
+            self.refresh()
+            self.openSession(id)
+        }
         model.showRequest = { [weak self] id in
             self?.preferredRequestSession = id
             self?.refresh()
@@ -799,6 +825,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.hasSession, !alive.isEmpty)
         set(\.activity, request != nil ? .wait : activity(of: active))
         set(\.project, active?.projectName)
+        set(\.chatName, active?.displayName)
+        set(\.chatColor, Session.colors[(active?.colorIndex ?? 0) % Session.colors.count])
+        set(\.chatPlace, active.map { place(of: $0) })
+        set(\.chatStatus, active.map { status(of: $0, waiting: activity(of: $0) == .wait) })
         // A Codex session in front: Codex's own limits (a different account).
         let isCodex = active?.entrypoint == "codex"
         let account = isCodex ? store.codexAccount : store.account
@@ -810,6 +840,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.weekPercent, account.weekPercent)
         set(\.weekReset, account.weekResetLong)
         set(\.contextPercent, active?.contextPercent(windowOverride: config.contextWindowSize))
+        set(\.contextTokens, active?.contextTokens)
+        set(\.contextWindow, active.map { $0.contextWindow(override: config.contextWindowSize) })
         set(\.tokensIn, active?.tokensIn)
         set(\.tokensOut, active?.tokensOut)
         set(\.cost, active?.costUSD)
@@ -818,7 +850,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.effort, active?.effort)
         set(\.linesAdded, active?.linesAdded ?? 0)
         set(\.linesRemoved, active?.linesRemoved ?? 0)
-        set(\.branch, config.metrics.contains("git") ? active?.cwd.flatMap(branch(at:)) : nil)
+        set(\.branch, config.metrics.contains("git") ? active.flatMap(branch(of:)) : nil)
         set(\.agents, active?.runningAgents ?? 0)
         set(\.agentRows, (active?.agents ?? []).enumerated().map { i, a in
             AppModel.AgentRow(id: a.toolUseId ?? a.agentId ?? "\(i)", type: a.type, task: a.task, doing: a.doing,
@@ -835,29 +867,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let waitingIds = Set(requests.compactMap(\.sessionId))
         let rows = alive.map { s -> AppModel.SessionRow in
             let waiting = waitingIds.contains(s.id) || s.waitingNotice
-            let state = waiting ? "Needs your OK"
-                : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
-                : "Idle · \(AppModel.duration(since: s.lastSeen))"
-            // Where it runs, under its name: "Cowork · Idle · 12 min".
-            let source: String
-            switch s.entrypoint {
-            case "cowork": source = "Cowork"
-            case "claude-vscode": source = "VS Code"
-            case "cli": source = "Terminal"
-            case "claude-desktop": source = "Desktop"
-            case "codex": source = "Codex"
-            default: source = "Claude Code"
-            }
-            let status = source + " · " + state
-            return AppModel.SessionRow(id: s.id, name: s.projectName ?? "Claude", status: status,
+            return AppModel.SessionRow(id: s.id, name: s.displayName, status: status(of: s, waiting: waiting),
                                        activity: waiting ? .wait : s.activity,
                                        context: s.contextPercent(windowOverride: config.contextWindowSize),
-                                       waiting: waiting)
+                                       waiting: waiting, place: place(of: s),
+                                       color: Session.colors[s.colorIndex % Session.colors.count],
+                                       current: s.id == active?.id)
         }
-        .sorted { a, b in a.waiting != b.waiting ? a.waiting : a.name < b.name }
+        // A steady order, so the chips don't jump about: as they started.
+        .sorted { a, b in
+            let sa = store.sessions[a.id], sb = store.sessions[b.id]
+            return (sa?.colorIndex ?? 0, a.id) < (sb?.colorIndex ?? 0, b.id)
+        }
         set(\.sessions, rows)
 
-        let card = request.map(card(for:))
+        let card: AppModel.RequestCard? = request.map { self.card(for: $0, active: active) }
         if card?.id != shownCardId {
             shownCardId = card?.id
             m.otherDraft = ""
@@ -870,9 +894,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.voiceOffline, voiceOfflineCache?.offline ?? true)
     }
 
-    private func card(for r: PendingRequest) -> AppModel.RequestCard {
-        let project = r.sessionId.flatMap { store.sessions[$0]?.projectName }
-        var card = AppModel.RequestCard(id: r.id, kind: r.kind == .permission ? .permission : .question, project: project)
+    /// "GitHub · VS Code": its project and where it runs.
+    private func place(of s: Session) -> String {
+        let source: String
+        switch s.entrypoint {
+        case "cowork": source = "Cowork"
+        case "claude-vscode": source = "VS Code"
+        case "cli": source = "Terminal"
+        case "claude-desktop": source = "Desktop"
+        case "codex": source = "Codex"
+        default: source = "Claude Code"
+        }
+        // A titled chat names its project too; an untitled one is its project.
+        return ([s.title != nil ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// "Needs your OK", "Working · 3 min", "Idle · 12 min".
+    private func status(of s: Session, waiting: Bool) -> String {
+        waiting ? "Needs your OK"
+            : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
+            : "Idle · \(AppModel.duration(since: s.lastSeen))"
+    }
+
+    private func card(for r: PendingRequest, active: Session?) -> AppModel.RequestCard {
+        let session = r.sessionId.flatMap { store.sessions[$0] }
+        var card = AppModel.RequestCard(id: r.id, kind: r.kind == .permission ? .permission : .question,
+                                        project: session?.projectName)
+        card.chat = session?.displayName
+        card.color = session.map { Session.colors[$0.colorIndex % Session.colors.count] }
+        card.elsewhere = session != nil && session?.id != active?.id && store.alive.count > 1
         if r.kind == .permission {
             let s = r.summary
             card.verb = s.verb
@@ -892,7 +942,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// "Other" answered in the widget.
     private func answerTyped(_ text: String) {
-        let active = store.activeSession(windowTitle: frontTitle)
+        let active = focusedSession
         guard let request = currentRequest(active: active), request.kind == .question else { return }
         DebugLog.tap("widget: send typed answer")
         var answer = text
@@ -1037,12 +1087,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// {project}, {branch}, {clipboard}, {date} filled in.
     private func expand(_ template: String) -> String {
-        let active = store.activeSession(windowTitle: frontTitle)
+        let active = focusedSession
         let date = DateFormatter()
         date.dateFormat = "yyyy-MM-dd"
         return template
             .replacingOccurrences(of: "{project}", with: active?.projectName ?? "")
-            .replacingOccurrences(of: "{branch}", with: active?.cwd.flatMap(branch(at:)) ?? "")
+            .replacingOccurrences(of: "{branch}", with: active.flatMap(branch(of:)) ?? "")
             .replacingOccurrences(of: "{clipboard}", with: NSPasteboard.general.string(forType: .string) ?? "")
             .replacingOccurrences(of: "{date}", with: date.string(from: Date()))
     }
@@ -1053,10 +1103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         KeySender.type(expand(template)) // no Enter: read it over first
     }
 
-    private func branch(at cwd: String) -> String? {
-        if let c = branchCache[cwd], Date().timeIntervalSince(c.at) < 5 { return c.branch }
-        let b = Git.branch(at: cwd)
-        branchCache[cwd] = (b, Date())
+    /// Its git branch: of the folder it started in, else of the file it
+    /// touched last. Looked up at most every 5 s.
+    private func branch(of s: Session) -> String? {
+        let key = s.id + "|" + (s.workPath ?? "")
+        if let c = branchCache[key], Date().timeIntervalSince(c.at) < 5 { return c.branch }
+        let b = s.branch
+        branchCache[key] = (b, Date())
         return b
     }
 
@@ -1081,7 +1134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.addToQueue = { [weak self] text in
             guard let self else { return }
-            let active = self.store.activeSession(windowTitle: self.frontTitle)
+            let active = self.focusedSession
             // Dropped files go along, after the words.
             let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
             let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
@@ -1100,7 +1153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.takeScreenshot = { [weak self] in self?.takeScreenshot() }
         model.dropFiles = { [weak self] urls in self?.attach(urls) ?? false }
         model.removeAttachment = { [weak self] path in
-            guard let self, let active = self.store.activeSession(windowTitle: self.frontTitle) else { return }
+            guard let self, let active = self.focusedSession else { return }
             self.attachments[active.id]?.removeAll { $0 == path }
             if self.attachments[active.id]?.isEmpty == true { self.attachments[active.id] = nil }
             self.refresh()
@@ -1164,7 +1217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Files dropped on the widget wait for the session it shows.
     private func attach(_ urls: [URL]) -> Bool {
-        guard let active = store.activeSession(windowTitle: frontTitle) else { return false }
+        guard let active = focusedSession else { return false }
         attachments = attachments.filter { store.sessions[$0.key] != nil } // sessions gone
         var list = attachments[active.id] ?? []
         for url in urls where !list.contains(url.path) { list.append(url.path) }
@@ -1177,7 +1230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Insert: the paths go into the chat in front right away, without
     /// Enter, like a screenshot's. Only into that session's own chat.
     private func insertAttachments() {
-        guard let active = store.activeSession(windowTitle: frontTitle),
+        guard let active = focusedSession,
               store.session(inWindow: frontTitle)?.id == active.id,
               let files = attachments.removeValue(forKey: active.id), !files.isEmpty else { NSSound.beep(); return }
         DebugLog.tap("insert \(files.count) file(s) into \(active.projectName ?? active.id)")

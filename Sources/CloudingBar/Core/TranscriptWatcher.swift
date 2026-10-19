@@ -20,6 +20,8 @@ final class TranscriptWatcher {
         var tokensOut = 0
         var linesAdded = 0
         var linesRemoved = 0
+        /// The chat's title: the one you gave it, else the one Claude Code made up.
+        var title: String?
         /// Codex rollouts: the model's context window, and Codex's own limits
         /// (used %, resets at in unix seconds) for its 5-hour and weekly windows.
         var contextWindow: Int?
@@ -36,10 +38,17 @@ final class TranscriptWatcher {
         var tokensOut = 0
         var linesAdded = 0
         var linesRemoved = 0
-        /// The reply last counted: Claude Code writes one line per block of
+        /// Replies already counted: Claude Code writes one line per block of
         /// a reply (thinking, text, each tool call), each with the reply's
-        /// usage, so a reply counts once.
-        var lastMessageId: String?
+        /// usage, and later writes some replies again whole — so a reply
+        /// counts once, however far apart its lines are.
+        var counted = Set<String>()
+        /// The reply being read: its next blocks still count for the context.
+        var lastId: String?
+        /// Edits already counted (by line uuid): they're written again too.
+        var edits = Set<String>()
+        var aiTitle: String?
+        var customTitle: String?
     }
 
     private let queue = DispatchQueue(label: "cloudingbar.transcripts", qos: .utility)
@@ -57,6 +66,9 @@ final class TranscriptWatcher {
     /// Codex's rollout: usage and limits, and each turn's model and effort.
     private static let codexUsageMark = Data(#""type":"token_count""#.utf8)
     private static let codexTurnMark = Data(#""type":"turn_context""#.utf8)
+    /// The chat's title, as VS Code's tab and the terminal show it.
+    private static let aiTitleMark = Data(#""type":"ai-title""#.utf8)
+    private static let customTitleMark = Data(#""type":"custom-title""#.utf8)
 
     /// Reads what was appended since the last poll. `completion` runs on
     /// the main queue with one update per transcript that changed.
@@ -114,6 +126,7 @@ final class TranscriptWatcher {
         update.tokensOut = state.tokensOut
         update.linesAdded = state.linesAdded
         update.linesRemoved = state.linesRemoved
+        update.title = state.customTitle ?? state.aiTitle
         return update
     }
 
@@ -167,6 +180,13 @@ final class TranscriptWatcher {
                 Self.scanCodex(line, into: &update)
                 continue
             }
+            if line.range(of: Self.aiTitleMark) != nil || line.range(of: Self.customTitleMark) != nil {
+                if let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any] {
+                    if let t = obj["customTitle"] as? String, !t.isEmpty { state.customTitle = t }
+                    if let t = obj["aiTitle"] as? String, !t.isEmpty { state.aiTitle = t }
+                }
+                continue
+            }
             let isAssistant = line.range(of: Self.assistantMark) != nil
             let isInterrupt = !isAssistant && line.range(of: Self.interruptMark) != nil
             if !isAssistant, line.range(of: Self.commandMark) != nil,
@@ -182,7 +202,8 @@ final class TranscriptWatcher {
             }
             if !isAssistant, line.range(of: Self.editMark) != nil,
                let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
-               let result = obj["toolUseResult"] as? [String: Any] {
+               let result = obj["toolUseResult"] as? [String: Any],
+               (obj["uuid"] as? String).map({ state.edits.insert($0).inserted }) ?? true {
                 countLines(result, into: &state)
             }
             guard isAssistant || isInterrupt,
@@ -200,13 +221,15 @@ final class TranscriptWatcher {
             let input = (usage["input_tokens"] as? NSNumber)?.intValue ?? 0
             let cacheWrite = (usage["cache_creation_input_tokens"] as? NSNumber)?.intValue ?? 0
             let cacheRead = (usage["cache_read_input_tokens"] as? NSNumber)?.intValue ?? 0
-            update.contextTokens = input + cacheWrite + cacheRead
             let id = message["id"] as? String
-            if id == nil || id != state.lastMessageId {
+            if id.map({ state.counted.insert($0).inserted }) ?? true {
                 state.tokensIn += input + cacheWrite
                 state.tokensOut += (usage["output_tokens"] as? NSNumber)?.intValue ?? 0
-                state.lastMessageId = id
+            } else if id != state.lastId {
+                continue // an old reply written again: not where the chat is now
             }
+            state.lastId = id
+            update.contextTokens = input + cacheWrite + cacheRead
             if let model = (obj["requestedModel"] as? String) ?? (message["model"] as? String) {
                 update.model = model
             }

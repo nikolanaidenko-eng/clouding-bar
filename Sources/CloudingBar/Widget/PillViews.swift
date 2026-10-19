@@ -10,12 +10,14 @@ import UniformTypeIdentifiers
 extension AppModel {
     /// Every item the pill and the panel can show, in the owner's order.
     var itemIDs: [String] {
-        let all = ["session", "context", "reset", "cost"] + Metric.ids.map { "metric:" + $0 } + ["chat"]
+        let all = ["focus", "session", "context", "reset", "cost"] + Metric.ids.map { "metric:" + $0 } + ["chat"]
             + buttons.map { "button:" + $0.label } + ["templates", "shot", "mic"]
         let order = config.itemOrder
-        return all.enumerated().sorted { a, b in
-            (order.firstIndex(of: a.element) ?? order.count + a.offset) < (order.firstIndex(of: b.element) ?? order.count + b.offset)
-        }.map(\.element)
+        // Which chat it shows comes first, unless it was moved.
+        func rank(_ e: (offset: Int, element: String)) -> Int {
+            order.firstIndex(of: e.element) ?? (e.element == "focus" ? -1 : order.count + e.offset)
+        }
+        return all.enumerated().sorted { rank($0) < rank($1) }.map(\.element)
     }
 
     func rank(_ id: String) -> Int { itemIDs.firstIndex(of: id) ?? .max }
@@ -211,7 +213,7 @@ extension View {
 /// that fits, flowing from row to row.
 struct PillLayout {
     enum Part: Hashable {
-        case session, context, reset, cost, sessionBar, contextBar
+        case focus, session, context, reset, cost, sessionBar, contextBar
         case metric(String), button(Int), chat, templates, shot, mic
     }
 
@@ -245,6 +247,10 @@ struct PillLayout {
         let shows = model.config.pillShows
         let hides = Set(model.config.widgetHides)
         var list: [(part: Part, width: CGFloat, id: String)] = []
+        // With several chats: which one this is.
+        if model.sessions.count > 1, let name = model.chatName {
+            list.append((.focus, Self.focusWidth(name), "focus"))
+        }
         if !hides.contains("session") { list.append((.session, text(Self.percent(model.sessionPercent)), "session")) }
         if shows.contains("context"), let c = model.contextPercent {
             list.append((.context, text("ctx", 11) + 6 + text(Self.percent(c)), "context"))
@@ -285,6 +291,12 @@ struct PillLayout {
     }
 
     static func percent(_ p: Double?) -> String { p.map { "\(Int($0.rounded()))%" } ?? "—" }
+
+    /// The chat's dot and its name, cut short.
+    static let focusName: CGFloat = 110
+    static func focusWidth(_ name: String) -> CGFloat {
+        7 + 6 + min(focusName, MainPanel.textWidth(name, 12) + 2)
+    }
 
     static func buttonWidth(_ label: String) -> CGFloat { max(44, MainPanel.textWidth(label, 12) + 20) }
 
@@ -328,6 +340,7 @@ struct PillLayout {
     /// Numbers, metrics, controls: a hairline goes where one kind meets another.
     static func kind(_ p: Part) -> Int {
         switch p {
+        case .focus: return 3
         case .session, .context, .reset, .cost, .sessionBar, .contextBar: return 0
         case .metric: return 1
         default: return 2
@@ -434,6 +447,9 @@ struct PillLayout {
     static let meterWidth: CGFloat = 36
     static let meterLabels: CGFloat = 34
     static let meterMinBar: CGFloat = 56
+    /// Pulled as narrow as it goes: the bars alone, side by side, no numbers.
+    static let slimMeter: CGFloat = 8
+    static let slimGap: CGFloat = 6
 
     /// The chat as a column: the bit to write in, the buttons under it.
     static func chatColumn(_ model: AppModel) -> CGSize {
@@ -452,6 +468,9 @@ struct PillLayout {
         let pad = Self.columnPad
         let inner = max(Self.character, width - pad * 2)
         let top = Self.character + Self.sectionGap
+        // Too narrow for a number under each bar: just the bars.
+        let slim = inner < Self.meterWidth
+        func lineGap(_ kind: Line) -> CGFloat { kind == .meters && slim ? Self.slimGap : Self.gap }
         typealias Item = (id: String, part: Part, size: CGSize)
         var lines: [(kind: Line, items: [Item])] = []
         func gapBefore(_ i: Int) -> CGFloat {
@@ -466,7 +485,12 @@ struct PillLayout {
             switch p.part {
             case .sessionBar, .contextBar: continue
             case .session, .context:
-                item = (p.id, p.part, CGSize(width: Self.meterWidth, height: Self.meterMinBar + Self.meterLabels)); kind = .meters
+                item = (p.id, p.part, slim ? CGSize(width: Self.slimMeter, height: Self.meterMinBar)
+                        : CGSize(width: Self.meterWidth, height: Self.meterMinBar + Self.meterLabels)); kind = .meters
+            case .focus:
+                // Its name when there's room, else just its dot.
+                let w = p.width <= inner ? p.width : 14
+                item = (p.id, p.part, CGSize(width: w, height: 20)); kind = .list
             case .templates, .shot, .mic: item = (p.id, p.part, CGSize(width: 26, height: 26)); kind = .icons
             case .reset, .cost, .metric: item = (p.id, p.part, CGSize(width: p.width, height: 20)); kind = .list
             case .button: item = (p.id, p.part, CGSize(width: p.width, height: 26)); kind = .full
@@ -476,7 +500,7 @@ struct PillLayout {
             guard item.size.width <= inner else { continue }
             let saved = lines
             if let last = lines.last, last.kind == kind, kind == .meters || kind == .icons,
-               last.items.map(\.size.width).reduce(0, +) + Self.gap * CGFloat(last.items.count) + item.size.width <= inner {
+               last.items.map(\.size.width).reduce(0, +) + lineGap(kind) * CGFloat(last.items.count) + item.size.width <= inner {
                 lines[lines.count - 1].items.append(item)
             } else {
                 lines.append((kind, [item]))
@@ -500,7 +524,7 @@ struct PillLayout {
             }
             let grow = line.kind == .meters ? extra : 0
             let lineHeight = (line.items.map(\.size.height).max() ?? 0) + grow
-            let lineWidth = line.items.map(\.size.width).reduce(0, +) + Self.gap * CGFloat(line.items.count - 1)
+            let lineWidth = line.items.map(\.size.width).reduce(0, +) + lineGap(line.kind) * CGFloat(line.items.count - 1)
             natural = max(natural, lineWidth)
             var x: CGFloat
             switch line.kind {
@@ -514,7 +538,7 @@ struct PillLayout {
                 a.slots[item.id] = CGRect(x: x, y: y + (lineHeight - h) / 2, width: w, height: h)
                 a.ids.append(item.id)
                 a.parts[item.id] = item.part
-                x += w + Self.gap
+                x += w + lineGap(line.kind)
             }
             y += lineHeight
         }
@@ -612,10 +636,13 @@ struct PillView: View {
                     .truncationMode(.head)
                     .frame(width: 300, alignment: .leading)
             }
-        } else if model.request != nil {
+        } else if let r = model.request {
             HStack(spacing: 10) {
                 MascotIcon(activity: .wait, size: 30).frame(width: 30, height: 30)
                 Text(model.statusTitle)
+                if model.sessions.count > 1, let chat = r.chat {
+                    ChatTag(name: chat, color: r.color ?? 0x0A84FF, maxWidth: 140)
+                }
                 PulseDot(still: model.config.doNotDisturb)
             }
         } else {
@@ -727,11 +754,25 @@ struct PillBoard: View {
         .frame(width: PillLayout.meterWidth, height: height, alignment: .top)
     }
 
+    /// As narrow as it goes: the bar alone; the number shows on hover.
+    private func slim(_ percent: Double?, _ label: String, delay: Double = 0) -> some View {
+        MeterBar(percent: percent, height: 6, track: .white.opacity(0.14), delay: delay, vertical: true)
+            .frame(maxHeight: .infinity)
+            .help("\(label): \(PillLayout.percent(percent))")
+            .accessibilityLabel("\(label) \(PillLayout.percent(percent))")
+    }
+
     /// One item: a number (with its bar, if shown), a metric or a control.
     /// A click on a number opens the panel.
     @ViewBuilder private func item(_ part: PillLayout.Part, shown: Set<PillLayout.Part>, vertical: Bool,
                                    slot: CGSize) -> some View {
         switch part {
+        case .focus:
+            PillFocus(model: model, dotOnly: slot.width < 40).hoverReport(state).transition(.opacity)
+        case .session where vertical && slot.width < PillLayout.meterWidth:
+            slim(model.sessionPercent, "5-hour limit").opensPanel(state)
+        case .context where vertical && slot.width < PillLayout.meterWidth:
+            slim(model.contextPercent, "Context", delay: 0.12).opensPanel(state)
         case .session where vertical:
             upright(model.sessionPercent, "5h", height: slot.height).opensPanel(state)
         case .context where vertical:
@@ -887,7 +928,8 @@ struct PillTyping: View {
                 .foregroundColor(.cbSecondary)
                 .help(model.attachments.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))
             }
-            TextField(model.attachments.isEmpty ? "Write to Claude" : "Add a message, or just send", text: $state.pillDraft)
+            TextField(model.attachments.isEmpty ? "Write to " + (model.chatName.map { "“\($0)”" } ?? "Claude")
+                      : "Add a message, or just send", text: $state.pillDraft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($focused)
@@ -912,6 +954,69 @@ struct PillTyping: View {
         if !text.isEmpty || !model.attachments.isEmpty { model.addToQueue(text) }
         state.pillDraft = ""
         state.endTyping?()
+    }
+}
+
+/// Which chat the pill shows: its dot and name (or the dot alone). A
+/// click lists the chats to follow another one.
+struct PillFocus: View {
+    @ObservedObject var model: AppModel
+    var dotOnly = false
+    @Environment(\.clickGate) private var gate
+
+    var body: some View {
+        Button { if gate() { ChatMenu.show(model) } } label: {
+            HStack(spacing: 6) {
+                ChatDot(color: model.chatColor)
+                if !dotOnly {
+                    Text(model.chatName ?? "").font(.system(size: 12)).foregroundColor(.cbText)
+                        .lineLimit(1).truncationMode(.tail)
+                        .frame(maxWidth: PillLayout.focusName, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+            .frame(minWidth: 14, minHeight: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Shows \(model.chatName ?? "this chat") — click to pick another chat")
+        .accessibilityLabel("Chat: \(model.chatName ?? "")")
+    }
+}
+
+/// The live chats as a menu at the pointer; picking one follows it.
+enum ChatMenu {
+    final class Target: NSObject {
+        let pick: (String) -> Void
+        init(_ pick: @escaping (String) -> Void) { self.pick = pick }
+        @objc func chosen(_ item: NSMenuItem) { if let id = item.representedObject as? String { pick(id) } }
+    }
+    private static var target: Target?
+
+    static func show(_ model: AppModel) {
+        let menu = NSMenu()
+        let t = Target { [weak model] id in model?.focusSession(id) }
+        target = t
+        for r in model.sessions {
+            let item = NSMenuItem(title: r.name, action: #selector(Target.chosen(_:)), keyEquivalent: "")
+            item.target = t
+            item.representedObject = r.id
+            item.state = r.current ? .on : .off
+            item.image = dot(r.color)
+            item.toolTip = r.place + " · " + r.status
+            if r.waiting { item.title += "  — needs you" }
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    static func dot(_ color: UInt32) -> NSImage {
+        NSImage(size: NSSize(width: 10, height: 10), flipped: false) { r in
+            NSColor(srgbRed: CGFloat((color >> 16) & 0xFF) / 255, green: CGFloat((color >> 8) & 0xFF) / 255,
+                    blue: CGFloat(color & 0xFF) / 255, alpha: 1).setFill()
+            NSBezierPath(ovalIn: r.insetBy(dx: 1, dy: 1)).fill()
+            return true
+        }
     }
 }
 

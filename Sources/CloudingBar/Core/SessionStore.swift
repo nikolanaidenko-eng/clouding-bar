@@ -40,7 +40,7 @@ final class SessionStore {
 
         // Only hook events start a session; status messages (the status
         // line, cloudingbar-tap) just add numbers to one we already know.
-        guard let session = sessions[id] ?? (m.event != nil ? Session(id: id, now: now) : nil) else {
+        guard let session = sessions[id] ?? (m.event != nil ? newSession(id, now: now) : nil) else {
             onChange?()
             return
         }
@@ -54,6 +54,11 @@ final class SessionStore {
         if let model = m.modelId { session.model = model }
         if let cost = m.costUSD { session.costUSD = cost }
         if let effort = m.effort { session.effort = effort }
+        // The file it reads or changes: where it works (the main thread only).
+        if m.agentId == nil, let path = (m.toolInput["file_path"] ?? m.toolInput["notebook_path"]) as? String,
+           path.hasPrefix("/") {
+            session.workPath = path
+        }
 
         if let event = m.event {
             session.lastEvent = now
@@ -92,7 +97,7 @@ final class SessionStore {
     /// context numbers the plugin worked out.
     func apply(cowork s: Cowork.Status) {
         let id = "cowork-" + s.session
-        let session = sessions[id] ?? Session(id: id, now: s.time)
+        let session = sessions[id] ?? newSession(id, now: s.time)
         sessions[id] = session
         session.cwd = "/" + (s.project ?? "Cowork")
         session.entrypoint = "cowork"
@@ -105,6 +110,17 @@ final class SessionStore {
         onChange?()
     }
 
+    /// A new session gets the first colour no live session has.
+    private func newSession(_ id: String, now: Date) -> Session {
+        let s = Session(id: id, now: now)
+        let used = alive.map(\.colorIndex)
+        s.colorIndex = Session.colors.indices.min { a, b in
+            let ua = used.filter { $0 == a }.count, ub = used.filter { $0 == b }.count
+            return ua != ub ? ua < ub : a < b
+        } ?? 0
+        return s
+    }
+
     // MARK: Queries
 
     var alive: [Session] {
@@ -112,52 +128,76 @@ final class SessionStore {
         return sessions.values.filter { $0.isAlive(now: now) }
     }
 
-    /// The session whose project is open in the frontmost window, judged by
-    /// the window title ("file — project — Visual Studio Code"). Falls back
-    /// to the session that was active last.
-    func activeSession(windowTitle: String?) -> Session? {
+    /// The session the widget and the bar follow:
+    ///  - the chat the window in front shows by its title ("Status bar —
+    ///    GitHub — Visual Studio Code": VS Code's tab and the terminal carry it);
+    ///  - else, of that window's project, the one in `sticky` (picked in the
+    ///    widget, or followed before), else the latest active;
+    ///  - no session's window in front: the one in `sticky`, else the latest active.
+    func focus(windowTitle: String?, sticky: [String]) -> Session? {
         let candidates = alive
-        if let title = windowTitle, let match = Self.bestMatch(title: title, in: candidates) {
-            return match
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates) } ?? []
+        if let top = ranked.first {
+            if top.score == 3 { return top.session }
+            let best = ranked.filter { $0.score == top.score }.map(\.session)
+            for id in sticky { if let s = best.first(where: { $0.id == id }) { return s } }
+            return best.max { $0.lastSeen < $1.lastSeen }
         }
+        for id in sticky { if let s = candidates.first(where: { $0.id == id }) { return s } }
         return candidates.max { $0.lastSeen < $1.lastSeen }
     }
 
-    /// The session the frontmost window shows, with no fallback.
+    /// The session whose chat the window in front surely shows: by its
+    /// title, or the only one of that project. Nil when it can't be told
+    /// (two chats of one project, the window on a file): typing there
+    /// could land anywhere.
     func session(inWindow title: String?) -> Session? {
-        title.flatMap { Self.bestMatch(title: $0, in: alive) }
+        guard let title else { return nil }
+        let ranked = Self.ranked(title: title, in: alive)
+        guard let top = ranked.first else { return nil }
+        if top.score == 3 { return top.session }
+        return ranked.filter { $0.score == top.score }.count == 1 ? top.session : nil
     }
 
-    private static func bestMatch(title: String, in sessions: [Session]) -> Session? {
-        var parts = Set<String>()
+    /// The window title's pieces, without what decorates them ("● ",
+    /// a terminal's spinner, " (Workspace)").
+    static func titleParts(_ title: String) -> [String] {
         var pieces = [title]
         for separator in [" — ", " – ", " - "] {
             pieces = pieces.flatMap { $0.components(separatedBy: separator) }
         }
-        for piece in pieces {
-            let trimmed = piece.trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: " (Workspace)", with: "")
-            if !trimmed.isEmpty { parts.insert(trimmed) }
+        return pieces.compactMap { piece in
+            let t = String(piece.replacingOccurrences(of: " (Workspace)", with: "")
+                .drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces)
+            return t.isEmpty ? nil : t
         }
-        let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents
+    }
 
-        var best: (score: Int, session: Session)?
-        for session in sessions {
-            guard let cwd = session.cwd else { continue }
-            let components = URL(fileURLWithPath: cwd).pathComponents
-            var score = 0
-            if let last = components.last, parts.contains(last) {
-                score = 2
-            } else if components.dropFirst(home.count).contains(where: parts.contains) {
-                score = 1 // the window shows a parent folder of the session
-            }
-            guard score > 0 else { continue }
-            if best == nil || score > best!.score
-                || (score == best!.score && session.lastSeen > best!.session.lastSeen) {
-                best = (score, session)
-            }
+    /// Sessions the window shows, best first: 3 its chat's title, 2 its
+    /// project's folder, 1 a parent folder of it.
+    private static func ranked(title: String, in sessions: [Session]) -> [(score: Int, session: Session)] {
+        let parts = titleParts(title)
+        let set = Set(parts)
+        let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents
+        func titled(_ t: String) -> Bool {
+            parts.contains { p in p == t || (p.hasSuffix("…") && t.hasPrefix(String(p.dropLast()))) }
         }
-        return best?.session
+        var list: [(score: Int, session: Session)] = []
+        for session in sessions {
+            var score = 0
+            if let t = session.title, titled(t) {
+                score = 3
+            } else if let cwd = session.cwd {
+                let components = URL(fileURLWithPath: cwd).pathComponents
+                if let last = components.last, set.contains(last) {
+                    score = 2
+                } else if components.dropFirst(home.count).contains(where: set.contains) {
+                    score = 1 // the window shows a parent folder of the session
+                }
+            }
+            if score > 0 { list.append((score, session)) }
+        }
+        return list.sorted { $0.score != $1.score ? $0.score > $1.score : $0.session.lastSeen > $1.session.lastSeen }
     }
 
     // MARK: Upkeep
@@ -190,6 +230,7 @@ final class SessionStore {
                 if let m = u.model { s.model = m }
                 if let e = u.effort { s.effort = e }
                 if let w = u.contextWindow { s.contextWindowSize = w }
+                if let t = u.title { s.title = t }
                 if let l = u.codexFiveHour { self.codexAccount.apply(used: l.percent, resetsAt: l.resetsAt) }
                 if let l = u.codexWeek { self.codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt) }
                 s.transcriptChanged = u.modified

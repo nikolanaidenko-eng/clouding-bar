@@ -551,51 +551,55 @@ struct MetricChip: View {
     }
 }
 
-/// The open widget, wide and low (the owner's request, 15.10): one header
-/// line, Session and Context side by side, the metrics with the mic and
-/// screenshot at their end, then the message box with the buttons in it
-/// (owner's request, 18.10).
+/// The open widget (owner's requests, 15.10–20.10): the chats as tabs —
+/// the one it shows lit in its colour — then the two limits as tidy lines,
+/// one quiet line of details, and the message box saying which chat it
+/// writes to, with the buttons and the tools in it.
 struct MainPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @State private var queueDraft = ""
     @FocusState private var typing: Bool
-    @StateObject private var toolsRearrange = Rearrange(space: "panel-tools")
+    @StateObject private var metricsRearrange = Rearrange(space: "panel-metrics")
     @StateObject private var buttonsRearrange = Rearrange(space: "panel-buttons")
 
-    private static let chrome: CGFloat = 12 + 8 + 4
+    private static let chrome: CGFloat = 12 + 12
     /// The text field never gets narrower than this.
     private static let fieldMin: CGFloat = 170
     /// Inside the message box.
     private static let boxPad: CGFloat = 8
+    private static let tool: CGFloat = 24
 
-    /// The panel grows with what it holds (owner's request, 17.10): wide
-    /// enough for the metrics row and the buttons in a row, up to 640 pt;
-    /// past that they wrap onto more rows instead of crowding.
+    /// Wide enough for the details line and the buttons in a row, 440 to
+    /// 600 pt; past that they wrap instead of crowding.
     private var panelWidth: CGFloat {
-        let tools = toolWidths
-        let toolsRow = tools.reduce(0, +) + 8 * CGFloat(max(0, tools.count - 1)) + Self.chrome
+        let metrics = metricWidths
+        let detailsRow = metrics.reduce(0, +) + 14 * CGFloat(max(0, metrics.count - 1)) + Self.chrome
         let buttons = buttonWidths
-        let field = model.config.taskQueue ? Self.fieldMin + 6 + 24 + 6 : 0
-        let buttonsRow = field + buttons.reduce(0, +) + 6 * CGFloat(max(0, buttons.count - 1)) + Self.chrome + Self.boxPad * 2 + 4
-        return min(640, max(420, toolsRow, buttonsRow))
+        let field = model.config.taskQueue ? Self.fieldMin + 6 : 0
+        let buttonsRow = field + buttons.reduce(0, +) + 6 * CGFloat(buttons.count) + toolsWidth
+            + Self.chrome + Self.boxPad * 2
+        return min(600, max(440, detailsRow, buttonsRow))
     }
 
     private var showTemplates: Bool { model.config.templatesEnabled && !model.config.templates.isEmpty }
 
-    /// Templates · screenshot · mic, after the metrics.
-    private var extras: [String] {
+    /// Templates · screenshot · mic, at the end of the message box.
+    private var tools: [String] {
         (showTemplates ? ["templates"] : []) + (model.config.screenshot ? ["shot"] : [])
             + (model.config.widgetHides.contains("mic") ? [] : ["mic"])
     }
+    /// The tools and Send at the end of the first line, with their gaps.
+    private var toolsWidth: CGFloat {
+        let n = CGFloat(tools.count + (model.config.taskQueue ? 1 : 0))
+        return n == 0 ? 0 : n * Self.tool + 4 * (n - 1) + 6
+    }
 
-    /// The metrics row: metrics and templates · screenshot · mic, in the
-    /// owner's order (drag one onto another to swap them).
-    private func tools(_ order: [String]) -> [(id: String, width: CGFloat)] {
-        (Metric.list(model).map { (id: "metric:" + $0.id, width: $0.width) } + extras.map { (id: $0, width: CGFloat(24)) })
+    private func metrics(_ order: [String]) -> [(id: String, width: CGFloat)] {
+        Metric.list(model).map { (id: "metric:" + $0.id, width: $0.plainWidth) }
             .sorted { (order.firstIndex(of: $0.id) ?? .max) < (order.firstIndex(of: $1.id) ?? .max) }
     }
-    private var toolWidths: [CGFloat] { tools(model.itemIDs).map(\.width) }
+    private var metricWidths: [CGFloat] { metrics(model.itemIDs).map(\.width) }
     /// The buttons (index into model.buttons), in `order`.
     private func buttons(_ order: [String]) -> [(id: String, width: CGFloat, index: Int)] {
         model.buttons.indices.map { (id: "button:" + model.buttons[$0].label,
@@ -604,8 +608,8 @@ struct MainPanel: View {
     }
     private var buttonWidths: [CGFloat] { buttons(model.itemIDs).map(\.width) }
 
-    static func textWidth(_ text: String, _ size: CGFloat) -> CGFloat {
-        ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size)]).width)
+    static func textWidth(_ text: String, _ size: CGFloat, weight: NSFont.Weight = .regular) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width)
     }
 
     /// Greedy line breaking: indices of items per row within `width`.
@@ -626,29 +630,14 @@ struct MainPanel: View {
     var body: some View {
         let width = panelWidth
         let inner = width - Self.chrome
-        PanelChrome(padding: EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 8), spacing: 10, width: width) {
-            header
-            // What Settings → Widget leaves on.
-            let showsSession = !model.config.widgetHides.contains("session")
-            let showsContext = model.config.pillShows.contains("context")
-            if showsSession || showsContext {
-                HStack(alignment: .top, spacing: 16) {
-                    if showsSession {
-                        MeterBlock(title: "Session", percent: model.sessionPercent,
-                                   caption: model.config.pillShows.contains("reset") ? model.resetLong.map { "Resets in \($0)" } : nil)
-                    }
-                    if showsContext {
-                        MeterBlock(title: "Context", percent: model.contextPercent, caption: tokens, delay: 0.12)
-                    }
-                }
-                .padding(.trailing, 4)
-            }
-            if !tools(model.itemIDs).isEmpty { toolRows(inner: inner) }
-            if model.pickingModel { ModelPicker(model: model).padding(.trailing, 4) }
-            if model.showingAgents { AgentsList(model: model).padding(.trailing, 4) }
-            if model.config.taskQueue || !model.buttons.isEmpty || !model.attachments.isEmpty {
+        PanelChrome(padding: EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12), spacing: 12, width: width) {
+            header(inner: inner)
+            meters
+            if !metrics(model.itemIDs).isEmpty { details(inner: inner) }
+            if model.pickingModel { ModelPicker(model: model) }
+            if model.showingAgents { AgentsList(model: model) }
+            if model.config.taskQueue || !model.buttons.isEmpty || !model.attachments.isEmpty || !tools.isEmpty {
                 messageBox(inner: inner)
-                    .padding(.trailing, 4)
             }
         }
         .animation(.cb(0.28), value: width)
@@ -656,32 +645,31 @@ struct MainPanel: View {
         .onChange(of: state.focusMessage) { _ in if model.config.taskQueue { typing = true } }
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
+    // MARK: Header
+
+    /// Which chat this is: with several, all of them as tabs; with one,
+    /// its name. Under it where it runs and what it's doing.
+    private func header(inner: CGFloat) -> some View {
+        let several = model.sessions.count > 1
+        let character: CGFloat = state.hidesHeaderCharacter ? 0 : 28 + 10
+        return HStack(alignment: .top, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 24).frame(width: 24, height: 24)
+                MascotIcon(activity: model.activity, size: 28).frame(width: 28, height: 28)
             }
-            Text(model.statusTitle).font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
-            if let project = model.project {
-                Text([project, model.agentName].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if model.config.sessionsList {
-                Button {
-                    withAnimation(.cbSwap) { state.mode = .sessions }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("\(model.sessions.count) session\(model.sessions.count == 1 ? "" : "s")")
-                        Icon(kind: .chevronRight, size: 11, lineWidth: 2.2)
-                    }
-                    .font(.system(size: 12))
-                    .foregroundColor(.cbSecondary)
-                    .frame(height: 28)
-                    .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: several ? 6 : 1) {
+                if several {
+                    ChatTabs(model: model, state: state, width: inner - character - 30 - 8)
+                } else {
+                    Text(model.chatName ?? model.statusTitle)
+                        .font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText).lineLimit(1)
                 }
-                .buttonStyle(.plain)
+                Text([model.chatPlace, model.chatStatus].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 11)).foregroundColor(model.activity == .wait ? .cbWarningText : .cbSecondary)
+                    .lineLimit(1)
+                    .padding(.leading, several ? 2 : 0)
             }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
             Button {
                 if let collapse = state.collapse { collapse() } else { withAnimation(.cb(0.22)) { state.mode = state.rest } }
             } label: { Icon(kind: .chevronUp, size: 14) }
@@ -690,37 +678,61 @@ struct MainPanel: View {
         }
     }
 
-    /// The metrics, then templates · screenshot · mic, wrapping if needed;
-    /// drag one onto another to swap them.
-    private func toolRows(inner: CGFloat) -> some View {
-        let metrics = Metric.list(model)
-        let items = tools(toolsRearrange.order(model.itemIDs))
-        let board = flowSlots(items, width: inner, rowHeight: 24, gap: 8, rowGap: 6)
-        return RearrangeBoard(ids: items.map(\.id), slots: board.slots, size: board.size, rearrange: toolsRearrange,
-                              commit: { model.swapItems($0, $1) }) { id in
-            if let m = metrics.first(where: { "metric:" + $0.id == id }) {
-                MetricChip(metric: m)
-            } else if id == "templates" {
-                TemplatesButton(model: model, size: 24)
-            } else if id == "shot" {
-                ShotButton(model: model, size: 24)
-            } else {
-                MicButton(model: model, size: 24)
+    // MARK: Limits
+
+    /// The 5-hour limit and the context, one tidy line each.
+    @ViewBuilder private var meters: some View {
+        let showsSession = !model.config.widgetHides.contains("session")
+        let showsContext = model.config.pillShows.contains("context")
+        if showsSession || showsContext {
+            VStack(spacing: 8) {
+                if showsSession {
+                    MeterLine(title: model.agentName.map { "\($0) 5h" } ?? "5-hour", percent: model.sessionPercent,
+                              caption: model.config.pillShows.contains("reset") ? model.resetLong.map { "resets in \($0)" } : nil)
+                }
+                if showsContext {
+                    MeterLine(title: "Context", percent: model.contextPercent, caption: contextCaption, delay: 0.12)
+                }
             }
+            .padding(.horizontal, 10).padding(.vertical, 9)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.22)))
         }
     }
 
-    /// Where a message is written: one line with the text field and the
-    /// buttons after it (owner's request, 18.10). While you type, the
-    /// buttons step back and can't be clicked by accident. Drag a button
-    /// onto another to swap them.
+    /// "327k of 1M": how much of this chat's window is used.
+    private var contextCaption: String? {
+        guard let t = model.contextTokens, let w = model.contextWindow else { return nil }
+        return "\(AppModel.short(t)) of \(AppModel.short(w))"
+    }
+
+    // MARK: Details
+
+    /// The model, ±lines, branch, subagents, cost: one quiet line, in the
+    /// owner's order (drag one onto another to swap them).
+    private func details(inner: CGFloat) -> some View {
+        let all = Metric.list(model)
+        let items = metrics(metricsRearrange.order(model.itemIDs))
+        let board = flowSlots(items, width: inner, rowHeight: 22, gap: 14, rowGap: 4)
+        return RearrangeBoard(ids: items.map(\.id), slots: board.slots, size: board.size, rearrange: metricsRearrange,
+                              commit: { model.swapItems($0, $1) }) { id in
+            if let m = all.first(where: { "metric:" + $0.id == id }) { MetricChip(metric: m, plain: true) }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: Message box
+
+    /// The text field — saying which chat it writes to — then the buttons,
+    /// the tools and Send. While you type, the buttons step back and can't
+    /// be clicked by accident. Drag a button onto another to swap them.
     private func messageBox(inner: CGFloat) -> some View {
-        let boxInner = inner - 4 - Self.boxPad * 2
+        let boxInner = inner - Self.boxPad * 2
         let field = model.config.taskQueue
         let items = buttons(buttonsRearrange.order(model.itemIDs))
         let index = Dictionary(items.map { ($0.id, $0.index) }, uniquingKeysWith: { a, _ in a })
+        let tail = toolsWidth
         // As many buttons as fit after the field go on its line; the rest wrap below.
-        let room = boxInner - (field ? Self.fieldMin + 6 + 24 + 6 : 0)
+        let room = boxInner - (field ? Self.fieldMin + 6 : 0) - tail
         var firstCount = 0
         var used: CGFloat = 0
         for b in items {
@@ -729,7 +741,7 @@ struct MainPanel: View {
             used += add
             firstCount += 1
         }
-        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) - 6 - 24 : 0
+        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) - tail : 0
         var slots: [String: CGRect] = [:]
         var x = field ? fieldWidth + 6 : 0
         for b in items.prefix(firstCount) {
@@ -738,9 +750,8 @@ struct MainPanel: View {
         }
         let rest = flowSlots(items.dropFirst(firstCount).map { (id: $0.id, width: $0.width) },
                              width: boxInner, rowHeight: 26, gap: 6, rowGap: 6)
-        let restTop: CGFloat = firstCount > 0 || field ? 32 : 0
-        for (id, r) in rest.slots { slots[id] = r.offsetBy(dx: 0, dy: restTop) }
-        let height = items.count > firstCount ? restTop + rest.size.height : 26
+        for (id, r) in rest.slots { slots[id] = r.offsetBy(dx: 0, dy: 32) }
+        let height = items.count > firstCount ? 32 + rest.size.height : 26
         let busy = typing || !queueDraft.isEmpty
         let sendable = !queueDraft.isEmpty || !model.attachments.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
@@ -748,19 +759,13 @@ struct MainPanel: View {
             if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field) }
             ZStack(alignment: .topLeading) {
                 if field {
-                    TextField(model.attachments.isEmpty ? "Queue for after this reply" : "Add a message, or just send",
-                              text: $queueDraft)
+                    TextField(placeholder, text: $queueDraft)
                         .textFieldStyle(.plain).font(.system(size: 12))
                         .padding(.horizontal, 4)
                         .frame(width: max(0, fieldWidth), height: 26)
                         .focused($typing)
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
-                    Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
-                        .buttonStyle(IconButtonStyle(background: sendable ? .cbAction : Color.white.opacity(0.1),
-                                                     foreground: .white, size: 24))
-                        .accessibilityLabel("Add to queue")
-                        .offset(x: boxInner - 24, y: 1)
                 }
                 RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
                                rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
@@ -772,6 +777,23 @@ struct MainPanel: View {
                             .animation(.easeOut(duration: 0.15), value: busy)
                     }
                 }
+                HStack(spacing: 4) {
+                    ForEach(tools, id: \.self) { id in
+                        switch id {
+                        case "templates": TemplatesButton(model: model, size: Self.tool)
+                        case "shot": ShotButton(model: model, size: Self.tool)
+                        default: MicButton(model: model, size: Self.tool)
+                        }
+                    }
+                    if field {
+                        Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
+                            .buttonStyle(IconButtonStyle(background: sendable ? .cbAction : Color.white.opacity(0.1),
+                                                         foreground: .white, size: Self.tool))
+                            .accessibilityLabel(model.activity == .work ? "Queue" : "Send")
+                    }
+                }
+                .frame(height: 26)
+                .offset(x: boxInner - tail + 6)
             }
             .frame(width: boxInner, height: height, alignment: .topLeading)
         }
@@ -779,7 +801,15 @@ struct MainPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.25)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(typing ? Color.cbAction.opacity(0.6) : Color.white.opacity(0.12), lineWidth: typing ? 1 : 0.5))
+            .strokeBorder(typing ? Color(hex: model.chatColor).opacity(0.7) : Color.white.opacity(0.12),
+                          lineWidth: typing ? 1 : 0.5))
+    }
+
+    /// Says where the words go: "Write to “Status bar”".
+    private var placeholder: String {
+        if !model.attachments.isEmpty { return "Add a message, or just send" }
+        let name = model.chatName.map { "“" + ($0.count > 20 ? String($0.prefix(19)) + "…" : $0) + "”" } ?? "Claude"
+        return model.activity == .work ? "Queue for \(name)" : "Write to \(name)"
     }
 
     /// Requests that go out one by one after each reply.
@@ -827,7 +857,7 @@ struct MainPanel: View {
                     .disabled(!model.chatInFront)
                     .opacity(model.chatInFront ? 1 : 0.4)
                     .help(model.chatInFront ? "Type the paths into the chat now, without Enter"
-                          : "Open \(model.project ?? "its") chat to insert them")
+                          : "Open \(model.chatName ?? "its") chat to insert them")
                     .frame(width: insert.width, height: 24)
                     .offset(x: insert.minX, y: insert.minY)
             }
@@ -843,10 +873,149 @@ struct MainPanel: View {
         queueDraft = ""
         typing = false
     }
+}
 
-    private var tokens: String? {
-        guard let i = model.tokensIn, let o = model.tokensOut else { return nil }
-        return "\(AppModel.compact(i)) in · \(AppModel.compact(o)) out"
+/// One limit as a line: what it is, its bar, the number, a note.
+struct MeterLine: View {
+    let title: String
+    let percent: Double?
+    let caption: String?
+    var delay: Double = 0
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title).font(.system(size: 12)).foregroundColor(.cbSecondary)
+                .frame(width: 58, alignment: .leading)
+            MeterBar(percent: percent, height: 5, delay: delay)
+            Text(PillLayout.percent(percent)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundColor(.cbText)
+                .frame(width: 38, alignment: .trailing)
+            Text(caption ?? "").font(.system(size: 11).monospacedDigit()).foregroundColor(.cbSecondary)
+                .lineLimit(1)
+                .frame(width: 128, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A chat's colour.
+struct ChatDot: View {
+    let color: UInt32
+    var size: CGFloat = 7
+
+    var body: some View {
+        Circle().fill(Color(hex: color)).frame(width: size, height: size).accessibilityHidden(true)
+    }
+}
+
+/// The chat something belongs to: its dot and name, and a tag when it
+/// isn't the chat the widget shows.
+struct ChatTag: View {
+    let name: String
+    let color: UInt32
+    var elsewhere = false
+    var maxWidth: CGFloat = 180
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ChatDot(color: color)
+            Text(name).font(.system(size: 12)).foregroundColor(.cbText).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: maxWidth, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+            if elsewhere {
+                Text("other chat").font(.system(size: 10, weight: .semibold)).foregroundColor(.cbWarningText)
+                    .fixedSize()
+                    .padding(.horizontal, 6).frame(height: 16)
+                    .background(Capsule().fill(Color.cbWarning.opacity(0.16)))
+            }
+        }
+        .layoutPriority(1)
+        .help(elsewhere ? "From \(name), not the chat the widget shows" : name)
+    }
+}
+
+/// Every live chat as a tab (owner's request, 20.10): the one the widget
+/// follows lit in its colour, the light gliding over when you pick another
+/// (which brings that chat up). The ones that don't fit wait behind "+n".
+struct ChatTabs: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var state: WidgetState
+    let width: CGFloat
+    @Namespace private var lit
+
+    static let nameMax: CGFloat = 140
+
+    static func tabWidth(_ r: AppModel.SessionRow) -> CGFloat {
+        let weight: NSFont.Weight = r.current ? .semibold : .regular
+        let name: CGFloat = min(nameMax, MainPanel.textWidth(r.name, 12, weight: weight) + 1)
+        let pulse: CGFloat = r.waiting ? 13 : 0
+        return 23 + name + pulse + 10
+    }
+
+    /// As many as fit, the current one and the waiting ones first to stay.
+    private var visible: (shown: [AppModel.SessionRow], hidden: Int) {
+        let all = model.sessions
+        let keep = all.filter { $0.current || $0.waiting }
+        var shown: [AppModel.SessionRow] = []
+        var used: CGFloat = 0
+        let moreWidth: CGFloat = 36
+        for r in keep + all.filter({ !$0.current && !$0.waiting }) {
+            let w = Self.tabWidth(r) + (shown.isEmpty ? 0 : 6)
+            let left = all.count - shown.count - 1
+            guard used + w + (left > 0 ? 6 + moreWidth : 0) <= width || shown.isEmpty else { continue }
+            shown.append(r)
+            used += w
+        }
+        // Back in their steady order.
+        let ids = all.map(\.id)
+        return (shown.sorted { (ids.firstIndex(of: $0.id) ?? 0) < (ids.firstIndex(of: $1.id) ?? 0) }, all.count - shown.count)
+    }
+
+    var body: some View {
+        let v = visible
+        HStack(spacing: 6) {
+            ForEach(v.shown) { r in tab(r) }
+            if v.hidden > 0 {
+                Button { withAnimation(.cbSwap) { state.mode = .sessions } } label: {
+                    Text("+\(v.hidden)").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                        .frame(width: 36, height: 26)
+                        .background(Capsule().fill(Color.white.opacity(0.06)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("All chats")
+            }
+        }
+        .animation(.spring(response: 0.36, dampingFraction: 0.78), value: model.sessions.first(where: \.current)?.id)
+    }
+
+    private func tab(_ r: AppModel.SessionRow) -> some View {
+        Button { if !r.current { model.focusSession(r.id) } } label: {
+            HStack(spacing: 6) {
+                ChatDot(color: r.color)
+                Text(r.name).font(.system(size: 12, weight: r.current ? .semibold : .regular))
+                    .lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: Self.nameMax, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                if r.waiting { PulseDot(size: 7, still: model.config.doNotDisturb) }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .foregroundColor(r.current ? .cbText : .cbSecondary)
+            .background {
+                if r.current {
+                    Capsule().fill(Color(hex: r.color).opacity(0.22))
+                        .overlay(Capsule().strokeBorder(Color(hex: r.color).opacity(0.75), lineWidth: 1))
+                        .matchedGeometryEffect(id: "lit", in: lit)
+                } else {
+                    Capsule().fill(Color.white.opacity(0.06))
+                }
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help([r.place, r.status, r.context.map { "context \(Int($0.rounded()))%" }].compactMap { $0 }.joined(separator: " · "))
+        .accessibilityLabel(r.name + (r.current ? ", shown" : ""))
     }
 }
 
@@ -1133,8 +1302,10 @@ struct RequestCardView: View {
         HStack(spacing: 8) {
             MascotIcon(activity: .wait, size: 24).frame(width: 24, height: 24)
             Text("Needs your OK").font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
-            Text([r.project, r.verb == "Run" ? "run in terminal" : r.verb.lowercased()]
-                    .compactMap { $0 }.joined(separator: " · "))
+            if let chat = r.chat {
+                ChatTag(name: chat, color: r.color ?? 0x0A84FF, elsewhere: r.elsewhere, maxWidth: 150)
+            }
+            Text(r.verb == "Run" ? "run in terminal" : r.verb.lowercased())
                 .font(.system(size: 12)).foregroundColor(.cbSecondary).lineLimit(1)
             Spacer(minLength: 0)
             PulseDot(still: model.config.doNotDisturb)
@@ -1164,9 +1335,22 @@ struct RequestCardView: View {
     }
 
     @ViewBuilder private func question(_ r: AppModel.RequestCard) -> some View {
-        PanelHeader(activity: .wait, title: "Claude asks",
-                    subtitle: [r.project, r.count > 1 ? "\(r.index + 1) of \(r.count)" : nil].compactMap { $0 }.joined(separator: " · "),
-                    waiting: true, dnd: model.config.doNotDisturb)
+        HStack(spacing: 10) {
+            MascotIcon(activity: .wait, size: 32).frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("Claude asks").font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText)
+                    if r.count > 1 {
+                        Text("\(r.index + 1) of \(r.count)").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                    }
+                }
+                if let chat = r.chat {
+                    ChatTag(name: chat, color: r.color ?? 0x0A84FF, elsewhere: r.elsewhere)
+                }
+            }
+            Spacer(minLength: 0)
+            PulseDot(still: model.config.doNotDisturb)
+        }
         Text(r.question).font(.system(size: 14, weight: .medium)).lineSpacing(2).foregroundColor(.cbText)
             .fixedSize(horizontal: false, vertical: true)
         VStack(spacing: 0) {
@@ -1296,12 +1480,9 @@ struct SessionsPanel: View {
             VStack(spacing: 0) {
                 ForEach(model.sessions) { s in
                     Button {
-                        if s.waiting {
-                            model.showRequest(s.id)
-                            withAnimation(.cbSwap) { state.mode = .panel }
-                        } else {
-                            model.openSession(s.id)
-                        }
+                        if s.waiting { model.showRequest(s.id) }
+                        model.focusSession(s.id)
+                        withAnimation(.cbSwap) { state.mode = .panel }
                     } label: { row(s) }
                     .buttonStyle(.plain)
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
@@ -1309,7 +1490,7 @@ struct SessionsPanel: View {
             }
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Text("Click to open its conversation · % = context")
+            Text("Click one to follow it here and open it · % = context")
                 .font(.system(size: 11)).foregroundColor(.cbSecondary).padding(.horizontal, 2)
         }
         .foregroundColor(.cbText)
@@ -1325,8 +1506,15 @@ struct SessionsPanel: View {
         HStack(spacing: 10) {
             MascotIcon(activity: s.activity, size: 28).frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(s.name).font(.system(size: 13))
-                Text(s.status).font(.system(size: 11)).foregroundColor(s.waiting ? .cbWarningText : .cbSecondary)
+                HStack(spacing: 6) {
+                    ChatDot(color: s.color)
+                    Text(s.name).font(.system(size: 13, weight: s.current ? .semibold : .regular)).lineLimit(1)
+                    if s.current {
+                        Text("shown").font(.system(size: 10)).foregroundColor(.cbSecondary)
+                    }
+                }
+                Text([s.place, s.status].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.system(size: 11)).foregroundColor(s.waiting ? .cbWarningText : .cbSecondary).lineLimit(1)
             }
             Spacer(minLength: 0)
             Text(s.context.map { "\(Int($0.rounded()))%" } ?? "—")
@@ -1335,7 +1523,7 @@ struct SessionsPanel: View {
         }
         .padding(.leading, 8).padding(.trailing, 12)
         .frame(height: 52)
-        .background(s.waiting ? Color.cbWarning.opacity(0.10) : Color.clear)
+        .background(s.waiting ? Color.cbWarning.opacity(0.10) : s.current ? Color(hex: s.color).opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
     }
 }

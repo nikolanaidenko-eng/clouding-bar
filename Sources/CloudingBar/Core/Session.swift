@@ -26,6 +26,15 @@ final class Session {
     var waitingNotice = false
     var lastEvent: Date
     var transcriptChanged: Date?
+    /// The chat's title ("Status bar"): the one you gave it, else Claude
+    /// Code's. VS Code's tab and window and the terminal show the same.
+    var title: String?
+    /// Its colour in the widget (an index into `Session.colors`), so two
+    /// chats of one project are told apart at a glance.
+    var colorIndex = 0
+    /// The last file Claude read or changed: where it really works when
+    /// it was started in a parent folder (for the git branch).
+    var workPath: String?
 
     // Context: tokens from the transcript; window from the status line,
     // the config, or the model name.
@@ -82,14 +91,33 @@ final class Session {
         cwd.map { URL(fileURLWithPath: $0).lastPathComponent }
     }
 
+    /// What the widget calls it: its title, else its project.
+    var displayName: String { title ?? projectName ?? "Claude" }
+
+    /// Distinct on the dark widget, none of them the orange of "needs you".
+    static let colors: [UInt32] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE]
+
+    /// "Code: main": where it works, from the folder it started in or the
+    /// file it touched last.
+    var branch: String? {
+        if let cwd, let b = Git.branch(at: cwd) { return b }
+        guard let path = workPath else { return nil }
+        return Git.branch(at: (path as NSString).deletingLastPathComponent)
+    }
+
     var lastSeen: Date { max(lastEvent, transcriptChanged ?? .distantPast) }
 
     func contextPercent(windowOverride: Int?) -> Double? {
         guard let tokens = contextTokens else { return statusContextPercent }
-        var window = contextWindowSize ?? windowOverride
+        return min(100, Double(tokens) / Double(contextWindow(override: windowOverride)) * 100)
+    }
+
+    /// The model's context window, in tokens.
+    func contextWindow(override: Int?) -> Int {
+        var window = contextWindowSize ?? override
             ?? ((model?.contains("[1m]") ?? false) ? 1_000_000 : 200_000)
-        if tokens > window { window = max(window, 1_000_000) }
-        return min(100, Double(tokens) / Double(window) * 100)
+        if let tokens = contextTokens, tokens > window { window = max(window, 1_000_000) }
+        return window
     }
 
     /// Alive while its Claude process runs. Without a pid, a session that
@@ -116,13 +144,16 @@ final class Session {
         var contextTokens: Int?
         var contextWindowSize: Int?
         var statusContextPercent: Double?
+        var title: String?
+        var colorIndex: Int?
+        var workPath: String?
     }
 
     var record: Record {
         Record(id: id, cwd: cwd, transcriptPath: transcriptPath, claudePid: claudePid,
                entrypoint: entrypoint, activity: activity, lastEvent: lastEvent, model: model,
                contextTokens: contextTokens, contextWindowSize: contextWindowSize,
-               statusContextPercent: statusContextPercent)
+               statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath)
     }
 
     convenience init(record r: Record) {
@@ -136,6 +167,9 @@ final class Session {
         contextTokens = r.contextTokens
         contextWindowSize = r.contextWindowSize
         statusContextPercent = r.statusContextPercent
+        title = r.title
+        colorIndex = r.colorIndex ?? 0
+        workPath = r.workPath
     }
 }
 

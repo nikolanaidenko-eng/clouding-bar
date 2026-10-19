@@ -23,21 +23,44 @@ event("a", "/Users/me/Documents/GitHub")
 event("b", "/Users/me/claudebar")
 event("c", "/Users/me/claudebar/Sources") // newest
 
-check(store.activeSession(windowTitle: "Makefile — claudebar — Visual Studio Code")?.id == "b",
-      "title with the project folder picks that session")
-check(store.activeSession(windowTitle: "README.md — GitHub — Visual Studio Code")?.id == "a",
-      "another window picks the other session")
-check(store.activeSession(windowTitle: "Sources — Visual Studio Code")?.id == "c",
-      "exact last folder beats a parent folder")
-check(store.activeSession(windowTitle: "notes.txt - Untitled (Workspace) - Visual Studio Code")?.id == "c",
-      "no match falls back to the latest session")
-check(store.activeSession(windowTitle: nil)?.id == "c", "no title falls back to the latest session")
-check(store.activeSession(windowTitle: "● main.swift — claudebar (Workspace) — Visual Studio Code")?.id == "b",
+func focus(_ title: String?, _ sticky: [String] = []) -> String? { store.focus(windowTitle: title, sticky: sticky)?.id }
+check(focus("Makefile — claudebar — Visual Studio Code") == "b", "title with the project folder picks that session")
+check(focus("README.md — GitHub — Visual Studio Code") == "a", "another window picks the other session")
+check(focus("Sources — Visual Studio Code") == "c", "exact last folder beats a parent folder")
+check(focus("notes.txt - Untitled (Workspace) - Visual Studio Code") == "c", "no match falls back to the latest session")
+check(focus(nil) == "c", "no title falls back to the latest session")
+check(focus(nil, ["a"]) == "a", "no title: the one followed before stays")
+check(focus("notes.txt - Untitled (Workspace) - Visual Studio Code", ["b"]) == "b", "no match: the one followed before stays")
+check(focus("● main.swift — claudebar (Workspace) — Visual Studio Code") == "b",
       "dirty marker and (Workspace) suffix don't get in the way")
 
+// Two chats in one project: told apart by their titles.
+event("a2", "/Users/me/Documents/GitHub")
+store.sessions["a"]?.title = "Status bar"
+store.sessions["a2"]?.title = "Сайт ordermeshop portfolio"
+check(focus("Status bar — GitHub") == "a", "VS Code's chat tab: the chat by its title")
+check(focus("Сайт ordermeshop portfolio — GitHub — Visual Studio Code", ["a"]) == "a2", "the title beats the one followed")
+check(focus("README.md — GitHub — Visual Studio Code", ["a"]) == "a", "on a file: the chat followed before")
+check(focus("README.md — GitHub — Visual Studio Code") == "a2", "on a file, nothing followed: the latest of them")
+check(focus("⠂ Status bar") == "a", "a terminal's spinner before the title")
+check(store.session(inWindow: "README.md — GitHub — Visual Studio Code") == nil, "two chats, a file in front: can't tell")
+check(store.session(inWindow: "Status bar — GitHub")?.id == "a", "…its chat in front: that one")
+check(store.session(inWindow: "Makefile — claudebar — Visual Studio Code")?.id == "b", "the only chat of a project")
+check(Set(["a", "a2", "b", "c"].compactMap { store.sessions[$0]?.colorIndex }).count == 4, "each chat its own colour")
+event("a2", "/Users/me/Documents/GitHub", "SessionEnd")
+
 event("c", "/Users/me/claudebar/Sources", "SessionEnd")
-check(store.activeSession(windowTitle: "Sources — Visual Studio Code")?.id == "b",
-      "an ended session is gone; the parent-folder session matches")
+check(focus("Sources — Visual Studio Code") == "b", "an ended session is gone; the parent-folder session matches")
+
+// Where it works: the branch of the file it touched last.
+do {
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("repo")
+    try? FileManager.default.createDirectory(at: dir.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    try? "ref: refs/heads/feature-x\n".write(to: dir.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+    store.apply(Inbound(raw: ["hook_event_name": "PreToolUse", "session_id": "a", "cwd": "/Users/me/Documents/GitHub",
+                              "tool_name": "Edit", "tool_input": ["file_path": dir.appendingPathComponent("main.swift").path]]))
+    check(store.sessions["a"]?.branch == "feature-x", "branch: from the file it edits when its folder isn't a repo")
+}
 
 // Activity
 event("b", "/Users/me/claudebar", "Stop")
@@ -144,6 +167,29 @@ do { // the watcher picks both up from a transcript
     watcher.poll([(id: "m", path: file.path)]) { got = $0; done.signal() }
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
+}
+do { // a reply counts once, even written again much later; the title is read
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let file = dir.appendingPathComponent("dupes.jsonl")
+    func reply(_ id: String, _ ctx: Int) -> String {
+        #"{"type":"assistant","message":{"id":"\#(id)","model":"claude-opus-5-5","usage":{"input_tokens":\#(ctx),"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":10}}}"#
+    }
+    let lines = [reply("m1", 1000), reply("m1", 1000), #"{"type":"user","message":{"content":"x"}}"#, reply("m1", 1000),
+                 reply("m2", 5000), #"{"type":"ai-title","aiTitle":"Status bar","sessionId":"t"}"#,
+                 reply("m1", 1000), // m1 written again, long after
+                 #"{"type":"custom-title","customTitle":"My bar","sessionId":"t"}"#,
+                 #"{"type":"user","uuid":"e1","toolUseResult":{"type":"create","content":"a\nb"}}"#,
+                 #"{"type":"user","uuid":"e1","toolUseResult":{"type":"create","content":"a\nb"}}"#]
+    try? (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let watcher = TranscriptWatcher()
+    var got: [TranscriptWatcher.Update] = []
+    let done = DispatchSemaphore(value: 0)
+    watcher.poll([(id: "t", path: file.path)]) { got = $0; done.signal() }
+    while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    check(got.first?.tokensIn == 6000 && got.first?.tokensOut == 20, "watcher: each reply counted once")
+    check(got.first?.contextTokens == 5000, "watcher: an old reply written again doesn't set the context")
+    check(got.first?.title == "My bar", "watcher: the title you gave wins over Claude's")
+    check(got.first?.linesAdded == 2, "watcher: an edit written again counts once")
 }
 
 // MARK: Subagents

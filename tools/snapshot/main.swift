@@ -106,15 +106,26 @@ func sampleModel() -> AppModel {
     m.resetShort = "1:23"
     m.resetLong = "1 h 23 min"
     m.contextPercent = 31
+    m.contextTokens = 312_400
+    m.contextWindow = 1_000_000
     m.tokensIn = 41_200
     m.tokensOut = 2_300
+    m.chatName = "Offline routes"
+    m.chatColor = Session.colors[0]
+    m.chatPlace = "DiaRoute · VS Code"
+    m.chatStatus = "Working · 3 min"
     m.buttons = Config().effectiveButtons
     m.sessions = [
-        .init(id: "1", name: "DiaRoute", status: "VS Code · Needs your OK", activity: .wait, context: 31, waiting: true),
-        .init(id: "2", name: "bots", status: "Cowork · Working · 2 min", activity: .work, context: 58, waiting: false),
-        .init(id: "3", name: "side-project", status: "VS Code · Working · 9 min", activity: .work, context: 83, waiting: false),
-        .init(id: "4", name: "claudebar", status: "Terminal · Idle · 12 min", activity: .sleep, context: 94, waiting: false),
-        .init(id: "5", name: "landing", status: "VS Code · Idle · 1 h", activity: .sleep, context: 12, waiting: false),
+        .init(id: "1", name: "Offline routes", status: "Working · 3 min", activity: .work, context: 31, waiting: false,
+              place: "DiaRoute · VS Code", color: Session.colors[0], current: true),
+        .init(id: "2", name: "Lead bot", status: "Needs your OK", activity: .wait, context: 58, waiting: true,
+              place: "bots · Cowork", color: Session.colors[1]),
+        .init(id: "3", name: "Status bar", status: "Working · 9 min", activity: .work, context: 83, waiting: false,
+              place: "GitHub · VS Code", color: Session.colors[2]),
+        .init(id: "4", name: "claudebar", status: "Idle · 12 min", activity: .sleep, context: 94, waiting: false,
+              place: "Terminal", color: Session.colors[3]),
+        .init(id: "5", name: "Сайт ordermeshop portfolio", status: "Idle · 1 h", activity: .sleep, context: 12, waiting: false,
+              place: "GitHub · VS Code", color: Session.colors[4]),
     ]
     return m
 }
@@ -141,6 +152,15 @@ widget("w-pill-listening", .pill, size: NSSize(width: 400, height: 90)) { $0.lis
 widget("w-panel", .panel, size: NSSize(width: 480, height: 220))
 widget("w-permission", .panel, size: NSSize(width: 480, height: 200)) {
     $0.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "npm run build && npm test")
+}
+widget("w-permission-other", .panel, size: NSSize(width: 520, height: 200)) {
+    var card = AppModel.RequestCard(id: UUID(), kind: .permission, project: "bots", verb: "Run", detail: "npm run deploy")
+    card.chat = "Lead bot"; card.color = Session.colors[1]; card.elsewhere = true
+    $0.request = card
+}
+widget("w-panel-one", .panel, size: NSSize(width: 520, height: 260)) {
+    $0.sessions = Array($0.sessions.prefix(1))
+    $0.config.taskQueue = true
 }
 widget("w-question", .panel) {
     var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "DiaRoute")
@@ -194,7 +214,8 @@ widget("w-pill-chat", .pill, size: NSSize(width: 900, height: 90)) {
     $0.config.metrics = ["model", "agents"]; $0.modelName = "Opus 5.5 1M"; $0.agents = 2
     $0.config.itemOrder = ["session", "context", "reset", "cost", "metric:agents", "metric:model"]
 }
-for (name, width, height) in [("w-pill-column", 64.0, 520.0), ("w-pill-column-wide", 190.0, 520.0)] {
+for (name, width, height) in [("w-pill-column", 64.0, 520.0), ("w-pill-column-wide", 190.0, 520.0),
+                              ("w-pill-column-slim", 44.0, 520.0)] {
     let m = sampleModel()
     m.config.pillWidth = width; m.config.pillHeight = height; m.config.taskQueue = true; m.config.screenshot = true
     m.config.metrics = ["model", "lines", "git", "agents"]; m.modelName = "Opus 5.5 1M"; m.effort = "xhigh"
