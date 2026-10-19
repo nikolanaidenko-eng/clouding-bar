@@ -105,11 +105,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loadQueue()
         setUpCowork()
         model.showTour = { [weak self] in self?.showTour() }
-        // The first time: the tour, once everything is up.
-        if !config.tourShown {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                self?.showTour()
-                self?.setConfig("tourShown", true)
+        setUpClaudeCode()
+        // The first time: connecting to Claude Code if it isn't yet, then
+        // the tour, once everything is up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self else { return }
+            if !self.model.claudeConnected && !self.config.setupDeclined { self.offerSetup() }
+            if !self.config.tourShown {
+                self.showTour()
+                self.setConfig("tourShown", true)
             }
         }
 
@@ -651,7 +655,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openSettings() {
         model.openAtLogin = LoginItem.isEnabled
+        refreshSetupStatus()
         settings.show()
+    }
+
+    // MARK: - Connecting to Claude Code
+
+    private func setUpClaudeCode() {
+        Setup.updateHelpers() // the hook programs from this app, if they're newer
+        refreshSetupStatus()
+        model.connectClaude = { [weak self] in
+            DebugLog.tap("connect to Claude Code")
+            do {
+                try Setup.connect()
+                self?.model.setupMessage = nil
+            } catch {
+                self?.model.setupMessage = error.localizedDescription
+            }
+            self?.refreshSetupStatus()
+        }
+        model.wrapVSCode = { [weak self] in
+            DebugLog.tap("VS Code wrapper")
+            do {
+                try Setup.wrapVSCode()
+                self?.model.setupMessage = "Done. New Claude chats in VS Code report the 5-hour limit."
+            } catch {
+                self?.model.setupMessage = "VS Code's settings couldn't be changed: \(error.localizedDescription)"
+            }
+            self?.refreshSetupStatus()
+        }
+    }
+
+    private func refreshSetupStatus() {
+        model.claudeConnected = Setup.isConnected
+        model.hasVSCode = Setup.hasVSCode
+        model.vscodeWrapped = Setup.vscodeWrapped
+    }
+
+    /// The first launch of a download: ask before touching Claude Code's settings.
+    private func offerSetup() {
+        let alert = NSAlert()
+        alert.messageText = "Connect Clouding Bar to Claude Code?"
+        alert.informativeText = "Clouding Bar adds a small hook and a status line to ~/.claude/settings.json, so Claude Code can tell it what it's doing and ask you through it. Your settings are merged, never replaced, and backed up first. Nothing leaves this Mac."
+        alert.addButton(withTitle: "Connect")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            model.connectClaude()
+            if let message = model.setupMessage {
+                let failed = NSAlert()
+                failed.messageText = "Couldn't connect"
+                failed.informativeText = message
+                failed.runModal()
+            }
+        } else {
+            setConfig("setupDeclined", true)
+        }
     }
 
     @objc private func showTour() {

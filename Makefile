@@ -17,7 +17,7 @@ TARGET = $(shell uname -m)-apple-macosx12.0
 # keychain (added in Xcode → Settings → Accounts), then the self-signed one
 # created by `make signing-identity`, then ad-hoc.
 
-.PHONY: all build bundle install clean signing-identity snapshots test
+.PHONY: all build bundle install clean signing-identity snapshots test release icon
 
 all: bundle $(TAP) $(HOOK)
 
@@ -30,13 +30,17 @@ build: $(SOURCES)
 
 # Wrap the binary in a minimal .app bundle. macOS ties the Accessibility
 # permission to the bundle, so this beats a bare binary.
-bundle: build $(KEY)
+bundle: build $(KEY) $(TAP) $(HOOK)
 	rm -rf $(BUNDLE)
-	mkdir -p $(BUNDLE)/Contents/MacOS
+	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/hooks
 	cp packaging/Info.plist $(BUNDLE)/Contents/
+	cp packaging/AppIcon.icns $(BUNDLE)/Contents/Resources/
 	cp $(BINARY) $(BUNDLE)/Contents/MacOS/
 	@# Already signed, and copied as is: its Keychain permission survives.
 	cp -p $(KEY) $(BUNDLE)/Contents/MacOS/
+	@# What the app puts in ~/.cloudingbar itself (Setup.swift), for a download.
+	cp -p $(TAP) $(HOOK) $(BUNDLE)/Contents/MacOS/
+	cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh $(BUNDLE)/Contents/Resources/hooks/
 	@packaging/sign.sh $(BUNDLE)
 	@echo "Built $(BUNDLE)"
 
@@ -53,15 +57,29 @@ $(KEY): $(KEY_SOURCES)
 $(TAP): $(TAP_SOURCES)
 	mkdir -p build
 	swiftc -O -target $(TARGET) $(TAP_SOURCES) -o $(TAP)
+	@packaging/sign.sh $(TAP) dev.cloudingbar.tap
 
 # The hook command for every Claude Code hook event: forwards events to the
 # app and waits for answers to permissions and questions (docs/protocol.md).
 $(HOOK): $(HOOK_SOURCES)
 	mkdir -p build
 	swiftc -O -target $(TARGET) $(HOOK_SOURCES) -o $(HOOK)
+	@packaging/sign.sh $(HOOK) dev.cloudingbar.hook
 
-install: bundle $(TAP) $(HOOK) $(HOOK)
+install: bundle $(TAP) $(HOOK)
 	./install.sh
+
+# A universal, Developer ID-signed, notarized .dmg (packaging/release.sh
+# says what it needs once). DRY=1 make release: everything but the notary.
+release:
+	./packaging/release.sh
+
+# The app icon (Cloud on a dark tile) → packaging/AppIcon.icns.
+icon:
+	mkdir -p build
+	swiftc -target $(TARGET) tools/icon/main.swift -o build/icon
+	./build/icon build/AppIcon.iconset
+	iconutil -c icns build/AppIcon.iconset -o packaging/AppIcon.icns
 
 # Checks for the core: session picked by window title, hook output, config.
 test:

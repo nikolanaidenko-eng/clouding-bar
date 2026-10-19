@@ -39,21 +39,24 @@ final class TourWindow {
 }
 
 struct TourView: View {
-    static let size = CGSize(width: 640, height: 560)
+    static let size = CGSize(width: 640, height: 580)
 
     let close: () -> Void
     let openSettings: () -> Void
     @State private var page: Int
 
-    init(close: @escaping () -> Void, openSettings: @escaping () -> Void, page: Int = 0) {
+    init(close: @escaping () -> Void, openSettings: @escaping () -> Void, page: Int = 0, freezeAt: Double? = nil) {
         self.close = close
         self.openSettings = openSettings
+        self.freezeAt = freezeAt
         _page = State(initialValue: page)
     }
     @State private var forward = true
     @StateObject private var mood = CloudMood()
-    /// Sample numbers for the live copies, the same on every Mac.
-    @StateObject private var sample = TourView.sampleModel()
+    /// Plays each page's scene on live copies of the real views.
+    @StateObject private var director = TourDirector()
+    /// For pictures: the scene held at this many seconds in.
+    var freezeAt: Double?
 
     private struct Page {
         let title: String
@@ -80,7 +83,7 @@ struct TourView: View {
     var body: some View {
         VStack(spacing: 0) {
             stage
-                .frame(height: 280)
+                .frame(height: TourDirector.stage.height)
                 .frame(maxWidth: .infinity)
                 .background(LinearGradient(colors: [Color(hex: 0x1B1B1D), Color(hex: 0x2A2A2E)],
                                            startPoint: .top, endPoint: .bottom))
@@ -96,125 +99,91 @@ struct TourView: View {
         .frame(width: Self.size.width, height: Self.size.height)
         .background(Color(hex: 0x232325))
         .environment(\.colorScheme, .dark)
-        .onChange(of: page) { _ in mood.pokes += 1 }
+        .onChange(of: page) { p in
+            mood.pokes += 1
+            director.play(p)
+        }
+        .onAppear {
+            director.onEvent = { [weak mood] in mood?.hops += 1 }
+            if let t = freezeAt { director.jump(page, to: t) } else { director.play(page) }
+        }
+        .onDisappear { director.stop() }
         .background(TourKeys(next: next, back: back, close: close))
     }
 
     // MARK: Stage
 
     @ViewBuilder private var stage: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Group {
                 switch page {
-                case 0: faces
-                case 1: pill
-                case 2: notch
-                case 3: panel
-                case 4: touchBar
-                case 5: chips
-                default: privacy
+                case 0: cloudScene
+                case 1: pillScene
+                case 2: notchScene
+                case 3: panelScene
+                case 4: TourBar(director: director)
+                case 5: chipsScene
+                default: TourPrivacy().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .frame(width: TourDirector.stage.width, height: TourDirector.stage.height, alignment: .top)
             .id(page)
             .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: forward ? 40 : -40)),
                                     removal: .opacity.combined(with: .offset(x: forward ? -40 : 40))))
+            TourPointer(director: director)
         }
+        .frame(width: TourDirector.stage.width, height: TourDirector.stage.height)
         .animation(.spring(response: 0.45, dampingFraction: 0.86), value: page)
     }
 
-    private var faces: some View {
-        HStack(spacing: 46) {
-            face(.sleep, "Idle")
-            face(.work, "Working")
-            face(.wait, "Needs you")
-        }
-    }
-
-    private func face(_ activity: Activity, _ label: String) -> some View {
-        VStack(spacing: 12) {
-            MascotIcon(activity: activity, size: 84).frame(width: 84, height: 84)
-            Text(label).font(.system(size: 12)).foregroundColor(.cbSecondary)
-        }
-    }
-
-    private var pill: some View {
-        let state = WidgetState()
-        state.mode = .pill
-        let model = Self.sampleModel()
-        model.config.pillWidth = 560 // as much as fits on the page
-        return VStack(spacing: 22) {
-            WidgetView(model: model, state: state)
-            Text("Pull the outline · drag items onto each other")
-                .font(.system(size: 11)).foregroundColor(.cbSecondary)
-        }
-    }
-
-    private var notch: some View {
-        let compact = WidgetState(), grown = WidgetState()
-        for s in [compact, grown] { s.mode = .pill; s.notched = true; s.notchHeight = 32 }
-        let asking = Self.sampleModel()
-        var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "DiaRoute")
-        card.question = "Which storage should offline routes use?"
-        card.options = ["SQLite", "MMKV", "AsyncStorage"]
-        asking.request = card
-        return VStack(spacing: 0) {
-            WidgetView(model: sample, state: compact)
-            Spacer().frame(height: 46)
-            WidgetView(model: asking, state: grown)
-            Spacer(minLength: 0)
-        }
-        .scaleEffect(0.92, anchor: .top)
-    }
-
-    private var panel: some View {
-        let state = WidgetState()
-        state.mode = .panel
-        return WidgetView(model: sample, state: state)
-            .scaleEffect(0.82)
-    }
-
-    private var touchBar: some View {
+    /// Page 1: Cloud's moods, one after another, with what each means.
+    private var cloudScene: some View {
         VStack(spacing: 18) {
-            TouchBarPreview(model: sample)
-                .frame(width: 580)
+            MascotIcon(activity: director.cloud, size: 110, pokes: director.cloudPokes)
+                .frame(width: 110, height: 110)
+            Text(director.caption).font(.system(size: 13)).foregroundColor(.cbSecondary)
+                .id(director.caption)
+                .transition(.opacity)
             HStack(spacing: 8) {
-                key("Allow", fill: .cbAction)
-                key("Always")
-                key("Deny", text: .cbDeny)
+                ForEach([Activity.sleep, .work, .wait], id: \.self) { a in
+                    Capsule().fill(director.cloud == a ? Color.cbText : Color.white.opacity(0.2))
+                        .frame(width: director.cloud == a ? 16 : 6, height: 6)
+                }
             }
-            Text("…and when Claude asks, the bar is the answer")
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: director.cloud)
+        }
+        .padding(.top, 52)
+    }
+
+    /// Page 2: the pill, pulled wider and back by the pointer.
+    private var pillScene: some View {
+        VStack(spacing: 18) {
+            WidgetView(model: director.model, state: director.state)
+                .frame(height: 44)
+            Text(director.state.pillEditSize == nil ? "Your limits at a glance — they tick as Claude works"
+                 : "Pulling the outline: wider shows more")
                 .font(.system(size: 11)).foregroundColor(.cbSecondary)
         }
+        .padding(.top, TourDirector.pillTop)
     }
 
-    private func key(_ label: String, fill: Color = Color(hex: 0x2C2C2E), text: Color = .white) -> some View {
-        Text(label).font(.system(size: 13, weight: .medium)).foregroundColor(text)
-            .frame(width: 96, height: 30)
-            .background(RoundedRectangle(cornerRadius: 6).fill(fill))
+    /// Page 3: the notch, growing for a question and an OK.
+    private var notchScene: some View {
+        WidgetView(model: director.model, state: director.state)
     }
 
-    private var chips: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            chipRow(["Session", "Context", "Reset time", "Cost"], on: [0, 1, 2])
-            chipRow(["Model", "Lines", "Branch", "Subagents"], on: [0, 3])
-            chipRow(["Buttons", "Chat", "Templates", "Screenshot", "Mic"], on: [0, 1, 4])
-        }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.05)))
+    /// Page 4: the pill opens into the panel; the model, a file, a message.
+    private var panelScene: some View {
+        WidgetView(model: director.model, state: director.state)
+            .padding(.top, 16)
     }
 
-    private func chipRow(_ labels: [String], on: Set<Int>) -> some View {
-        HStack(spacing: 6) {
-            ForEach(Array(labels.enumerated()), id: \.offset) { i, label in
-                Chip(label: label, on: on.contains(i)) {}
-            }
-        }
-    }
-
-    private var privacy: some View {
-        HStack(spacing: 28) {
-            MascotIcon(activity: .sleep, size: 84, awake: true, pokes: 1).frame(width: 84, height: 84)
-            Image(systemName: "lock.shield").font(.system(size: 54, weight: .light)).foregroundColor(.cbSecondary)
+    /// Page 6: chips flip, the pill follows.
+    private var chipsScene: some View {
+        ZStack(alignment: .top) {
+            WidgetView(model: director.model, state: director.state)
+                .padding(.top, 40)
+            TourChips(director: director)
         }
     }
 

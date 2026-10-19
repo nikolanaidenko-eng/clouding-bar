@@ -286,6 +286,36 @@ struct GeneralTab: View {
                 }
             }
 
+            SettingsSection(title: "Claude Code") {
+                SettingsRow(title: "Hooks",
+                            hint: model.claudeConnected ? "Connected: Claude Code tells Clouding Bar what it's doing"
+                                : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
+                            divider: model.hasVSCode || model.setupMessage != nil) {
+                    if model.claudeConnected {
+                        Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                    } else {
+                        Button("Connect") { model.connectClaude() }
+                    }
+                }
+                if model.hasVSCode {
+                    SettingsRow(title: "5-hour limit in VS Code",
+                                hint: "VS Code runs Claude through Clouding Bar's wrapper, which passes the limit on. New chats only.",
+                                divider: model.setupMessage != nil) {
+                        if model.vscodeWrapped {
+                            Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                        } else {
+                            Button("Set Up") { model.wrapVSCode() }
+                        }
+                    }
+                }
+                if let message = model.setupMessage {
+                    Text(message).font(.system(size: 11)).foregroundColor(.cbSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
+            }
+
             SettingsSection(title: "Context") {
                 SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact") {
                     HStack(spacing: 10) {

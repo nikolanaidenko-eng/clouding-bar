@@ -408,9 +408,10 @@ do { // Cloud's faces: awake, happy, dizzy, shy
 }
 
 // The tour, every page.
-for i in 0..<7 {
-    let host = NSHostingView(rootView: TourView(close: {}, openSettings: {}, page: i))
-    renderView(host, size: NSSize(width: TourView.size.width, height: TourView.size.height), name: "t-\(i + 1)")
+// Each page held at a telling moment of its scene.
+for (i, t) in [(0, 2.5), (1, 2.6), (2, 3.2), (3, 4.6), (3, 6.8), (4, 3.2), (4, 6.2), (5, 3.0), (6, 1.0)] {
+    let host = NSHostingView(rootView: TourView(close: {}, openSettings: {}, page: i, freezeAt: t))
+    renderView(host, size: NSSize(width: TourView.size.width, height: TourView.size.height), name: "t-\(i + 1)-\(t)")
 }
 
 // Everything stacked in one sheet, 12 px apart on grey, for a quick look.

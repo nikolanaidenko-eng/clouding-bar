@@ -141,6 +141,8 @@ struct Config: Equatable {
     var widgetPosition: CGPoint?
     /// The tour has opened once (it does by itself on the first launch).
     var tourShown = false
+    /// "Not Now" to connecting to Claude Code: don't ask at every launch.
+    var setupDeclined = false
     /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
     /// The island's size in the notch, set by pulling its ends or bottom:
@@ -244,6 +246,7 @@ struct Config: Equatable {
         }
         if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
         if let v = obj["tourShown"] as? Bool { config.tourShown = v }
+        if let v = obj["setupDeclined"] as? Bool { config.setupDeclined = v }
         if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
         if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }

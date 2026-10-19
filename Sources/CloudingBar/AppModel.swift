@@ -143,6 +143,14 @@ final class AppModel: ObservableObject {
     var resetWidgetPosition: () -> Void = {}
     var showTour: () -> Void = {}
 
+    // Settings → General → Claude Code (Setup.swift)
+    @Published var claudeConnected = true
+    @Published var hasVSCode = false
+    @Published var vscodeWrapped = false
+    @Published var setupMessage: String?
+    var connectClaude: () -> Void = {}
+    var wrapVSCode: () -> Void = {}
+
     /// The pill's height budget: what was set by pulling its top or bottom.
     var pillHeightBudget: CGFloat {
         config.pillHeight > 0 ? CGFloat(config.pillHeight) : PillLayout.height(rows: max(1, config.pillRows))
