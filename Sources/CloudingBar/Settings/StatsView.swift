@@ -20,7 +20,7 @@ struct StatsTab: View {
                         Text(stats.headline).font(.system(size: 17, weight: .semibold))
                         Text(subtitle(stats)).font(.system(size: 11)).foregroundColor(.sSecondary)
                     }
-                    heatMap(stats)
+                    heatMap(stats).tourAnchor("stats.map")
                     hoverLine(stats)
                 }
                 VStack(alignment: .leading, spacing: 10) {

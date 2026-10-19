@@ -169,7 +169,7 @@ final class MiniMetersView: NSView {
             track.addSublayer(fill)
             layer?.addSublayer(track)
         }
-        fills[0].backgroundColor = Palette.fill.cgColor
+        fills[0].backgroundColor = Palette.meter.cgColor
         fills[1].backgroundColor = Palette.muted.cgColor
         setAccessibilityRole(.levelIndicator)
     }

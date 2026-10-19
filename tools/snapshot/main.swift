@@ -424,6 +424,17 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     }
 }
 
+// The tour in the settings window, at a few of its stops.
+for step in [0, 1, 3, 4, 5, 6, 7] {
+    let m = sampleModel()
+    m.touchBarPresent = true
+    m.hasNotch = true
+    m.tourStep = step
+    let host = NSHostingView(rootView: SettingsView(model: m, tab: SettingsTour.stops[step].tab))
+    renderView(host, size: NSSize(width: SettingsView.width, height: 560),
+               name: step == 6 ? "s-stats-tour" : "tour-\(step)")
+}
+
 do { // Cloud's faces: awake, happy, dizzy, shy
     let row = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 110))
     for (i, face) in ["awake", "happy", "dizzy", "shy"].enumerated() {

@@ -171,6 +171,10 @@ final class AppModel: ObservableObject {
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
     var showTour: () -> Void = {}
+    /// The animated tour of the widget at work (the old one, now "Watch it work").
+    var showFilm: () -> Void = {}
+    /// The tour in the settings window: the stop it's at, nil when off.
+    @Published var tourStep: Int?
 
     // Settings → General → Claude Code (Setup.swift)
     @Published var claudeConnected = true

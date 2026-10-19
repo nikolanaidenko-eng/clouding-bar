@@ -192,12 +192,13 @@ final class BarView: NSView {
                 add(pair, .flex(weight: 1, min: 80))
             }
             if shows.contains("model"), let label = model.modelLabel {
-                let b = BarButton(label, fontSize: 12) { [weak self] in self?.onAction?(.models) }
-                add(b, .shrinkable(min(170, b.fittingWidth(padding: 14))))
+                let b = BarButton(label, fontSize: 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
+                add(b, .shrinkable(min(190, b.fittingWidth(padding: 12))))
             }
             if shows.contains("agents") {
                 let n = model.agents.count
-                let b = BarButton(n == 0 ? "No agents" : "\(n) agent\(n == 1 ? "" : "s")", fontSize: 12) {
+                let b = BarButton(n == 0 ? "No agents" : "\(n) agent\(n == 1 ? "" : "s")", fontSize: 12,
+                                  symbol: ("person.2.fill", 0x40C8E0)) {
                     [weak self] in self?.onAction?(.agents)
                 }
                 add(b, .shrinkable(b.fittingWidth(padding: 14)))

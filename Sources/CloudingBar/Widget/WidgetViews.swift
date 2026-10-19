@@ -77,10 +77,12 @@ extension Color {
     static let cbWarningText = Color(hex: 0xFFB340)
     static let cbDeny = Color(hex: 0xFF6961)
     static let cbFill = Color(hex: 0xE5E5EA)
+    /// A limit's bar below 70%: the blue of Settings' charts.
+    static let cbMeter = Color(hex: 0x64A8FF)
     static let cbHairline = Color.white.opacity(0.14)
 
     static func meter(_ percent: Double) -> Color {
-        percent >= 90 ? Color(hex: 0xFF453A) : percent >= 70 ? .cbWarning : .cbFill
+        percent >= 90 ? Color(hex: 0xFF453A) : percent >= 70 ? .cbWarning : .cbMeter
     }
 }
 
@@ -481,6 +483,17 @@ struct Metric {
     var action: (() -> Void)? = nil
     var help = ""
 
+    /// Its icon's colour, as Settings' section icons.
+    var tint: UInt32 {
+        switch id {
+        case "model": return 0xBF5AF2
+        case "lines": return 0x30D158
+        case "git": return 0xFF9F0A
+        case "agents": return 0x40C8E0
+        default: return 0x30D158
+        }
+    }
+
     var width: CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)]).width)
             + 14 + 5 + 16 + 2
@@ -535,7 +548,8 @@ struct MetricChip: View {
 
     var body: some View {
         let label = HStack(spacing: plain ? 4 : 5) {
-            Image(systemName: metric.icon).font(.system(size: 10)).frame(width: 14)
+            Image(systemName: metric.icon).font(.system(size: 10, weight: .semibold)).frame(width: 14)
+                .foregroundColor(Color(hex: metric.tint))
             Text(metric.text).lineLimit(1).fixedSize()
         }
         .font(.system(size: plain ? 12 : 11).monospacedDigit())

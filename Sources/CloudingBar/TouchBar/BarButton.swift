@@ -17,7 +17,8 @@ final class BarButton: NSButton {
     private let fontSize: CGFloat
 
     init(_ title: String, style: Style = .normal, fontSize: CGFloat = Palette.buttonFont,
-         icon: NSImage? = nil, dot: UInt32? = nil, onTap: (() -> Void)? = nil) {
+         icon: NSImage? = nil, dot: UInt32? = nil, symbol: (name: String, tint: UInt32)? = nil,
+         onTap: (() -> Void)? = nil) {
         self.style = style
         self.fontSize = fontSize
         self.onTap = onTap
@@ -39,6 +40,14 @@ final class BarButton: NSButton {
         if let dot {
             // A chat's colour before its name.
             image = Self.dot(dot)
+            imagePosition = .imageLeading
+            imageHugsTitle = true
+            hasDot = true
+        } else if let symbol, let img = NSImage(systemSymbolName: symbol.name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [NSColor(hex: symbol.tint)]))) {
+            // A coloured icon before the words, as in Settings.
+            image = img
             imagePosition = .imageLeading
             imageHugsTitle = true
             hasDot = true
@@ -79,7 +88,7 @@ final class BarButton: NSButton {
 
     /// Width that fits the title with `padding` on each side.
     func fittingWidth(padding: CGFloat) -> CGFloat {
-        ceil(attributedTitle.size().width) + padding * 2 + (hasDot ? 13 : 0)
+        ceil(attributedTitle.size().width) + padding * 2 + (hasDot ? 17 : 0)
     }
 
     override var isHighlighted: Bool {

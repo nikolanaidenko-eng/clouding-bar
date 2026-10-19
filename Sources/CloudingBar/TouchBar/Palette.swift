@@ -15,12 +15,14 @@ enum Palette {
     static let denyText = NSColor(hex: 0xFF6961)
     static let track = NSColor(hex: 0x2C2C2E)
     static let fill = NSColor(hex: 0xE5E5EA)
+    /// A limit's bar below 70%: the blue of Settings' charts.
+    static let meter = NSColor(hex: 0x64A8FF)
     static let placeholder = NSColor(hex: 0x6E6E73)
 
-    /// < 70% neutral, 70–90% orange, ≥ 90% red.
+    /// < 70% blue, 70–90% orange, ≥ 90% red.
     static func meterColor(_ percent: Double) -> NSColor {
         switch percent {
-        case ..<70: return fill
+        case ..<70: return meter
         case ..<90: return warning
         default: return critical
         }

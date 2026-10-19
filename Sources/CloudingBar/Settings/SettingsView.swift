@@ -17,7 +17,7 @@ struct SettingsView: View {
 
     static let tabs: [(id: String, label: String, tint: UInt32)] = [
         ("general", "General", 0x8E8E93), ("widget", "Widget", 0x0A84FF), ("touchbar", "Touch Bar", 0xBF5AF2),
-        ("buttons", "Buttons", 0xFF9F0A), ("cowork", "Cowork", 0x30B0C7), ("stats", "Stats", 0x30D158)]
+        ("buttons", "Buttons", 0xFF9F0A), ("cowork", "Cowork", 0xFF375F), ("stats", "Stats", 0x30D158)]
     static let width: CGFloat = 600
 
     init(model: AppModel, tab: String = "general") {
@@ -44,6 +44,7 @@ struct SettingsView: View {
                     .transition(.opacity.combined(with: .offset(y: 6)))
                 }
             }
+            .settingsTour(model: model, cloud: cloud)
             CloudActor(cloud: cloud)
         }
         .coordinateSpace(name: SettingsCloud.space)
@@ -51,11 +52,18 @@ struct SettingsView: View {
         .foregroundColor(.sText)
         .frame(width: Self.width, height: 560)
         .background(Color.sBackground)
-        .onAppear { cloud.start() }
+        .onAppear {
+            cloud.start()
+            if let step = model.tourStep { tab = SettingsTour.stops[step].tab }
+        }
+        // The tour takes you from tab to tab.
+        .onChange(of: model.tourStep) { step in
+            guard let step, SettingsTour.stops.indices.contains(step), tab != SettingsTour.stops[step].tab else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = SettingsTour.stops[step].tab }
+        }
         .onDisappear { cloud.stop() }
         // Every change gets a cheer.
         .onChange(of: model.config) { _ in cloud.cheer() }
-        .onChange(of: tab) { _ in cloud.goHome(hop: true) }
     }
 
     /// Cloud's corner, the tabs (each with its colour when picked), the tour.
@@ -70,21 +78,24 @@ struct SettingsView: View {
             HStack(spacing: 2) {
                 ForEach(Self.tabs, id: \.id) { t in
                     let on = tab == t.id
-                    Button(t.label) {
+                    CloudButton(perch: .below, action: {
                         guard tab != t.id else { return }
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = t.id }
+                    }) {
+                        Text(t.label)
+                            .font(.system(size: 12, weight: on ? .semibold : .regular))
+                            .foregroundColor(on ? .white : .sText)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(on ? Color(hex: t.tint) : .clear))
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: on ? .semibold : .regular))
-                    .foregroundColor(on ? .white : .sText)
-                    .padding(.horizontal, 10)
-                    .frame(height: 26)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(on ? Color(hex: t.tint) : .clear))
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
             .padding(2)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.sTrack))
+            .tourAnchor("tabs")
             Button { model.showTour() } label: {
                 Image(systemName: "questionmark").font(.system(size: 12, weight: .semibold))
                     .frame(width: 26, height: 26)
@@ -94,6 +105,7 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .help("Take the tour: how everything works")
             .accessibilityLabel("Take the tour")
+            .tourAnchor("help")
         }
         // Room on the left for the window's close button.
         .padding(.leading, 40).padding(.trailing, 18).padding(.vertical, 11)
@@ -115,6 +127,21 @@ final class SettingsCloud: ObservableObject {
     static let rowScale: CGFloat = 0.62
 
     let mood = CloudMood()
+    /// The tour leads: Cloud goes where it points and fidgets there; the
+    /// pointer doesn't move it.
+    var touring = false {
+        didSet {
+            fidget?.invalidate()
+            fidget = nil
+            guard touring else { return }
+            idle?.cancel()
+            fidget = Timer.scheduledTimer(withTimeInterval: 2.8, repeats: true) { [weak self] _ in
+                guard let self, !self.flying else { return }
+                self.mood.hops += 1
+            }
+        }
+    }
+    private var fidget: Timer?
     /// The hop under way: from, to, how high it arcs; `progress` 0 → 1.
     @Published private(set) var from = SettingsCloud.home
     @Published private(set) var to = SettingsCloud.home
@@ -127,8 +154,11 @@ final class SettingsCloud: ObservableObject {
     private var next: (point: CGPoint, scale: CGFloat, then: (() -> Void)?)?
     /// The row it last sat by, to go back to after a press.
     private var rowPoint: CGPoint?
-    /// The row the pointer is over now, if any.
+    /// The row the pointer is over now, if any, and the choice (a tab, a
+    /// chip) it's on.
     private var overRow: CGFloat?
+    private var overPerch: CGPoint?
+    private var unperch: DispatchWorkItem?
     private var idle: DispatchWorkItem?
     private var monitor: Any?
 
@@ -146,12 +176,30 @@ final class SettingsCloud: ObservableObject {
         idle?.cancel()
     }
 
+    /// The tour's stop: onto its top right corner, with a cheer.
+    func visit(_ rect: CGRect) {
+        let p = CGPoint(x: min(rect.maxX - 16, rect.minX + rect.width * 0.85), y: max(10, rect.minY - 3))
+        hop(to: p, scale: Self.rowScale, then: { [weak self] in self?.mood.pokes += 1 })
+    }
+
+    /// A few happy jumps.
+    func cheer(times: Int) {
+        for i in 0..<times {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.45) { [weak self] in self?.mood.pokes += 1 }
+        }
+    }
+
     /// The pointer moves: back by its row if it went home; a rest later, home.
     func moved() {
-        if to == Self.home, !flying, let y = overRow {
-            let p = CGPoint(x: Self.gutter / 2, y: y)
-            rowPoint = p
-            hop(to: p, scale: Self.rowScale)
+        guard !touring else { return }
+        if to == Self.home, !flying {
+            if let p = overPerch {
+                hop(to: p, scale: Self.rowScale)
+            } else if let y = overRow {
+                let p = CGPoint(x: Self.gutter / 2, y: y)
+                rowPoint = p
+                hop(to: p, scale: Self.rowScale)
+            }
         }
         idle?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.goHome() }
@@ -162,10 +210,41 @@ final class SettingsCloud: ObservableObject {
     /// The pointer is over a row whose middle is at `y`.
     func row(_ y: CGFloat) {
         overRow = y
+        guard !touring else { return }
         moved()
         let p = CGPoint(x: Self.gutter / 2, y: y)
         rowPoint = p
         hop(to: p, scale: Self.rowScale)
+    }
+
+    /// The pointer is on one of a row of choices: Cloud sits on it (or,
+    /// for the tabs, under it), and so walks along them.
+    func perch(_ frame: CGRect, below: Bool) {
+        guard frame != .zero, !touring else { return }
+        unperch?.cancel()
+        let p = below ? CGPoint(x: frame.midX, y: frame.maxY + 13) : CGPoint(x: frame.midX, y: frame.minY - 4)
+        overPerch = p
+        moved()
+        hop(to: p, scale: Self.rowScale)
+    }
+
+    /// Off the choice: back by its row, unless the pointer is already on the next one.
+    func leavePerch() {
+        overPerch = nil
+        guard !touring else { return }
+        unperch?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.overPerch == nil, self.to != Self.home else { return }
+            if let y = self.overRow {
+                let p = CGPoint(x: Self.gutter / 2, y: y)
+                self.rowPoint = p
+                self.hop(to: p, scale: Self.rowScale)
+            } else {
+                self.goHome()
+            }
+        }
+        unperch = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
     /// The pointer left the row at `y`.
@@ -190,7 +269,7 @@ final class SettingsCloud: ObservableObject {
             self?.mood.pokes += 1
             // A moment on it, then back by its row.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-                guard let self, !self.flying else { return }
+                guard let self, !self.flying, !self.touring else { return }
                 if let p = self.rowPoint { self.hop(to: p, scale: Self.rowScale) }
             }
         })
@@ -300,8 +379,11 @@ enum CloudPress {
     }
 }
 
-/// A button whose press Cloud makes: it hops onto it, then it goes.
+/// A button whose press Cloud makes: it hops onto it, then it goes. One
+/// of a row of choices (`perch`): Cloud follows the pointer along them.
 struct CloudButton<Label: View>: View {
+    enum Perch { case none, above, below }
+    var perch: Perch = .none
     let action: () -> Void
     @ViewBuilder let label: () -> Label
     @Environment(\.settingsCloud) private var cloud
@@ -315,6 +397,10 @@ struct CloudButton<Label: View>: View {
                     .onAppear { frame = g.frame(in: .named(SettingsCloud.space)) }
                     .onChange(of: g.frame(in: .named(SettingsCloud.space))) { frame = $0 }
             })
+            .onHover { inside in
+                guard perch != .none, let cloud else { return }
+                if inside { cloud.perch(frame, below: perch == .below) } else { cloud.leavePerch() }
+            }
     }
 }
 
@@ -470,7 +556,7 @@ struct SettingsSegments: View {
         HStack(spacing: 0) {
             ForEach(options, id: \.id) { o in
                 let on = o.id == selected
-                CloudButton(action: { if !on { pick(o.id) } }) {
+                CloudButton(perch: .above, action: { if !on { pick(o.id) } }) {
                     Text(o.label).font(.system(size: 11, weight: on ? .semibold : .regular))
                         .foregroundColor(on ? .white : .sText)
                         .padding(.horizontal, 9).frame(height: 24)
@@ -529,14 +615,16 @@ struct CBCheckbox: View {
 struct Chip: View {
     let label: String
     let on: Bool
+    /// Smaller, for a row of many.
+    var small = false
     let action: () -> Void
     var body: some View {
-        CloudButton(action: action) {
+        CloudButton(perch: .above, action: action) {
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: small ? 11 : 12))
                 .foregroundColor(on ? .white : .sText)
-                .padding(.horizontal, 10)
-                .frame(height: 26)
+                .padding(.horizontal, small ? 8 : 10)
+                .frame(height: small ? 24 : 26)
                 .background(Capsule().fill(on ? Color(hex: 0x0A84FF) : .clear))
                 .overlay(Capsule().strokeBorder(on ? Color.clear : Color.sChipOff, lineWidth: 1))
                 .contentShape(Capsule())
@@ -556,11 +644,12 @@ struct ChipSet: View {
     /// Also kept in step: the same ids in another list (cost is both a
     /// number on the pill and a metric in the panel).
     var mirror: String? = nil
+    var small = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: small ? 5 : 6) {
             ForEach(options, id: \.id) { option in
-                Chip(label: option.label, on: list(key).contains(option.id)) { toggle(option.id) }
+                Chip(label: option.label, on: list(key).contains(option.id), small: small) { toggle(option.id) }
             }
         }
     }
@@ -624,6 +713,7 @@ struct GeneralTab: View {
                         Button("Connect") { model.connectClaude() }
                     }
                 }
+                .tourAnchor("hooks")
                 if model.hasCodex {
                     SettingsRow(title: "Codex",
                                 hint: model.codexConnected
@@ -746,6 +836,7 @@ struct WidgetTab: View {
                             divider: model.config.widget) {
                     CBSwitch(title: "Show the widget", on: binding("widget") { $0.widget })
                 }
+                .tourAnchor("widget.show")
                 if model.config.widget {
                     SettingsRow(title: "In the notch",
                                 hint: model.hasNotch ? "Around the camera. Drag it out to move it, back in to dock"
@@ -757,6 +848,7 @@ struct WidgetTab: View {
                                 if on { model.resetWidgetPosition() }
                             }))
                     }
+                    .tourAnchor("widget.notch")
                     MoreRows("widget", count: 3) {
                         SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
                             CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
@@ -866,6 +958,7 @@ struct TouchBarTab: View {
         VStack(alignment: .leading, spacing: 14) {
             TouchBarPreview(model: model)
                 .opacity(model.config.touchBar == "off" ? 0.4 : 1)
+                .tourAnchor("touchbar.preview")
             SettingsGroup {
                 SettingsRow(title: "Show on Touch Bar",
                             hint: model.touchBarPresent ? "Detected on this Mac" : "No Touch Bar found on this Mac") {
@@ -876,10 +969,9 @@ struct TouchBarTab: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("On the bar").font(.system(size: 13))
                     ChipSet(model: model, key: "touchBarShows",
-                            options: [("session", "Session"), ("reset", "Reset time"), ("context", "Context")])
-                    ChipSet(model: model, key: "touchBarShows",
-                            options: [("model", "Model"), ("agents", "Subagents"), ("buttons", "Buttons"),
-                                      ("shot", "Screenshot"), ("mic", "Mic")])
+                            options: [("session", "Session"), ("reset", "Reset"), ("context", "Context"),
+                                      ("model", "Model"), ("agents", "Agents"), ("buttons", "Buttons"),
+                                      ("shot", "Screenshot"), ("mic", "Mic")], small: true)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -955,6 +1047,7 @@ struct ButtonsTab: View {
                 }
                 .padding(.horizontal, 4).padding(.vertical, 2)
             }
+            .tourAnchor("buttons.list")
             templatesSection
             if !profile.isEmpty {
                 Text(model.config.profiles[profile] == nil
@@ -1226,7 +1319,7 @@ struct TouchBarPreview: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(hex: 0x2C2C2E))
-                    Capsule().fill(Color.cbFill).frame(width: geo.size.width * CGFloat(min(1, max(0, percent))))
+                    Capsule().fill(Color.meter(percent * 100)).frame(width: geo.size.width * CGFloat(min(1, max(0, percent))))
                 }
             }
             .frame(height: 3)
@@ -1369,7 +1462,7 @@ struct CoworkTab: View {
                     }
                     Spacer()
                     SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
-                                     selected: model.config.coworkMode, tint: 0x30B0C7) { model.setConfig("coworkMode", $0) }
+                                     selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
                 }
                 Text(notes[model.config.coworkMode] ?? "").font(.system(size: 11)).foregroundColor(.sSecondary)
             }

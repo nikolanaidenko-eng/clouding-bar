@@ -111,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         loadQueue()
         setUpCowork()
         model.showTour = { [weak self] in self?.showTour() }
+        model.showFilm = { [weak self] in
+            DebugLog.tap("tour film")
+            self?.tour.show()
+        }
         setUpClaudeCode()
         // The first time: connecting to Claude Code if it isn't yet, then
         // the tour, once everything is up.
@@ -788,9 +792,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The tour runs in the settings window; the animated one is "Watch it work".
     @objc private func showTour() {
         DebugLog.tap("tour")
-        tour.show()
+        openSettings()
+        model.tourStep = 0
     }
 
     @objc private func resetWidgetPosition() {
