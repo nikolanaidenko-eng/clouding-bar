@@ -104,7 +104,7 @@ final class SessionStore {
         session.cwd = "/" + (s.project ?? "Cowork")
         session.entrypoint = "cowork"
         session.contextTokens = s.contextTokens
-        session.contextWindowSize = s.contextWindow
+        session.contextWindowSize = Cowork.window(model: s.model)
         session.model = s.model
         if let title = s.title { session.title = title }
         session.lastEvent = s.time
