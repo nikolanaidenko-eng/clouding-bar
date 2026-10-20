@@ -164,7 +164,7 @@ do { // the hook writes into the connected folder itself: working, then done
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
-        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin"]
+        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"]
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
         try? p.run()
@@ -220,6 +220,18 @@ do { // the hook writes into the connected folder itself: working, then done
           "cowork hook: git ignores it")
     let lonely = pluginDir.appendingPathComponent("cowork-nofolder")
     try? FileManager.default.createDirectory(at: lonely, withIntermediateDirectories: true)
+    do { // on the Mac (Claude Code, not Cowork) it does nothing
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
+        let input = Pipe(), output = Pipe()
+        p.standardInput = input; p.standardOutput = output
+        try? p.run()
+        input.fileHandleForWriting.write(Data(#"{"hook_event_name":"Stop","session_id":"mac","transcript_path":"\#(transcript.path)"}"#.utf8))
+        try? input.fileHandleForWriting.close()
+        p.waitUntilExit()
+        check(output.fileHandleForReading.readDataToEndOfFile().isEmpty, "cowork hook: quiet in Claude Code on the Mac")
+    }
     check(hook("Stop", cwd: lonely, session: UUID().uuidString).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
 }
 
