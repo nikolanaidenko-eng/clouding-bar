@@ -106,6 +106,7 @@ final class SessionStore {
         session.contextTokens = s.contextTokens
         session.contextWindowSize = s.contextWindow
         session.model = s.model
+        if let title = s.title { session.title = title }
         session.lastEvent = s.time
         session.activity = s.working ? .work : .sleep
         scheduleSave()
@@ -137,7 +138,15 @@ final class SessionStore {
     ///    widget, or followed before), else the latest active;
     ///  - no session's window in front: the one in `sticky`, else the latest active.
     /// A terminal tab in front (`tty`) names its chat outright.
-    func focus(windowTitle: String?, tty: String? = nil, sticky: [String]) -> Session? {
+    /// The Claude desktop app in front (`desktop`): its window doesn't say
+    /// which chat it shows, so one of its own (Cowork, Code): the one in
+    /// `sticky`, else the latest.
+    func focus(windowTitle: String?, tty: String? = nil, sticky: [String], desktop: Bool = false) -> Session? {
+        let inApp = desktop ? alive.filter { $0.entrypoint == "cowork" || $0.entrypoint == "claude-desktop" } : []
+        if !inApp.isEmpty {
+            for id in sticky { if let s = inApp.first(where: { $0.id == id }) { return s } }
+            return inApp.max { $0.lastSeen < $1.lastSeen }
+        }
         let candidates = alive
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
         let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates) } ?? []

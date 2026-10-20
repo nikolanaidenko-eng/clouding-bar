@@ -222,16 +222,18 @@ are shared straight from the Mac (virtiofs, 9p or fuse in `/proc/self/mounts`,
 which is Cowork running on this Mac):
 
 ```json
-{"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","state":"working"}
+{"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","title":"Bots landing","state":"working"}
 ```
 
-`state` is `working` from your message to Claude's reply, then `done`. A
+`title` is the task's title from its transcript, else your first words in
+it (up to 40 characters), so two tasks in one folder are told apart. `state`
+is `working` from your message to Claude's reply, then `done`. A
 `.gitignore` with `*` sits next to it; files of tasks quiet for 3 days are
 removed.
 
 Cowork in the cloud works on copies of the folders, which reach the Mac only
-when Claude writes. There the Stop hook asks Claude to write the line to
-`.clouding-bar/cowork-status.json` (with `"via":"claude"`), as often as the
+when Claude writes. There the Stop hook asks Claude to write the line to the same
+`.clouding-bar/cowork-<session>.json` (with `"via":"claude"`), as often as the
 mode says: after a task's first reply, at 50, 80, 90% and after a turn of a
 minute or more; or after every reply.
 
@@ -239,6 +241,10 @@ The app finds the connected folders in Claude Desktop's own records and
 reads every `cowork-*.json` in them every 2 s. Each task is a session
 `cowork-<session>`, which ends after 3 hours without news; a `working` line
 older than 30 minutes counts as done.
+
+Claude Desktop's window title doesn't say which chat it shows, so with the
+app in front the widget follows its chats (Cowork, Code): the one you
+picked, else the latest.
 
 ## Files in `~/.cloudingbar`
 

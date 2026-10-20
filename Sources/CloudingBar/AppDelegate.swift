@@ -306,7 +306,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var focusedSession: Session? {
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) < 4,
            let s = store.sessions[id], s.isAlive() { return s }
-        return store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 })
+        return store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 },
+                           desktop: frontApp?.bundleIdentifier == "com.anthropic.claudefordesktop")
     }
 
     private func refresh() {
@@ -1401,7 +1402,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let named = Cowork.Status(session: status.session, project: URL(fileURLWithPath: folder).lastPathComponent,
                                           contextTokens: status.contextTokens, contextWindow: status.contextWindow,
                                           model: status.model, time: status.time,
-                                          working: status.working && Date().timeIntervalSince(status.time) < 30 * 60)
+                                          working: status.working && Date().timeIntervalSince(status.time) < 30 * 60,
+                                          title: status.title)
                 let seen = "\(mtime.timeIntervalSince1970) \(named.working)"
                 if seen != coworkSeen[url.path] {
                     coworkSeen[url.path] = seen

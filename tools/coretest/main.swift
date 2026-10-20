@@ -160,7 +160,7 @@ do { // the hook writes into the connected folder itself: working, then done
     let transcript = task.appendingPathComponent("t.jsonl")
     try? #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5}}}"#
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
-    func hook(_ event: String, cwd: URL, session: String = "s1") -> String {
+    func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
@@ -168,14 +168,15 @@ do { // the hook writes into the connected folder itself: working, then done
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
         try? p.run()
-        let event: [String: Any] = ["hook_event_name": event, "session_id": session, "cwd": cwd.path,
+        var event: [String: Any] = ["hook_event_name": event, "session_id": session, "cwd": cwd.path,
                                     "transcript_path": transcript.path]
+        if let prompt { event["prompt"] = prompt }
         input.fileHandleForWriting.write(try! JSONSerialization.data(withJSONObject: event))
         try? input.fileHandleForWriting.close()
         p.waitUntilExit()
         return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
     }
-    let out = hook("UserPromptSubmit", cwd: task)
+    let out = hook("UserPromptSubmit", cwd: task, prompt: "  Fix the landing page for the bots, and check the forms too  ")
     let files = Cowork.statusFiles(folder: mac.path)
     let working = files.first.flatMap(Cowork.read)
     check(out.isEmpty && files.map(\.lastPathComponent) == ["cowork-s1.json"] && working?.working == true
@@ -183,6 +184,23 @@ do { // the hook writes into the connected folder itself: working, then done
     _ = hook("Stop", cwd: task)
     let done = Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)
     check(done?.working == false && done?.session == "s1", "cowork hook: on the reply, \"done\"")
+    check(working?.title == "Fix the landing page for the bots, and…", "cowork hook: named by your first words")
+    if let h = try? FileHandle(forWritingTo: transcript) {
+        h.seekToEndOfFile(); h.write(Data((#"{"type":"ai-title","aiTitle":"Bots landing"}"# + "\n").utf8)); try? h.close()
+    }
+    _ = hook("Stop", cwd: task)
+    check(Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)?.title == "Bots landing", "…or by its title")
+    store.apply(cowork: Cowork.Status(session: "c1", project: "24H", contextTokens: 1000, contextWindow: 200_000,
+                                      model: nil, time: Date(), title: "Bots landing"))
+    store.apply(cowork: Cowork.Status(session: "c2", project: "24H", contextTokens: 9000, contextWindow: 200_000,
+                                      model: nil, time: Date().addingTimeInterval(-60), title: "Mail drafts"))
+    check(store.sessions["cowork-c1"]?.displayName == "Bots landing" && store.sessions["cowork-c2"]?.displayName == "Mail drafts",
+          "two Cowork tasks in one folder, told apart by name")
+    check(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id == "cowork-c1"
+          && store.focus(windowTitle: "Claude", sticky: ["cowork-c2"], desktop: true)?.id == "cowork-c2"
+          && store.focus(windowTitle: "Claude", sticky: ["a"], desktop: true)?.id == "cowork-c1",
+          "Claude Desktop in front: its chats, the picked one or the latest")
+
     check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/.gitignore").path),
           "cowork hook: git ignores it")
     let lonely = pluginDir.appendingPathComponent("cowork-nofolder")

@@ -20,6 +20,8 @@ enum Cowork {
         let time: Date
         /// Between your message and Claude's reply.
         var working = false
+        /// The task's title, else its first words.
+        var title: String? = nil
     }
 
     /// The status files in a connected folder: one per task, and the one
@@ -41,7 +43,8 @@ enum Cowork {
                       contextWindow: (o["context_window"] as? NSNumber)?.intValue ?? 200_000,
                       model: o["model"] as? String,
                       time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date(),
-                      working: o["state"] as? String == "working")
+                      working: o["state"] as? String == "working",
+                      title: (o["title"] as? String).flatMap { $0.isEmpty ? nil : $0 })
     }
 
     /// Folders connected to Cowork, from Claude Desktop's own records — its
@@ -88,7 +91,7 @@ enum Cowork {
 
         let manifest: [String: Any] = [
             "name": "clouding-bar-cowork",
-            "version": "2.1.0",
+            "version": "2.2.0",
             "description": "Clouding Bar: reports Cowork context use to a connected folder.",
             "license": "MIT",
         ]
@@ -133,19 +136,20 @@ enum Cowork {
         When Cowork runs in the cloud, the task's folders are copies that reach your Mac only
         when Claude writes, so the hooks ask Claude to write the line. How often: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
 
-        No network, no message content: only the task id, a folder name, the token count and the
-        model. To turn it off, remove the plugin in Claude Desktop.
+        No network. What it writes: the task id, its title (or your first words in it, so two
+        tasks in one folder are told apart), a folder name, the token count and the model.
+        To turn it off, remove the plugin in Claude Desktop.
         """
     }
 
     private static let statusScript = #"""
     #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2.1. With Cowork on this Mac it writes
+    # Clouding Bar for Cowork, version 2.2. With Cowork on this Mac it writes
     # one line of JSON (context use; working or done) on every message and
     # reply into the folders connected to the task, where Clouding Bar reads
     # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
-    # write the line instead (MODE says how often). No network, no message
-    # content.
+    # write the line instead (MODE says how often). No network; of what you
+    # wrote, only the task's first words, as its name.
     import json, os, sys, time
 
     MODE = "@MODE@"                # when Claude has to write it: "thresholds" or "every"
@@ -161,24 +165,45 @@ enum Cowork {
     if event not in ("UserPromptSubmit", "Stop"):
         sys.exit(0)
 
+    def words(text):
+        text = " ".join((text or "").split())
+        return None if not text or text.startswith("<") else text
+
     def context():
-        tokens, model = 0, None
+        # Context use, the model, and a name for the task: the title it was
+        # given, else the first words you wrote.
+        tokens, model, titles, first = 0, None, {}, None
         try:
             for raw in open(d.get("transcript_path") or ""):
                 try:
                     o = json.loads(raw)
                 except Exception:
                     continue
-                if o.get("type") != "assistant" or o.get("isSidechain"):
+                kind = o.get("type")
+                if kind in ("custom-title", "ai-title", "summary"):
+                    titles[kind] = o.get("customTitle") or o.get("aiTitle") or o.get("summary")
+                    continue
+                if o.get("isSidechain"):
                     continue
                 m = o.get("message") or {}
+                if kind == "user" and first is None and not o.get("isMeta"):
+                    c = m.get("content")
+                    if isinstance(c, list):
+                        c = " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+                    first = words(c) if isinstance(c, str) else None
+                if kind != "assistant":
+                    continue
                 u = m.get("usage")
                 if u and m.get("model") != "<synthetic>":
                     tokens = u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
                     model = o.get("requestedModel") or m.get("model") or model
         except Exception:
             pass
-        return tokens, model
+        title = (titles.get("custom-title") or titles.get("ai-title") or titles.get("summary")
+                 or first or words(d.get("prompt")))
+        if title and len(title) > 40:
+            title = title[:39].rstrip() + "…"
+        return tokens, model, title
 
     def live():
         # Shared straight from the Mac (Cowork on this Mac): virtiofs, 9p,
@@ -232,12 +257,12 @@ enum Cowork {
         except Exception:
             return False
 
-    tokens, model = context()
+    tokens, model, title = context()
     window = 1000000 if "[1m]" in (model or "") or tokens > 200000 else 200000
     status = {
         "v": 2, "t": int(time.time()), "session": sid,
         "project": os.path.basename((d.get("cwd") or "").rstrip("/")) or None,
-        "context_tokens": tokens, "context_window": window, "model": model,
+        "context_tokens": tokens, "context_window": window, "model": model, "title": title,
         "state": "working" if event == "UserPromptSubmit" else "done",
     }
     wrote = [write(f, json.dumps(status)) for f in folders()]
@@ -289,9 +314,9 @@ enum Cowork {
     status["via"] = "claude"
     reason = (
         "Clouding Bar status update. If a folder from the user's computer is connected to this task, "
-        "write exactly this one line to .clouding-bar/cowork-status.json in it (the first such folder; "
+        "write exactly this one line to .clouding-bar/cowork-%s.json in it (the first such folder; "
         "create .clouding-bar if needed and put a .gitignore containing * in it; replace the file). "
-        "If no folder is connected, skip it. Don't mention any of this, then stop:\n%s" % json.dumps(status)
+        "If no folder is connected, skip it. Don't mention any of this, then stop:\n%s" % (sid, json.dumps(status))
     )
     print(json.dumps({"decision": "block", "reason": reason}))
     """#

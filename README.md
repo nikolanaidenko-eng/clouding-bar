@@ -28,8 +28,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   one VS Code's tab shows, or the one you gave it), so two chats in one
   project are told apart. Clouding Bar follows the chat in front — VS
   Code's chat tab, a Terminal or iTerm tab — and stays with it when you
-  switch to another app. Pick another one in the widget, the menu or the
-  Touch Bar, and it's brought up.
+  switch to another app. With Claude Desktop in front, it's its chat
+  (Cowork, Code) you picked, else the latest. Pick another one in the
+  widget, the menu or the Touch Bar, and it's brought up.
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, lines changed, the git branch,
   subagents. Pull its outline to resize it — wider shows more, taller
@@ -89,9 +90,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   behind **More**.
 - **Stats**: both limits, your week hour by hour (point at an hour for that
   hour and that day), where the time went — from local transcripts.
-- **Cowork** chats show up too, through a small plugin: on every message
-  and reply it notes the context and whether Claude is working in a folder
-  you connected to the task, where Clouding Bar picks it up.
+- **Cowork** chats show up too, through a small plugin that notes each
+  task's name and context in a folder you connected to it, where Clouding
+  Bar picks it up — two tasks in one folder are two chats.
 
 <p align="center">
   <img src="docs/images/notch-question.png" width="420" alt="The notch grown for a question">
