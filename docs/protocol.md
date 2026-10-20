@@ -217,7 +217,9 @@ app. The `clouding-bar-cowork` plugin (made in Settings → Cowork) works
 around that. Its hooks fire on `UserPromptSubmit` and `Stop`; each time they
 work out the context fill from the transcript and write one line to
 `.clouding-bar/cowork-<session>.json` in the task's connected folders, as
-Cowork mounts them (`<cwd>/mnt/*`, `~/mnt/*`, `/mnt/*`, at most three):
+Cowork mounts them (`<cwd>/mnt/*`, `~/mnt/*`, at most three) — when they
+are shared straight from the Mac (virtiofs, 9p or fuse in `/proc/self/mounts`,
+which is Cowork running on this Mac):
 
 ```json
 {"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","state":"working"}
@@ -227,9 +229,11 @@ Cowork mounts them (`<cwd>/mnt/*`, `~/mnt/*`, `/mnt/*`, at most three):
 `.gitignore` with `*` sits next to it; files of tasks quiet for 3 days are
 removed.
 
-Only when no connected folder is visible to the hook does the Stop hook ask
-Claude to write the line to `.clouding-bar/cowork-status.json` (with
-`"via":"claude"`), as often as the mode says.
+Cowork in the cloud works on copies of the folders, which reach the Mac only
+when Claude writes. There the Stop hook asks Claude to write the line to
+`.clouding-bar/cowork-status.json` (with `"via":"claude"`), as often as the
+mode says: after a task's first reply, at 50, 80, 90% and after a turn of a
+minute or more; or after every reply.
 
 The app finds the connected folders in Claude Desktop's own records and
 reads every `cowork-*.json` in them every 2 s. Each task is a session

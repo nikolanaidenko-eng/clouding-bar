@@ -88,7 +88,7 @@ enum Cowork {
 
         let manifest: [String: Any] = [
             "name": "clouding-bar-cowork",
-            "version": "2.0.0",
+            "version": "2.1.0",
             "description": "Clouding Bar: reports Cowork context use to a connected folder.",
             "license": "MIT",
         ]
@@ -124,14 +124,14 @@ enum Cowork {
         """
         # Clouding Bar for Cowork
 
-        On every message and every reply, this plugin's hooks write one line of JSON — how full
-        the context is, and whether Claude is working — to `.clouding-bar/cowork-<task>.json` in a
-        folder connected to the task (with a `.gitignore`, so it never gets committed). Clouding
-        Bar on your Mac finds the folders you connect in Claude Desktop and reads it from there.
-        It costs nothing: Claude isn't involved.
+        When Cowork runs on your Mac, on every message and every reply this plugin's hooks write
+        one line of JSON — how full the context is, and whether Claude is working — to
+        `.clouding-bar/cowork-<task>.json` in a folder connected to the task (with a `.gitignore`,
+        so it never gets committed). Clouding Bar finds the folders you connect in Claude Desktop
+        and reads it from there. It costs nothing: Claude isn't involved.
 
-        Only if no connected folder is visible to the hooks do they ask Claude to write it
-        instead. How often, then: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
+        When Cowork runs in the cloud, the task's folders are copies that reach your Mac only
+        when Claude writes, so the hooks ask Claude to write the line. How often: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
 
         No network, no message content: only the task id, a folder name, the token count and the
         model. To turn it off, remove the plugin in Claude Desktop.
@@ -140,11 +140,12 @@ enum Cowork {
 
     private static let statusScript = #"""
     #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2. On every message and every reply it
-    # writes one line of JSON (context use; working or done) into the folders
-    # connected to the task, where Clouding Bar on the Mac reads it. Only if no
-    # connected folder is visible from here does it ask Claude to write the
-    # line instead (MODE says how often). No network, no message content.
+    # Clouding Bar for Cowork, version 2.1. With Cowork on this Mac it writes
+    # one line of JSON (context use; working or done) on every message and
+    # reply into the folders connected to the task, where Clouding Bar reads
+    # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
+    # write the line instead (MODE says how often). No network, no message
+    # content.
     import json, os, sys, time
 
     MODE = "@MODE@"                # when Claude has to write it: "thresholds" or "every"
@@ -179,14 +180,32 @@ enum Cowork {
             pass
         return tokens, model
 
+    def live():
+        # Shared straight from the Mac (Cowork on this Mac): virtiofs, 9p,
+        # fuse. Cowork in the cloud works on a copy instead, which reaches the
+        # Mac only when Claude writes; there the hook must ask Claude. None:
+        # no mount table to tell by (not Linux), take every folder.
+        try:
+            table = open("/proc/self/mounts").read().splitlines()
+        except Exception:
+            return None
+        points = []
+        for line in table:
+            f = line.split()
+            if len(f) >= 3 and (f[2] in ("virtiofs", "9p") or (f[2].startswith("fuse") and f[2] != "fusectl")):
+                points.append(f[1].replace("\\040", " ").rstrip("/") + "/")
+        return points
+
     def folders():
         # The Mac folders connected to this task, as Cowork mounts them.
-        found = []
-        for base in (os.path.join(d.get("cwd") or os.getcwd(), "mnt"), os.path.expanduser("~/mnt"), "/mnt"):
+        found, points = [], live()
+        for base in (os.path.join(d.get("cwd") or os.getcwd(), "mnt"), os.path.expanduser("~/mnt")):
             try:
                 for n in sorted(os.listdir(base)):
                     p = os.path.realpath(os.path.join(base, n))
-                    if not n.startswith(".") and n not in SKIP and p not in found and os.path.isdir(p):
+                    if n.startswith(".") or n in SKIP or p in found or not os.path.isdir(p):
+                        continue
+                    if points is None or any((p + "/").startswith(m) for m in points):
                         found.append(p)
             except Exception:
                 pass
@@ -225,7 +244,7 @@ enum Cowork {
     if any(wrote):
         sys.exit(0)
 
-    # No connected folder visible from here: ask Claude, who can reach it.
+    # No folder shared straight from the Mac: ask Claude, whose writes reach it.
     state_path = "/tmp/clouding-bar-%s.json" % sid
     try:
         state = json.load(open(state_path))

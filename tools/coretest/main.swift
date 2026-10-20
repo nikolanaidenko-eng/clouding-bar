@@ -160,7 +160,7 @@ do { // the hook writes into the connected folder itself: working, then done
     let transcript = task.appendingPathComponent("t.jsonl")
     try? #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5}}}"#
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
-    func hook(_ event: String, cwd: URL) -> String {
+    func hook(_ event: String, cwd: URL, session: String = "s1") -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
         p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
@@ -168,7 +168,7 @@ do { // the hook writes into the connected folder itself: working, then done
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
         try? p.run()
-        let event: [String: Any] = ["hook_event_name": event, "session_id": "s1", "cwd": cwd.path,
+        let event: [String: Any] = ["hook_event_name": event, "session_id": session, "cwd": cwd.path,
                                     "transcript_path": transcript.path]
         input.fileHandleForWriting.write(try! JSONSerialization.data(withJSONObject: event))
         try? input.fileHandleForWriting.close()
@@ -187,7 +187,7 @@ do { // the hook writes into the connected folder itself: working, then done
           "cowork hook: git ignores it")
     let lonely = pluginDir.appendingPathComponent("cowork-nofolder")
     try? FileManager.default.createDirectory(at: lonely, withIntermediateDirectories: true)
-    check(hook("Stop", cwd: lonely).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
+    check(hook("Stop", cwd: lonely, session: UUID().uuidString).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
 }
 
 // MARK: Model and effort
