@@ -244,7 +244,8 @@ final class BarView: NSView {
                 let field = ComposeFieldButton(placeholder: placeholder) {
                     [weak self] in self?.onAction?(.write)
                 }
-                add(field, .flex(weight: 0.8, min: 130))
+                let box = ChatBoxView(field: field, commands: commandButtons())
+                add(box, .flex(weight: 1.2, min: 150 + box.commandsWidth))
             }
             if shows.contains("templates"), !model.templates.isEmpty {
                 let b = BarButton("Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
@@ -252,7 +253,8 @@ final class BarView: NSView {
                 }
                 add(b, .shrinkable(b.fittingWidth(padding: 14)))
             }
-            if shows.contains("buttons") {
+            // With the chat field, your buttons are inside it.
+            if shows.contains("buttons") && !shows.contains("chat") {
                 for (i, spec) in model.buttons.enumerated() {
                     let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
                     add(b.button, .shrinkable(b.width))
@@ -418,8 +420,14 @@ final class BarView: NSView {
             let field = TypingFieldView()
             field.placeholder = model.typingPlaceholder
             self.field = field
-            add(field, .flex(weight: 1, min: 120))
-            animate(field) { $0.slideIn(duration: 0.24) }
+            if model.typingCommands {
+                let box = ChatBoxView(field: field, commands: commandButtons())
+                add(box, .flex(weight: 1, min: 120 + box.commandsWidth))
+                animate(box) { $0.slideIn(duration: 0.24) }
+            } else {
+                add(field, .flex(weight: 1, min: 120))
+                animate(field) { $0.slideIn(duration: 0.24) }
+            }
             let send = BarButton("Send", style: .primary) { [weak self] in self?.onAction?(.send) }
             let mic = BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.mic) }
             add(send, .fixed(85))
@@ -429,12 +437,6 @@ final class BarView: NSView {
                    let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Templates") {
                     add(BarButton("Templates", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
                 }
-                if model.shows.contains("buttons") {
-                    for (i, spec) in model.buttons.enumerated() {
-                        let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
-                        add(b.button, .shrinkable(min(110, b.width)))
-                    }
-                }
             }
             add(mic, .fixed(48))
             if let x = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel") {
@@ -442,6 +444,14 @@ final class BarView: NSView {
             }
         }
         needsLayout = true
+    }
+
+    /// Your buttons, small, for inside the chat field (if the bar shows them).
+    private func commandButtons() -> [BarButton] {
+        guard model.shows.contains("buttons") else { return [] }
+        return model.buttons.enumerated().map { i, spec in
+            BarButton(spec.label, fontSize: 11) { [weak self] in self?.onAction?(.button(i)) }
+        }
     }
 
     /// Several chats: the one a request comes from, before it.

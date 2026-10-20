@@ -12,6 +12,8 @@ final class TypingFieldView: NSView {
     var placeholder = "Type your answer" { didSet { set(text: text) } }
     /// The blinking caret: off where the field only waits for a tap.
     var showsCaret = true { didSet { caret.isHidden = !showsCaret } }
+    /// Room kept clear at the right end, for the commands inside the field.
+    var trailingInset: CGFloat = 0 { didSet { needsLayout = true } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -60,6 +62,7 @@ final class TypingFieldView: NSView {
     override func layout() {
         super.layout()
         clip.frame = bounds.insetBy(dx: 10, dy: 1)
+        clip.frame.size.width = max(0, clip.frame.width - trailingInset)
         let width = ceil(label.attributedStringValue.size().width) + 4
         let height = ceil(label.attributedStringValue.size().height) + 2
         // Keep the end (where you type) in view.
@@ -73,10 +76,51 @@ final class TypingFieldView: NSView {
     }
 }
 
+/// The chat field with your commands inside it, at its right end, as in
+/// the widget's message box: `field` is the typing field or, between
+/// messages, a button that looks like one.
+final class ChatBoxView: NSView {
+    private let field: NSView
+    private let commands: [BarButton]
+    private let widths: [CGFloat]
+    static let gap: CGFloat = 4
+
+    init(field: NSView, commands: [BarButton]) {
+        self.field = field
+        self.commands = commands
+        widths = commands.map { min(110, max(46, $0.fittingWidth(padding: 10))) }
+        super.init(frame: .zero)
+        addSubview(field)
+        commands.forEach(addSubview)
+        let inset = commandsWidth + (commands.isEmpty ? 0 : 4)
+        (field as? TypingFieldView)?.trailingInset = inset
+        (field as? ComposeFieldButton)?.trailingInset = inset
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    var commandsWidth: CGFloat { widths.reduce(0, +) + Self.gap * CGFloat(max(0, commands.count - 1)) }
+
+    override func layout() {
+        super.layout()
+        field.frame = bounds
+        var x = bounds.maxX - 3
+        for (b, w) in zip(commands, widths).reversed() {
+            x -= w
+            b.frame = CGRect(x: x, y: 3, width: w, height: max(0, bounds.height - 6))
+            x -= Self.gap
+        }
+    }
+}
+
 /// The chat field on the bar between messages: looks like the typing
 /// field, and a tap on it starts writing.
 final class ComposeFieldButton: NSButton {
     private let field = TypingFieldView()
+    var trailingInset: CGFloat {
+        get { field.trailingInset }
+        set { field.trailingInset = newValue }
+    }
     private let onTap: () -> Void
 
     init(placeholder: String, onTap: @escaping () -> Void) {

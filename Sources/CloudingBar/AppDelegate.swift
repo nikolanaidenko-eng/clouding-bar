@@ -291,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                let s = self.store.session(inDesktop: title), s.desktopChat == nil {
                 self.store.link(s, desktopChat: shown.chat, title: title)
             }
-            DebugLog.note("desktop chat: \(shown.title ?? "…") → \(self.store.session(inDesktop: shown.title, chat: shown.chat)?.displayName ?? "not known")")
+            DebugLog.note("desktop chat: \(shown.title ?? "…") \(shown.chat) → \(self.store.session(inDesktop: shown.title, chat: shown.chat)?.displayName ?? "not known")")
             self.setNeedsRefresh()
         }
     }
