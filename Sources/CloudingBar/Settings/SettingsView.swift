@@ -697,11 +697,18 @@ struct ChipSet: View {
     /// number on the pill and a metric in the panel).
     var mirror: String? = nil
     var small = false
+    /// A second row starts after this many chips.
+    var wrapAfter: Int? = nil
 
     var body: some View {
-        HStack(spacing: small ? 5 : 6) {
-            ForEach(options, id: \.id) { option in
-                Chip(label: option.label, on: list(key).contains(option.id), small: small) { toggle(option.id) }
+        let rows = wrapAfter.map { [Array(options.prefix($0)), Array(options.dropFirst($0))] } ?? [options]
+        VStack(alignment: .leading, spacing: small ? 5 : 6) {
+            ForEach(rows.indices, id: \.self) { i in
+                HStack(spacing: small ? 5 : 6) {
+                    ForEach(rows[i], id: \.id) { option in
+                        Chip(label: option.label, on: list(key).contains(option.id), small: small) { toggle(option.id) }
+                    }
+                }
             }
         }
     }
@@ -1029,7 +1036,7 @@ struct TouchBarTab: View {
                                       ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
                                       ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
                                       ("templates", "Templates"), ("buttons", "Buttons"),
-                                      ("shot", "Screenshot"), ("mic", "Mic")], small: true)
+                                      ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 8)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
