@@ -144,6 +144,23 @@ check(HotKeys.display("ctrl+opt+c") == "⌃⌥C", "hotkey shows as ⌃⌥C")
 
 let week = StatsBuilder.build()
 check(week.days.count == 7 && week.grid.count == 7, "stats: a 7 × 24 week from local transcripts")
+do { // the summary, as /stats: sessions once each, days in a row, the range
+    let cal = Calendar.current
+    let now = Date()
+    func key(_ back: Int) -> String { DayStats.key(cal.date(byAdding: .day, value: -back, to: now)!) }
+    var h: [String: DayStats] = [:]
+    for back in [0, 1, 2, 5, 6, 7, 8, 40] {
+        var d = DayStats(tokens: 1000, minutes: 30, sessions: ["s\(back % 3)"], longest: 30)
+        d.projects = ["GitHub": 20, "bots": 10]; d.models = ["Opus 5.5": 900, "Haiku 5.5": 100]
+        d.hours[14] = 1000
+        h[key(back)] = d
+    }
+    let week = StatsSummary.of(h, days: 7, now: now)
+    let all = StatsSummary.of(h, days: nil, now: now)
+    check(week.activeDays == 5 && week.minutes == 150 && week.sessions == 3 && week.currentStreak == 3 && all.longestStreak == 4
+          && all.activeDays == 8 && week.favoriteModel == "Opus 5.5" && week.peakHour == 14 && week.projects.first?.name == "GitHub",
+          "stats summary: sessions once, streaks, the week against all")
+}
 print("     (this week: \(week.headline); \(week.projects.map { "\($0.name) \(Int($0.share * 100))%" }.joined(separator: ", ")))")
 
 // Cowork plugin: built into the test folder, its script run on a fake transcript.
