@@ -948,7 +948,8 @@ struct ChatTag: View {
     }
 }
 
-/// A name too long for its room plays across it, slowly, and back.
+/// A name too long for its room goes round like a carousel: the name, a
+/// gap, the name again, sliding slowly left without a stop.
 struct MarqueeText: View {
     let text: String
     let size: CGFloat
@@ -957,26 +958,31 @@ struct MarqueeText: View {
     @State private var shift: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private static let gap: CGFloat = 28
+
     var body: some View {
-        let over = ceil(MainPanel.textWidth(text, size, weight: weight)) + 1 - maxWidth
+        let width = ceil(MainPanel.textWidth(text, size, weight: weight)) + 1
         let font = Font.system(size: size, weight: weight == .semibold ? .semibold : weight == .bold ? .bold : .regular)
-        if over <= 0 || reduceMotion {
+        if width <= maxWidth || reduceMotion {
             Text(text).font(font)
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: maxWidth, alignment: .leading)
                 .fixedSize(horizontal: true, vertical: false)
         } else {
-            Text(text).font(font).lineLimit(1).fixedSize()
-                .offset(x: shift)
-                .frame(width: maxWidth, alignment: .leading)
-                .clipped()
-                .id(text)
-                .onAppear {
-                    shift = 0
-                    withAnimation(.linear(duration: Double(over) / 25).delay(1.4).repeatForever(autoreverses: true)) {
-                        shift = -over
-                    }
+            HStack(spacing: Self.gap) {
+                Text(text).font(font).lineLimit(1).fixedSize()
+                Text(text).font(font).lineLimit(1).fixedSize()
+            }
+            .offset(x: shift)
+            .frame(width: maxWidth, alignment: .leading)
+            .clipped()
+            .id(text)
+            .onAppear {
+                shift = 0
+                withAnimation(.linear(duration: Double(width + Self.gap) / 22).repeatForever(autoreverses: false)) {
+                    shift = -(width + Self.gap)
                 }
+            }
         }
     }
 }

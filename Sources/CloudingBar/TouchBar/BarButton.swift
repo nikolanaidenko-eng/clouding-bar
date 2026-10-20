@@ -140,31 +140,39 @@ final class BarButton: NSButton {
         let clip = CALayer()
         clip.frame = CGRect(x: x0 + dotRoom, y: 0, width: shown, height: bounds.height)
         clip.masksToBounds = true
-        let text = CATextLayer()
         let color: NSColor = style == .deny ? Palette.denyText : style == .primary ? .white : Palette.text
-        text.string = NSAttributedString(string: fullTitle, attributes: [.font: titleFont, .foregroundColor: color])
-        text.contentsScale = window?.backingScaleFactor ?? 2
-        text.truncationMode = slides ? .none : .end
         let height = ceil(titleFont.ascender - titleFont.descender) + 2
-        text.frame = CGRect(x: 0, y: (bounds.height - height) / 2, width: slides ? width : shown, height: height)
-        clip.addSublayer(text)
+        let y = (bounds.height - height) / 2
+        func copy(at x: CGFloat) -> CATextLayer {
+            let text = CATextLayer()
+            text.string = NSAttributedString(string: fullTitle, attributes: [.font: titleFont, .foregroundColor: color])
+            text.contentsScale = window?.backingScaleFactor ?? 2
+            text.truncationMode = slides ? .none : .end
+            text.frame = CGRect(x: x, y: slides ? 0 : y, width: slides ? width : shown, height: height)
+            return text
+        }
         box.addSublayer(clip)
         layer.addSublayer(box)
         scroller = box
-        guard slides else { return }
-        // Rest at the start, glide to the end (about 25 pt/s), rest, glide
-        // back, and on.
-        let travel = width - room
-        let move = Double(travel) / 25, rest = 1.2
-        let total = (rest + move) * 2
-        let slide = CAKeyframeAnimation(keyPath: "position.x")
-        let start = width / 2
-        slide.values = [start, start, start - travel, start - travel, start]
-        slide.keyTimes = [0, rest / total, (rest + move) / total, (rest + move + rest) / total, 1].map { NSNumber(value: $0) }
-        slide.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: 4)
-        slide.duration = total
+        guard slides else {
+            clip.addSublayer(copy(at: 0))
+            return
+        }
+        // A carousel: the name, a gap, the name again, sliding left without
+        // a stop (about 22 pt/s); when the second copy is where the first
+        // was, it starts over, which looks the same.
+        let gap: CGFloat = 28
+        let belt = CALayer()
+        belt.frame = CGRect(x: 0, y: y, width: width * 2 + gap, height: height)
+        belt.addSublayer(copy(at: 0))
+        belt.addSublayer(copy(at: width + gap))
+        clip.addSublayer(belt)
+        let slide = CABasicAnimation(keyPath: "position.x")
+        slide.fromValue = belt.position.x
+        slide.toValue = belt.position.x - (width + gap)
+        slide.duration = Double(width + gap) / 22
         slide.repeatCount = .infinity
-        text.add(slide, forKey: "marquee")
+        belt.add(slide, forKey: "marquee")
     }
 
     override var isHighlighted: Bool {
