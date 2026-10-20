@@ -35,7 +35,16 @@ pub struct Session {
     pub context_window_size: Option<u64>,
     /// … or from the transcript (the VS Code panel never runs it).
     pub context_tokens: Option<u64>,
+    /// The chat's title ("Status bar"), from the transcript: VS Code's tab
+    /// and the window title show the same.
+    pub title: Option<String>,
+    /// Its colour in the widget: an index into `COLORS`.
+    pub color: usize,
 }
+
+/// One colour per chat, so two chats of one project are told apart; none
+/// of them the orange of "needs you" (the macOS app's).
+pub const COLORS: [u32; 8] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE];
 
 impl Session {
     fn new(id: &str, now: SystemTime) -> Self {
@@ -43,8 +52,17 @@ impl Session {
             id: id.to_string(), cwd: None, transcript_path: None, entrypoint: None,
             activity: Activity::Sleep, activity_since: now, waiting_notice: false, last_event: now,
             model: None, effort: None, status_context_percent: None, context_window_size: None, context_tokens: None,
+            title: None, color: 0,
         }
     }
+
+    /// What the widget calls it: its title, else its project.
+    pub fn display_name(&self) -> String {
+        self.title.clone().or_else(|| self.project_name()).unwrap_or_else(|| "Claude".into())
+    }
+
+    /// "#0A84FF".
+    pub fn color_hex(&self) -> String { format!("#{:06X}", COLORS[self.color % COLORS.len()]) }
 
     /// The folder's name: "DiaRoute".
     pub fn project_name(&self) -> Option<String> {
@@ -172,7 +190,12 @@ impl Store {
         // Only hook events start a session; status messages just add numbers.
         if !self.sessions.contains_key(id) {
             if m.event().is_none() { return; }
-            self.sessions.insert(id.to_string(), Session::new(id, now));
+            // The first colour no live chat has.
+            let used: Vec<usize> = self.alive(now).iter().map(|s| s.color).collect();
+            let color = (0..COLORS.len()).min_by_key(|c| (used.iter().filter(|u| *u == c).count(), *c)).unwrap_or(0);
+            let mut new = Session::new(id, now);
+            new.color = color;
+            self.sessions.insert(id.to_string(), new);
         }
         let s = self.sessions.get_mut(id).unwrap();
         if let Some(v) = m.cwd() { s.cwd = Some(v.to_string()); }
@@ -212,8 +235,9 @@ impl Store {
         for s in self.sessions.values_mut() {
             if let Some(path) = &s.transcript_path {
                 if let Some(t) = transcript::latest(path) {
-                    s.context_tokens = Some(t.context_tokens);
+                    if let Some(c) = t.context_tokens { s.context_tokens = Some(c); }
                     if let Some(m) = t.model { s.model = Some(m); }
+                    if let Some(title) = t.title { s.title = Some(title); }
                 }
             }
         }
@@ -225,21 +249,47 @@ impl Store {
         list
     }
 
-    /// The session whose project the window in front shows (its title has
-    /// the folder's name as one of its " — " / " - " parts), else the latest.
+    /// The session the window in front shows, else the latest.
     pub fn active(&self, window_title: Option<&str>, now: SystemTime) -> Option<&Session> {
-        let alive = self.alive(now);
+        self.focus(window_title, &[], now)
+    }
+
+    /// The chat the widget follows (the macOS app's rule): the one whose
+    /// title the window in front shows ("Status bar — GitHub — Visual Studio
+    /// Code"); else, of the chats of that window's project, the one in
+    /// `sticky` (picked in the widget, or followed before), else the latest;
+    /// no chat's window in front: the one in `sticky`, else the latest.
+    pub fn focus(&self, window_title: Option<&str>, sticky: &[String], now: SystemTime) -> Option<&Session> {
+        let alive = self.alive(now); // latest first
         if let Some(title) = window_title {
-            let parts: Vec<String> = title
-                .split(" — ").flat_map(|p| p.split(" – ")).flat_map(|p| p.split(" - "))
-                .map(|p| p.trim().replace(" (Workspace)", ""))
-                .collect();
-            if let Some(s) = alive.iter().find(|s| s.project_name().is_some_and(|n| parts.contains(&n))) {
-                return Some(*s);
+            let parts = title_parts(title);
+            let score = |s: &Session| -> u8 {
+                if s.title.as_ref().is_some_and(|t| parts.iter().any(|p| p == t
+                    || (p.ends_with('…') && t.starts_with(p.trim_end_matches('…'))))) { 3 }
+                else if s.project_name().is_some_and(|n| parts.contains(&n)) { 2 }
+                else { 0 }
+            };
+            let best = alive.iter().map(|s| score(s)).max().unwrap_or(0);
+            if best == 3 {
+                return alive.iter().find(|s| score(s) == 3).copied();
+            }
+            if best == 2 {
+                let mine: Vec<&Session> = alive.iter().filter(|s| score(s) == 2).copied().collect();
+                return sticky.iter().find_map(|id| mine.iter().find(|s| &s.id == id).copied())
+                    .or_else(|| mine.first().copied());
             }
         }
-        alive.first().copied()
+        sticky.iter().find_map(|id| alive.iter().find(|s| &s.id == id).copied()).or_else(|| alive.first().copied())
     }
+}
+
+/// A window title's pieces, without what decorates them ("● ", a terminal's
+/// spinner, " (Workspace)").
+pub fn title_parts(title: &str) -> Vec<String> {
+    title.split(" — ").flat_map(|p| p.split(" – ")).flat_map(|p| p.split(" - "))
+        .map(|p| p.replace(" (Workspace)", "").trim_start_matches(|c: char| !c.is_alphanumeric()).trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 #[cfg(test)]
@@ -284,6 +334,23 @@ mod tests {
         apply(&mut st, r#"{"hook_event_name":"SessionStart","session_id":"b","cwd":"/p/beta"}"#, t0 + Duration::from_secs(5));
         assert_eq!(st.active(Some("main.rs — alpha — Visual Studio Code"), t0).unwrap().id, "a");
         assert_eq!(st.active(None, t0).unwrap().id, "b");
+    }
+
+    #[test]
+    fn tells_two_chats_of_one_project_apart() {
+        let mut st = Store::default();
+        let t0 = UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        apply(&mut st, r#"{"hook_event_name":"SessionStart","session_id":"a","cwd":"C:\\Users\\me\\GitHub"}"#, t0);
+        apply(&mut st, r#"{"hook_event_name":"SessionStart","session_id":"b","cwd":"C:\\Users\\me\\GitHub"}"#, t0 + Duration::from_secs(5));
+        st.sessions.get_mut("a").unwrap().title = Some("Status bar".into());
+        st.sessions.get_mut("b").unwrap().title = Some("Сайт ordermeshop".into());
+        assert_ne!(st.sessions["a"].color, st.sessions["b"].color, "each chat its own colour");
+        assert_eq!(st.focus(Some("Status bar - GitHub - Visual Studio Code"), &[], t0).unwrap().id, "a", "by the chat's title");
+        assert_eq!(st.focus(Some("main.rs - GitHub - Visual Studio Code"), &["a".into()], t0).unwrap().id, "a",
+                   "on a file: the one followed before");
+        assert_eq!(st.focus(Some("main.rs - GitHub - Visual Studio Code"), &[], t0).unwrap().id, "b", "else the latest");
+        assert_eq!(st.focus(None, &["a".into()], t0).unwrap().id, "a", "nothing in front: the one followed");
+        assert_eq!(st.sessions["a"].display_name(), "Status bar");
     }
 
     #[test]

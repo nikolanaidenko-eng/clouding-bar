@@ -42,6 +42,13 @@ function cloud(activity, size, grab = false) {
     <g class="body"><rect x="7" y="11" width="26" height="23" rx="11.5" fill="${body}"/>${face}</g>${extras}</svg>`;
 }
 
+/** A chat's colour dot and its name; "other chat" when it isn't the one shown. */
+function chatTag(name, color, elsewhere = false) {
+  if (!name) return "";
+  return `<span class="chat-tag"><i class="cdot" style="background:${esc(color)}"></i><span class="cname">${esc(name)}</span>${
+    elsewhere ? `<span class="other-chat">other chat</span>` : ""}</span>`;
+}
+
 function statusTitle(s) {
   if (s.request) return s.request.kind === "question" ? "Claude asks" : "Needs your OK";
   return { work: "Working", wait: "Needs your OK", sleep: "Idle" }[s.activity] || "Idle";
@@ -54,23 +61,38 @@ function pill(s) {
     return `<div class="pill glass" data-open>${cloud("sleep", 30, true)}<span class="num label">${pct(s.sessionPercent)}</span></div>`;
   }
   const reset = s.resetShort ? `<div class="item"><span class="label">↻</span><span class="num">${esc(s.resetShort)}</span></div>` : "";
+  // With several chats: which one this is.
+  const chat = s.sessions.length > 1 ? `<div class="item">${chatTag(s.chatName, s.chatColor)}</div>` : "";
   return `<div class="pill glass ${s.request ? "waiting" : ""}" data-open>
-    ${cloud(s.activity, 30, true)}
+    ${cloud(s.activity, 30, true)}${chat}
     <div class="item">${bar(s.sessionPercent)}<span class="num">${pct(s.sessionPercent)}</span></div>
     <div class="item"><span class="label">ctx</span>${bar(s.contextPercent)}<span class="num">${pct(s.contextPercent)}</span></div>
     ${reset}
   </div>`;
 }
 
-function head(s, title, sub) {
+function head(s, title, sub, tag = "") {
   return `<div class="head">${cloud(s.request ? "wait" : s.activity, 24, true)}
-    <span class="title">${esc(title)}</span><span class="sub">${esc(sub || "")}</span>
+    <span class="title">${esc(title)}</span>${tag}<span class="sub">${esc(sub || "")}</span>
     <span class="spacer"></span>
     ${s.request ? "" : `<button class="icon-btn" data-close title="Collapse">⌃</button>`}</div>`;
 }
 
+/** Every chat as a tab, the one shown lit in its colour; a click follows another. */
+function tabs(s) {
+  return `<div class="tabs">${s.sessions.map((x) => `<button class="tab ${x.current ? "current" : ""}" data-focus="${esc(x.id)}"
+      style="--c:${esc(x.color)}" title="${esc([x.place, x.status].join(" · "))}">
+      <i class="cdot" style="background:${esc(x.color)}"></i><span class="cname">${esc(x.name)}</span>${
+      x.waiting ? `<span class="dot wait"></span>` : ""}</button>`).join("")}</div>`;
+}
+
 function panel(s) {
-  const parts = [head(s, statusTitle(s), s.project)];
+  const several = s.sessions.length > 1;
+  const line = [s.chatPlace, s.chatStatus].filter(Boolean).join(" · ");
+  const parts = [`<div class="head">${cloud(s.request ? "wait" : s.activity, 24, true)}
+    <div class="who">${several ? tabs(s) : `<span class="title">${esc(s.chatName || statusTitle(s))}</span>`}
+      <span class="sub">${esc(line)}</span></div>
+    <span class="spacer"></span><button class="icon-btn" data-close title="Collapse">⌃</button></div>`];
   parts.push(`<div class="meters">
     <div class="meter"><div class="row"><span class="name">Session</span><span class="val num">${pct(s.sessionPercent)}</span></div>${bar(s.sessionPercent)}
       <div class="cap">${s.reset ? "Resets in " + esc(s.reset) : "5-hour limit"}</div></div>
@@ -79,10 +101,6 @@ function panel(s) {
   const chips = [];
   if (s.weekPercent != null) chips.push(`Week ${pct(s.weekPercent)}`);
   if (chips.length) parts.push(`<div class="chips">${chips.map((c) => `<span class="chip num">${esc(c)}</span>`).join("")}</div>`);
-  if (s.sessions.length > 1) {
-    parts.push(`<div class="sessions">${s.sessions.slice(0, 6).map((x) =>
-      `<div class="s"><span class="dot ${x.activity}"></span>${esc(x.name)}<span class="ctx num">${pct(x.context)}</span></div>`).join("")}</div>`);
-  }
   if (!s.hooksConnected) {
     parts.push(`<div class="notice"><span>Clouding Bar isn't connected to Claude Code yet: it adds a hook to ~/.claude/settings.json (backed up first).</span>
       <button class="btn primary" data-connect>Connect</button></div>`);
@@ -94,7 +112,7 @@ function panel(s) {
 function request(s) {
   const r = s.request;
   if (r.kind === "permission") {
-    return `<div class="panel glass enter">${head(s, "Needs your OK", [r.project, r.verb === "Run" ? "run in terminal" : r.verb.toLowerCase()].filter(Boolean).join(" · "))}
+    return `<div class="panel glass enter">${head(s, "Needs your OK", r.verb === "Run" ? "run in terminal" : r.verb.toLowerCase(), chatTag(r.chat, r.chatColor, r.elsewhere))}
       <div class="code">${esc(r.detail)}</div>
       <div class="btns"><button class="btn primary" data-answer="allow">Allow</button>
         <button class="btn" data-answer="always">Always allow</button>
@@ -105,7 +123,7 @@ function request(s) {
       <span>${esc(o)}${r.descriptions[i] ? `<span class="desc">${esc(r.descriptions[i])}</span>` : ""}</span></button>`).join("");
   const send = r.multiSelect && r.picked.length
     ? `<button class="btn primary" data-answer="send">Send ${r.picked.length} selected</button>` : "";
-  return `<div class="panel glass enter">${head(s, "Claude asks", [r.project, r.count > 1 ? `${r.index + 1} of ${r.count}` : ""].filter(Boolean).join(" · "))}
+  return `<div class="panel glass enter">${head(s, "Claude asks", r.count > 1 ? `${r.index + 1} of ${r.count}` : "", chatTag(r.chat, r.chatColor, r.elsewhere))}
     <div class="question">${esc(r.question)}</div>
     <div class="options">${options}
       <div class="other"><span class="hint">Other</span><input id="other" value="${esc(otherText)}" spellcheck="false">
@@ -152,7 +170,7 @@ root.addEventListener("mouseleave", () => {
 });
 
 root.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-answer],[data-option],[data-close],[data-connect],[data-open]");
+  const t = e.target.closest("[data-answer],[data-option],[data-close],[data-connect],[data-focus],[data-open]");
   if (!t || !snap) return;
   const r = snap.request;
   if (t.dataset.answer) {
@@ -167,6 +185,8 @@ root.addEventListener("click", (e) => {
     setExpanded(false);
   } else if ("connect" in t.dataset) {
     invoke("connect_claude");
+  } else if (t.dataset.focus) {
+    invoke("focus_session", { id: t.dataset.focus });
   } else if ("open" in t.dataset && !e.target.closest("[data-tauri-drag-region]")) {
     clearTimeout(openTimer);
     setExpanded(true);

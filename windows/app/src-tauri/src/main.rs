@@ -84,6 +84,28 @@ fn answer(app: AppHandle, shared: tauri::State<'_, Shared>, id: u64, action: Str
 #[tauri::command]
 fn touch(shared: tauri::State<'_, Shared>, id: u64) { shared.lock().touch(id); }
 
+/// A chat picked in the widget: follow it, and bring its conversation up
+/// (the Claude extension opens one by its id).
+#[tauri::command]
+fn focus_session(app: AppHandle, shared: tauri::State<'_, Shared>, id: String) {
+    let vscode = {
+        let mut st = shared.lock();
+        st.picked = Some(id.clone());
+        st.last_followed = Some(id.clone());
+        st.store.sessions.get(&id).is_some_and(|s| s.entrypoint.as_deref() == Some("claude-vscode"))
+    };
+    changed(&app, &shared);
+    if vscode { open_url(&format!("vscode://anthropic.claude-code/open?session={id}")); }
+}
+
+fn open_url(url: &str) {
+    if cfg!(windows) {
+        let _ = std::process::Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    } else {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+}
+
 /// CLOUDINGBAR_EXPAND: start with the panel open (for checking how it looks).
 #[tauri::command]
 fn start_expanded() -> bool { std::env::var("CLOUDINGBAR_EXPAND").is_ok() }
@@ -161,7 +183,7 @@ fn main() {
     let ticking = shared.clone();
     tauri::Builder::default()
         .manage(shared.clone())
-        .invoke_handler(tauri::generate_handler![snapshot, answer, touch, connect_claude, resize, start_expanded])
+        .invoke_handler(tauri::generate_handler![snapshot, answer, touch, focus_session, connect_claude, resize, start_expanded])
         .setup(move |app| {
             tray(app, shared.clone())?;
             if let Some(w) = app.get_webview_window("widget") { place(&w); }
@@ -181,6 +203,7 @@ fn main() {
                         st.expire();
                         st.store.account.expire(SystemTime::now());
                         if tick % 2 == 0 { st.store.poll_transcripts(); }
+                        st.remember_followed();
                     }
                     changed(&handle, &ticking);
                 }

@@ -31,6 +31,10 @@ pub struct State {
     pub pending: Vec<Pending>,
     pub next_id: u64,
     pub front_title: Option<String>,
+    /// The chat picked in the widget, and the one followed last: kept when
+    /// the window in front can't tell which chat it shows.
+    pub picked: Option<String>,
+    pub last_followed: Option<String>,
     pub hooks_connected: bool,
     pub setup_message: Option<String>,
 }
@@ -155,14 +159,31 @@ impl State {
         }
     }
 
+    /// The chat the widget follows (Store::focus).
+    pub fn followed(&self, now: SystemTime) -> Option<&cloudingbar_core::store::Session> {
+        let sticky: Vec<String> = [self.picked.clone(), self.last_followed.clone()].into_iter().flatten().collect();
+        self.store.focus(self.front_title.as_deref(), &sticky, now)
+    }
+
+    /// Once a second: remember which chat that was.
+    pub fn remember_followed(&mut self) {
+        let id = self.followed(SystemTime::now()).map(|s| s.id.clone());
+        if id.is_some() { self.last_followed = id; }
+    }
+
+    /// Claude waits on this chat: a request here, or a notice.
+    fn waiting(&self, s: &cloudingbar_core::store::Session) -> bool {
+        s.waiting_notice || self.pending.iter().any(|p| p.request.session_id.as_deref() == Some(s.id.as_str()))
+    }
+
     /// What the widget shows, as plain data for the page.
     pub fn snapshot(&self) -> Snapshot {
         let now = SystemTime::now();
-        let active = self.store.active(self.front_title.as_deref(), now);
+        let active = self.followed(now);
         let request = self.pending.iter()
             .find(|p| active.is_some_and(|a| p.request.session_id.as_deref() == Some(a.id.as_str())))
             .or_else(|| self.pending.first())
-            .map(|p| RequestView::new(p, &self.store));
+            .map(|p| RequestView::new(p, &self.store, active.map(|a| a.id.as_str())));
         let activity = if request.is_some() { Activity::Wait } else {
             active.map(|s| if s.waiting_notice { Activity::Wait } else { s.activity }).unwrap_or(Activity::Sleep)
         };
@@ -179,11 +200,28 @@ impl State {
                 Some(e) => format!("{m} · {e}"),
                 None => m,
             }),
-            sessions: self.store.alive(now).iter().map(|s| SessionView {
-                name: s.project_name().unwrap_or_else(|| "Claude".into()),
-                activity: s.activity,
-                context: s.context_percent(),
-            }).collect(),
+            chat_name: active.map(|s| s.display_name()),
+            chat_color: active.map(|s| s.color_hex()),
+            chat_place: active.map(place),
+            chat_status: active.map(|s| status(s, self.waiting(s), now)),
+            sessions: {
+                let mut list: Vec<SessionView> = self.store.alive(now).iter().map(|s| SessionView {
+                    id: s.id.clone(),
+                    name: s.display_name(),
+                    activity: if self.waiting(s) { Activity::Wait } else { s.activity },
+                    context: s.context_percent(),
+                    color: s.color_hex(),
+                    current: active.is_some_and(|a| a.id == s.id),
+                    waiting: self.waiting(s),
+                    place: place(s),
+                    status: status(s, self.waiting(s), now),
+                }).collect();
+                // A steady order, so the tabs don't jump about.
+                let order: std::collections::HashMap<&str, usize> =
+                    self.store.sessions.values().map(|s| (s.id.as_str(), s.color)).collect();
+                list.sort_by(|a, b| (order.get(a.id.as_str()), &a.id).cmp(&(order.get(b.id.as_str()), &b.id)));
+                list
+            },
             request,
             hooks_connected: self.hooks_connected,
             setup_message: self.setup_message.clone(),
@@ -203,6 +241,11 @@ pub struct Snapshot {
     pub week_percent: Option<f64>,
     pub context_percent: Option<f64>,
     pub model: Option<String>,
+    /// The chat shown: its title (or project), colour, where it runs, what it does.
+    pub chat_name: Option<String>,
+    pub chat_color: Option<String>,
+    pub chat_place: Option<String>,
+    pub chat_status: Option<String>,
     pub sessions: Vec<SessionView>,
     pub request: Option<RequestView>,
     pub hooks_connected: bool,
@@ -212,9 +255,38 @@ pub struct Snapshot {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionView {
+    pub id: String,
     pub name: String,
     pub activity: Activity,
     pub context: Option<f64>,
+    pub color: String,
+    pub current: bool,
+    pub waiting: bool,
+    pub place: String,
+    pub status: String,
+}
+
+/// "GitHub · VS Code": its project, if it has a title, and where it runs.
+fn place(s: &cloudingbar_core::store::Session) -> String {
+    let source = match s.entrypoint.as_deref() {
+        Some("claude-vscode") => "VS Code",
+        Some("cli") => "Terminal",
+        Some("claude-desktop") => "Desktop",
+        _ => "Claude Code",
+    };
+    match (&s.title, s.project_name()) {
+        (Some(_), Some(p)) => format!("{p} · {source}"),
+        _ => source.to_string(),
+    }
+}
+
+/// "Needs your OK", "Working · 3 min", "Idle · 12 min".
+fn status(s: &cloudingbar_core::store::Session, waiting: bool, now: SystemTime) -> String {
+    let minutes = |t: SystemTime| now.duration_since(t).unwrap_or_default().as_secs() / 60;
+    let span = |m: u64| if m >= 60 { format!("{} h", m / 60) } else { format!("{m} min") };
+    if waiting { "Needs your OK".into() }
+    else if s.activity == Activity::Work { format!("Working · {}", span(minutes(s.activity_since))) }
+    else { format!("Idle · {}", span(minutes(s.last_event))) }
 }
 
 #[derive(Clone, Serialize)]
@@ -223,6 +295,11 @@ pub struct RequestView {
     pub id: u64,
     pub kind: &'static str,
     pub project: Option<String>,
+    /// The chat it comes from, its colour, and whether that's another chat
+    /// than the one shown.
+    pub chat: Option<String>,
+    pub chat_color: Option<String>,
+    pub elsewhere: bool,
     pub verb: String,
     pub detail: String,
     pub question: Option<String>,
@@ -235,14 +312,18 @@ pub struct RequestView {
 }
 
 impl RequestView {
-    fn new(p: &Pending, store: &Store) -> Self {
+    fn new(p: &Pending, store: &Store, shown: Option<&str>) -> Self {
         let r = &p.request;
         let (verb, detail) = r.summary();
         let q = r.current();
+        let session = r.session_id.as_ref().and_then(|id| store.sessions.get(id));
         RequestView {
             id: p.id,
             kind: if r.kind == Kind::Question { "question" } else { "permission" },
-            project: r.session_id.as_ref().and_then(|id| store.sessions.get(id)).and_then(|s| s.project_name()),
+            project: session.and_then(|s| s.project_name()),
+            chat: session.map(|s| s.display_name()),
+            chat_color: session.map(|s| s.color_hex()),
+            elsewhere: session.is_some_and(|s| Some(s.id.as_str()) != shown) && store.sessions.len() > 1,
             verb,
             detail,
             question: q.map(|q| q.text.clone()),

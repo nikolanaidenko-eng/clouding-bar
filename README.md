@@ -17,27 +17,41 @@ It works in the terminal, in the VS Code extension and with the desktop
 app, on any Mac with macOS 12 or later. A Touch Bar is a bonus, not a must.
 A first version for **Windows** is in [windows/](windows/README.md).
 
+<p align="center">
+  <img src="docs/images/pill.png" width="860" alt="The pill: which chat, the 5-hour limit, the context, the reset, the model, lines, branch, subagents, buttons">
+</p>
+
 ## What it does
 
 **See where you are**
-- **The pill** floats over your windows: the 5-hour limit, the context,
-  when the limit resets, the model, lines changed, the git branch,
+- **Which chat.** Every chat gets its own colour and goes by its title (the
+  one VS Code's tab shows, or the one you gave it), so two chats in one
+  project are told apart. Clouding Bar follows the chat in front — VS
+  Code's chat tab, a Terminal or iTerm tab — and stays with it when you
+  switch to another app. Pick another one in the widget, the menu or the
+  Touch Bar, and it's brought up.
+- **The pill** floats over your windows: which chat, the 5-hour limit, the
+  context, when the limit resets, the model, lines changed, the git branch,
   subagents. Pull its outline to resize it — wider shows more, taller
-  stands it up as a column — and drag items onto each other to reorder.
+  stands it up as a column, pulled thinnest it keeps just the bars — and
+  drag items onto each other to reorder.
 - **The notch.** Drag the pill to the top of the screen and it docks in the
   notch, the numbers on either side of the camera. Macs without a notch get
   a drawn one. When Claude asks something, the notch grows so you can
   answer right there; drag it out to put it anywhere again.
-- **The panel** opens from the pill (hover for 2 seconds, or click): both
-  meters with token counts, the model, a list of your sessions, and
-  everything below.
+- **The panel** opens from the pill (hover for 2 seconds, or click): your
+  chats as tabs, the one shown lit in its colour; the 5-hour limit and the
+  context as two lines (the context as "312k of 1M"); the model, lines,
+  branch and subagents; and a message box that says which chat it writes to.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
-  is in front: meters, your buttons, the model, the mic.
+  is in front: which chat (tap it for the others), meters, your buttons,
+  the model, the mic.
+- Limits are blue, orange from 70%, red from 90% — everywhere.
 
 **Answer Claude**
 - Permission requests: **Allow**, **Always allow**, **Deny** — from the
-  Touch Bar, the notch or the panel. Answers go back through Claude Code's
-  own hooks, not keystrokes.
+  Touch Bar, the notch or the panel, each saying which chat it comes from.
+  Answers go back through Claude Code's own hooks, not keystrokes.
 - Questions (`AskUserQuestion`): tap an option, pick several, or type your
   own answer — on the Touch Bar you can even dictate it.
 - If Clouding Bar isn't there to answer, Claude asks in its own UI as
@@ -67,12 +81,14 @@ A first version for **Windows** is in [windows/](windows/README.md).
   `/hooks` in Codex).
 
 **And**
-- A **tour** on first launch (and behind the ? in Settings): the settings
-  window dims but for one thing at a time, a card says what it is, and Cloud
-  hops onto it.
+- A **tour** on first launch (and behind the ? in Settings): twelve stops
+  through the settings window — it dims but for one thing at a time, a card
+  says what it is and what to try, and Cloud hops onto it.
 - **Everything is optional**: each number, detail and control has its own
-  switch in Settings.
-- **Stats**: your week in Claude Code, hour by hour, from local transcripts.
+  switch in Settings. What most people need is up front; the rest waits
+  behind **More**.
+- **Stats**: both limits, your week hour by hour (point at an hour for that
+  hour and that day), where the time went — from local transcripts.
 - **Cowork** chats can report their context through a small plugin.
 
 <p align="center">
@@ -81,6 +97,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
 </p>
 <p align="center">
   <img src="docs/images/touchbar.png" width="860" alt="The Touch Bar">
+  <img src="docs/images/touchbar-permission.png" width="860" alt="The Touch Bar asking, with the chat it comes from">
 </p>
 
 ## Install
@@ -116,6 +133,7 @@ This builds the app into `~/Applications`, puts the hook programs in
 | Accessibility | to type your buttons, templates and chat lines into Claude's chat | needed for those |
 | Microphone, Speech Recognition | dictation | only if you dictate |
 | Screen Recording | the screenshot button | only if you use it |
+| Automation (Terminal, iTerm) | to tell which tab is in front, and bring a chat's tab forward | only for chats in a terminal |
 
 ### VS Code
 
@@ -141,7 +159,9 @@ Claude Code ──hooks──▶ cloudingbar-hook ──unix socket──▶ Clo
 - The **status line** brings the 5-hour limit and the context; in VS Code,
   the wrapper does. The session's **transcript** adds the model, token
   counts and lines changed.
-- The session shown is the one whose project is in the window in front.
+- The chat shown is the one in front: by its title in the window (VS Code's
+  chat tab, the terminal's title), by its terminal tab (Terminal, iTerm),
+  else the one you picked or followed last.
 - Buttons, templates and chat lines are typed into the chat in front, the
   way you would.
 
@@ -161,21 +181,28 @@ may stop working.
 
 ## Settings
 
-The menu bar icon → **Settings…**
+The menu bar icon → **Settings…** Light or dark, as macOS is or as you pick.
+Cloud keeps you company there: it sits in the corner, hops from row to row
+as you move the pointer, and walks along the tabs.
 
-- **General** — light or dark, colourful or grey buttons, open at login, do
-  not disturb, the Claude Code connection, the context warning, the
-  dictation language.
-- **Widget** — the pill, the notch, what it shows (a chip for each thing).
+- **General** — appearance (auto, light, dark), colourful or grey buttons,
+  open at login, do not disturb, the Claude Code connection (and Codex, and
+  the 5-hour limit in VS Code), the context warning, the dictation language.
+- **Widget** — show it, in the notch; behind More: keep the pill visible,
+  open on hover, its position; what it shows (a chip for each thing).
 - **Touch Bar** — on or off, what it shows, with a live preview.
-- **Buttons** — your buttons and their shortcuts, a set per project,
+- **Buttons** — your buttons and their shortcuts, a set per project;
   templates.
-- **Cowork**, **Stats**.
+- **Cowork** — the plugin and its folders; behind More, the claude.ai limit.
+- **Stats** — see above.
 
 Everything is stored in `~/.cloudingbar/config.json`; every key is
 optional.
 
-<p align="center"><img src="docs/images/settings.png" width="560" alt="Settings"></p>
+<p align="center">
+  <img src="docs/images/settings.png" width="420" alt="Settings">
+  <img src="docs/images/tour.png" width="420" alt="The tour">
+</p>
 
 ## Uninstall
 
@@ -217,8 +244,9 @@ What changed since:
 - Questions with options and typed or dictated answers.
 - Buttons with types, shortcuts and per-project sets; templates; the chat
   queue; file drop; screenshots; dictation.
-- Model and effort switching; the subagents list; the sessions list.
-- Cowork, Stats, the settings window and the tour.
+- Model and effort switching; the subagents list; chats told apart by
+  title and colour, followed by the window or tab in front.
+- Cowork, Stats, the settings window (light and dark) and the tour.
 - The "skip permissions" button is gone.
 
 ## License

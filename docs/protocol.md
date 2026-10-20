@@ -53,6 +53,36 @@ Subagents (the panel's list, the bar's "agents" button), `Session.trackAgents`:
 | `SubagentStop` | that `agent_id` is done |
 | `Stop` | foreground subagents are done |
 
+## Which chat is shown
+
+Each session is a chat. Its name is its title from the transcript — a
+`{"type":"custom-title","customTitle":…}` line (a name you gave it) wins over
+`{"type":"ai-title","aiTitle":…}` (Claude Code's own) — else its project's
+folder. It gets one of eight colours, the first no live chat has.
+
+The chat the widget and the bar follow (`SessionStore.focus`):
+
+1. Terminal or iTerm in front: the chat whose Claude process runs on the
+   tty of the tab in front (asked by AppleScript).
+2. The window title names a chat's title (VS Code's chat tab: "Status bar —
+   GitHub"; a terminal's title, its spinner stripped).
+3. Of the chats of the project the window shows, the one picked in the
+   widget, or followed last, else the latest active.
+4. No chat's window in front: the one picked or followed last.
+
+Picking a chat in the widget, the menu or the Touch Bar brings it up: its
+Terminal or iTerm tab; or its VS Code window (by title, or any folder of its
+path) and then `vscode://anthropic.claude-code/open?session=<id>`. A window
+that can't be seen is asked for with `vscode://file/<folder>`, which brings
+up the window that has it — VS Code is never forced to open a new one.
+Typing into a chat (the queue, Insert, auto-compact) waits until that chat is
+surely in front: by title or tty, or the only chat of its project.
+
+Transcripts repeat themselves: a reply is several lines with one
+`message.id`, and Claude Code writes some replies and edits again later. Each
+reply's usage and each edit (`uuid`) count once; an old reply written again
+doesn't move the context.
+
 ## Model and effort
 
 The widget and the bar type `/model <alias>` or `/effort <level>` into the chat
