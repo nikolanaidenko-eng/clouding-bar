@@ -10,6 +10,8 @@ final class TypingFieldView: NSView {
     private var text = ""
     /// What the empty field says.
     var placeholder = "Type your answer" { didSet { set(text: text) } }
+    /// The blinking caret: off where the field only waits for a tap.
+    var showsCaret = true { didSet { caret.isHidden = !showsCaret } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -69,6 +71,38 @@ final class TypingFieldView: NSView {
         caret.frame = CGRect(x: x + textWidth + 1, y: (clip.bounds.height - 15) / 2, width: 1.5, height: 15)
         CATransaction.commit()
     }
+}
+
+/// The chat field on the bar between messages: looks like the typing
+/// field, and a tap on it starts writing.
+final class ComposeFieldButton: NSButton {
+    private let field = TypingFieldView()
+    private let onTap: () -> Void
+
+    init(placeholder: String, onTap: @escaping () -> Void) {
+        self.onTap = onTap
+        super.init(frame: .zero)
+        isBordered = false
+        title = ""
+        field.placeholder = placeholder
+        field.showsCaret = false
+        addSubview(field)
+        target = self
+        action = #selector(fire)
+        setAccessibilityLabel(placeholder)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layout() {
+        super.layout()
+        field.frame = bounds
+    }
+
+    /// The whole field is the button.
+    override func hitTest(_ point: NSPoint) -> NSView? { frame.contains(point) ? self : nil }
+
+    @objc private func fire() { onTap() }
 }
 
 /// Where the typing actually happens. Keys can't go to the Touch Bar, so

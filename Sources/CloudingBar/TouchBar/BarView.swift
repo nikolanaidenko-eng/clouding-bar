@@ -54,6 +54,11 @@ struct BarModel: Equatable {
     /// ("Other") or a message to the chat ("To Status bar").
     var typingLabel = "Other"
     var typingPlaceholder = "Type your answer"
+    /// Writing to the chat (not answering): your buttons and templates
+    /// stay at hand beside the field.
+    var typingCommands = false
+    /// The chat the bar shows, for the chat field: "Status bar".
+    var chatName: String?
     /// Your templates, as they read.
     var templates: [String] = []
     /// What the widget can show too: "+120 −8", "main", "$1.20".
@@ -173,7 +178,7 @@ final class BarView: NSView {
         let chat = (m.current.map { "\($0.id)|\($0.name)" } ?? "") + "|" + (m.requestChat?.id ?? "")
         switch m.mode {
         case .normal:
-            let info = [m.lines, m.branch, m.cost].map { $0 ?? "" }.joined(separator: "|")
+            let info = [m.lines, m.branch, m.cost, m.chatName].map { $0 ?? "" }.joined(separator: "|")
             return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)"
         case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
         case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
@@ -183,7 +188,8 @@ final class BarView: NSView {
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
         case let .question(text, options, multi, picked):
             return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
-        case .typing: return "typing|\(m.typingLabel)|\(m.typingPlaceholder)"
+        case .typing:
+            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)"
         }
     }
 
@@ -233,10 +239,12 @@ final class BarView: NSView {
                 add(b, .shrinkable(min(150, b.fittingWidth(padding: 12))))
             }
             if shows.contains("chat") {
-                let b = BarButton("Write", fontSize: 12, symbol: ("square.and.pencil", 0x64A8FF)) { [weak self] in
-                    self?.onAction?(.write)
+                // The chat's name is on the bar already when there are several.
+                let placeholder = model.current != nil ? "Message…" : model.chatName.map { "Write to “\($0)”…" } ?? "Message…"
+                let field = ComposeFieldButton(placeholder: placeholder) {
+                    [weak self] in self?.onAction?(.write)
                 }
-                add(b, .shrinkable(b.fittingWidth(padding: 14)))
+                add(field, .flex(weight: 0.8, min: 130))
             }
             if shows.contains("templates"), !model.templates.isEmpty {
                 let b = BarButton("Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
@@ -415,6 +423,19 @@ final class BarView: NSView {
             let send = BarButton("Send", style: .primary) { [weak self] in self?.onAction?(.send) }
             let mic = BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.mic) }
             add(send, .fixed(85))
+            if model.typingCommands {
+                // Your commands right by the field, if the bar shows them.
+                if model.shows.contains("templates"), !model.templates.isEmpty,
+                   let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Templates") {
+                    add(BarButton("Templates", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
+                }
+                if model.shows.contains("buttons") {
+                    for (i, spec) in model.buttons.enumerated() {
+                        let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
+                        add(b.button, .shrinkable(min(110, b.width)))
+                    }
+                }
+            }
             add(mic, .fixed(48))
             if let x = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel") {
                 add(BarButton("Cancel", icon: x) { [weak self] in self?.onAction?(.cancelTyping) }, .fixed(40))

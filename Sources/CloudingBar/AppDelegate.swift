@@ -63,6 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `composeDraft` while a request has the bar.
     private var composing = false
     private var composeDraft = ""
+    /// The templates were opened from the chat field: a pick goes into it.
+    private var templatesIntoDraft = false
     private var barPanel: BarPanel?
     private var barPickerClose: DispatchWorkItem?
     /// Picked on the bar, until Claude confirms it.
@@ -227,15 +229,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for r in requests where (r.holdUntil ?? .distantFuture) <= now {
             finish(r, (r.kind == .question ? "question" : "permission") + " → Claude (hold over)")
         }
-        if let app = frontApp, isTerminal(app) {
+        if let app = frontApp, desktopChats(app) {
+            readDesktopChat(app)
+        } else if let app = frontApp, isTerminal(app) {
             frontWindow.readTitle(of: app) { [weak self] title in
                 guard let self, title != self.frontTitle else { return }
                 self.frontTitle = title
                 self.setNeedsRefresh()
             }
             readFrontTTY(app)
-        } else if let app = frontApp {
-            readDesktopChat(app)
         }
         if ticks % 2 == 0 {
             store.pollTranscripts()
@@ -256,14 +258,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         desktopShown = nil
         frontTTY = nil
         refresh()
-        if let app = frontApp, isTerminal(app) {
+        if let app = frontApp, desktopChats(app) {
+            readDesktopChat(app)
+        } else if let app = frontApp, isTerminal(app) {
             frontWindow.readTitle(of: app) { [weak self] title in
                 self?.frontTitle = title
                 self?.setNeedsRefresh()
             }
             readFrontTTY(app)
-        } else if let app = frontApp {
-            readDesktopChat(app)
         }
     }
 
@@ -271,8 +273,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Claude Desktop in front, with chats of its own: the one its sidebar
     /// shows open (its window title is always "Claude").
+    /// Claude Desktop in front, with chats of its own alive. (It may be in
+    /// terminalBundleIDs too, for the Touch Bar; its window title says
+    /// nothing, so this comes first.)
+    private func desktopChats(_ app: NSRunningApplication) -> Bool {
+        app.bundleIdentifier == Self.desktopBundle && store.alive.contains(where: \.inDesktopApp)
+    }
+
     private func readDesktopChat(_ app: NSRunningApplication) {
-        guard app.bundleIdentifier == Self.desktopBundle, store.alive.contains(where: \.inDesktopApp) else { return }
         desktopChat.readOpenChat(of: app) { [weak self] shown in
             guard let self, self.frontApp == app, let shown,
                   shown.chat != self.desktopShown?.chat || shown.title != self.frontTitle else { return }
@@ -412,6 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         bar.branch = active.flatMap(branch(of:))
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
+        bar.chatName = active.map { Self.short($0.displayName, 18) }
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 20),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -441,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             bar.mode = .typing(text: typingText)
             bar.typingLabel = active.map { "To " + Self.short($0.displayName, 18) } ?? "Write"
             bar.typingPlaceholder = config.taskQueue ? "Sent when Claude is free" : "Typed into the chat"
+            bar.typingCommands = true
         } else if let active, let percent = bar.contextPercent {
             if percent < config.contextWarnPercent {
                 active.contextSnoozedUntil = nil // warn again next time it fills up
@@ -503,7 +513,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard buttons.indices.contains(i) else { return }
             let spec = buttons[i]
             DebugLog.tap("button \(spec.label)")
-            run(spec)
+            if composing {
+                // The keys go back to your editor first; the words wait.
+                composeDraft = typingText
+                stopTyping()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.run(spec) }
+            } else {
+                run(spec)
+            }
 
         case .allow, .always, .deny:
             guard let request, request.kind == .permission else { return }
@@ -560,15 +577,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case .templates:
             DebugLog.tap("templates (bar)")
-            if composing { stopTyping() }
+            if composing {
+                composeDraft = typingText
+                templatesIntoDraft = true
+                stopTyping()
+            }
             barPanel = .templates
             closeBarPickerLater(after: 20)
             setNeedsRefresh()
 
         case let .pickTemplate(i):
+            let intoDraft = templatesIntoDraft
             closeBarPicker()
             guard config.templates.indices.contains(i) else { return }
-            insertTemplate(config.templates[i])
+            if intoDraft {
+                // Into the message being written, then back to it.
+                let draft = composeDraft.trimmingCharacters(in: .whitespaces)
+                composeDraft = (draft.isEmpty ? "" : draft + " ") + expand(config.templates[i])
+                perform(.write)
+            } else {
+                insertTemplate(config.templates[i])
+            }
 
         case .send where composing:
             let text = typingText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -652,7 +681,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             model.focusSession(id)
 
         case .closePanel:
+            let backToDraft = templatesIntoDraft
             closeBarPicker()
+            if backToDraft { perform(.write) }
 
         case .later:
             DebugLog.tap("later (context warning)")
@@ -1382,6 +1413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func closeBarPicker() {
         barPickerClose?.cancel()
+        templatesIntoDraft = false
         guard barPanel != nil || barPendingModel != nil || barPendingEffort != nil else { return }
         barPanel = nil
         barPendingModel = nil
