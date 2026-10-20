@@ -2,10 +2,16 @@
 
 Claude Code at a glance on Windows: a floating pill at the top of the
 screen with the 5-hour limit, the context and when the limit resets; hover
-it (2 s) or click it for the panel — both meters, the weekly limit, your
-sessions. When Claude asks for a permission or asks a question, the card
-comes up right there: **Allow**, **Always allow**, **Deny**, or pick an
-answer. A tray icon holds the menu.
+it (2 s) or click it for the panel — both meters, the weekly limit, and
+your chats as tabs. When Claude asks for a permission or asks a question,
+the card comes up right there: **Allow**, **Always allow**, **Deny**, or
+pick an answer. A tray icon holds the menu.
+
+Chats are told apart as on the Mac: each by its title (VS Code's chat tab
+shows the same) and its own colour. The widget follows the chat whose title
+the window in front shows, else the one you picked or followed last; a click
+on a tab follows that chat and opens it in VS Code. Requests say which chat
+they come from.
 
 It speaks the same protocol as the macOS app ([docs/protocol.md](../docs/protocol.md)),
 over a named pipe (`\\.\pipe\cloudingbar`) instead of a unix socket.
