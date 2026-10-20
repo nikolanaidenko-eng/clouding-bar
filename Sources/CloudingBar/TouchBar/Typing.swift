@@ -8,6 +8,8 @@ final class TypingFieldView: NSView {
     private let label = NSTextField(labelWithString: "")
     private let caret = CALayer()
     private var text = ""
+    /// What the empty field says.
+    var placeholder = "Type your answer" { didSet { set(text: text) } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -41,7 +43,7 @@ final class TypingFieldView: NSView {
         self.text = text
         let size: CGFloat = text.count <= 40 ? 13 : text.count <= 70 ? 11 : 9.5
         if text.isEmpty {
-            label.attributedStringValue = NSAttributedString(string: "Type your answer", attributes: [
+            label.attributedStringValue = NSAttributedString(string: placeholder, attributes: [
                 .font: NSFont.systemFont(ofSize: 13), .foregroundColor: Palette.placeholder,
             ])
         } else {
@@ -84,7 +86,7 @@ final class TypingInput: NSObject, NSTextFieldDelegate {
     var isActive: Bool { panel?.isVisible ?? false }
     var text: String { field.stringValue }
 
-    func begin() {
+    func begin(with draft: String = "") {
         if panel == nil {
             let p = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 24),
                              styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
@@ -103,7 +105,7 @@ final class TypingInput: NSObject, NSTextFieldDelegate {
             p.contentView?.addSubview(field)
             panel = p
         }
-        field.stringValue = ""
+        field.stringValue = draft
         if let screen = NSScreen.main {
             // Near the top center, so a dictation popup lands somewhere sensible.
             panel?.setFrameOrigin(NSPoint(x: screen.frame.midX - 160, y: screen.visibleFrame.maxY - 40))

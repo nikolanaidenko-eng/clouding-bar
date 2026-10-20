@@ -52,6 +52,12 @@ add("normal-chats") { $0.chats = chats }
 add("chats") { $0.chats = chats; $0.mode = .chats }
 add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
+add("normal-write-templates") { $0.shows = ["session", "reset", "context", "lines", "branch", "chat", "templates", "buttons", "mic"]
+    $0.lines = "+120 −8"; $0.branch = "clouding-bar"; $0.templates = ["Review {branch}", "Write tests"]; $0.chats = chats }
+add("templates") { $0.mode = .templates; $0.templates = ["Review the changes on {branch}", "Write tests for this", "Explain this error: {clipboa…"] }
+add("compose") { $0.mode = .typing(text: "Check the landing page on mobile too"); $0.typingLabel = "To Status bar"
+    $0.typingPlaceholder = "Sent when Claude is free" }
+add("compose-empty") { $0.mode = .typing(text: ""); $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free" }
 add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 
 var images: [CGImage] = []

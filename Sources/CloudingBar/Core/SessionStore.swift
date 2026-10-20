@@ -141,9 +141,11 @@ final class SessionStore {
     /// The Claude desktop app in front (`desktop`): its window doesn't say
     /// which chat it shows, so one of its own (Cowork, Code): the one in
     /// `sticky`, else the latest.
-    func focus(windowTitle: String?, tty: String? = nil, sticky: [String], desktop: Bool = false) -> Session? {
-        let inApp = desktop ? alive.filter { $0.entrypoint == "cowork" || $0.entrypoint == "claude-desktop" } : []
+    func focus(windowTitle: String?, tty: String? = nil, sticky: [String], desktop: Bool = false,
+               desktopChat: String? = nil) -> Session? {
+        let inApp = desktop ? alive.filter(\.inDesktopApp) : []
         if !inApp.isEmpty {
+            if let s = session(inDesktop: windowTitle, chat: desktopChat) { return s }
             for id in sticky { if let s = inApp.first(where: { $0.id == id }) { return s } }
             return inApp.max { $0.lastSeen < $1.lastSeen }
         }
@@ -158,6 +160,56 @@ final class SessionStore {
         }
         for id in sticky { if let s = candidates.first(where: { $0.id == id }) { return s } }
         return candidates.max { $0.lastSeen < $1.lastSeen }
+    }
+
+    /// The Claude desktop app's chat its window shows: by the chat, else by
+    /// its title.
+    func session(inDesktop shown: String?, chat: String? = nil) -> Session? {
+        let inApp = alive.filter(\.inDesktopApp)
+        if let chat, let s = inApp.first(where: { $0.desktopChat == chat }) { return s }
+        guard let shown else { return nil }
+        // The closest title; none when two are as close.
+        let scored = inApp.map { s in
+            (score: [s.desktopTitle, s.title].compactMap { $0 }.map { Self.titleScore(shown, $0) }.max() ?? 0, session: s)
+        }.filter { $0.score > 0 }.sorted { $0.score > $1.score }
+        guard let top = scored.first, scored.filter({ $0.score == top.score }).count == 1 else { return nil }
+        return top.session
+    }
+
+    /// This session is that chat of the Claude desktop app (and no other
+    /// session is).
+    func link(_ session: Session, desktopChat chat: String, title: String?) {
+        for other in sessions.values where other !== session && other.desktopChat == chat {
+            other.desktopChat = nil
+            other.desktopTitle = nil
+        }
+        session.desktopChat = chat
+        if let title { session.desktopTitle = String(title.drop { !$0.isLetter && !$0.isNumber }) }
+        scheduleSave()
+        onChange?()
+    }
+
+    /// Two titles of one chat: the same but for case and an emoji before
+    /// it, or one the start of the other (cut short with "…", or Claude
+    /// Desktop's "Cowork task summary" for "Cowork task summary export").
+    static func sameTitle(_ a: String, _ b: String) -> Bool { titleScore(a, b) >= 2 }
+
+    /// 3 the same, 2 one starts the other, 1 mostly the same words, 0 not.
+    static func titleScore(_ a: String, _ b: String) -> Int {
+        func bare(_ s: String) -> String {
+            String(s.drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces).lowercased()
+        }
+        let a = bare(a), b = bare(b)
+        guard !a.isEmpty, !b.isEmpty else { return 0 }
+        if a == b { return 3 }
+        if b.hasSuffix("…"), a.hasPrefix(String(b.dropLast())) { return 2 }
+        if a.hasSuffix("…"), b.hasPrefix(String(a.dropLast())) { return 2 }
+        let (short, long) = a.count < b.count ? (a, b) : (b, a)
+        if short.split(separator: " ").count >= 2, long.hasPrefix(short + " ") { return 2 }
+        let words = { (s: String) in Set(s.split { !$0.isLetter && !$0.isNumber }.map(String.init)) }
+        let wa = words(a), wb = words(b)
+        let common = wa.intersection(wb).count
+        return common >= 2 && Double(common) / Double(wa.union(wb).count) >= 0.6 ? 1 : 0
     }
 
     /// The session whose chat the window in front surely shows: by its

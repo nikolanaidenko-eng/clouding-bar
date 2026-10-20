@@ -200,6 +200,21 @@ do { // the hook writes into the connected folder itself: working, then done
           && store.focus(windowTitle: "Claude", sticky: ["cowork-c2"], desktop: true)?.id == "cowork-c2"
           && store.focus(windowTitle: "Claude", sticky: ["a"], desktop: true)?.id == "cowork-c1",
           "Claude Desktop in front: its chats, the picked one or the latest")
+    check(SessionStore.sameTitle("⚡ Threads: поиск лидов", "threads: поиск лидов")
+          && SessionStore.sameTitle("Fix the landing page for the bots, and check", "Fix the landing page for the bots, and…")
+          && !SessionStore.sameTitle("Bots", "Bots landing")
+          && SessionStore.sameTitle("Cowork task summary", "Cowork task summary export")
+          && SessionStore.titleScore("Threads: сбор постов за неделю", "Сбор постов Threads") == 1,
+          "titles: emoji, case and \"…\" aside; Claude Desktop's shorter name")
+    check(store.focus(windowTitle: "⚡ Mail drafts", sticky: ["cowork-c1"], desktop: true)?.id == "cowork-c2",
+          "Claude Desktop shows a chat by its title: that one, over the picked one")
+    store.link(store.sessions["cowork-c1"]!, desktopChat: "/chat/aaa", title: "⚡ Threads: поиск лидов")
+    check(store.sessions["cowork-c1"]?.displayName == "Threads: поиск лидов"
+          && store.focus(windowTitle: nil, sticky: ["cowork-c2"], desktop: true, desktopChat: "/chat/aaa")?.id == "cowork-c1",
+          "a chat learned: named as Claude Desktop names it, followed by its page")
+    store.link(store.sessions["cowork-c2"]!, desktopChat: "/chat/aaa", title: "Other")
+    check(store.sessions["cowork-c1"]?.desktopChat == nil && store.session(inDesktop: nil, chat: "/chat/aaa")?.id == "cowork-c2",
+          "one chat, one session")
 
     check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/.gitignore").path),
           "cowork hook: git ignores it")
