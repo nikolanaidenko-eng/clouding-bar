@@ -39,6 +39,9 @@ final class Session {
     /// The last file Claude read or changed: where it really works when
     /// it was started in a parent folder (for the git branch).
     var workPath: String?
+    /// The branches the hook read for `cwd` and `workPath`.
+    var cwdBranch: String?
+    var fileBranch: String?
 
     // Context: tokens from the transcript; window from the status line,
     // the config, or the model name.
@@ -103,10 +106,13 @@ final class Session {
 
     /// "Code: main": where it works, from the folder it started in or the
     /// file it touched last.
+    /// Read live where macOS doesn't ask, else as the hook last read it.
     var branch: String? {
-        if let cwd, let b = Git.branch(at: cwd) { return b }
+        if let cwd, Git.readable(cwd), let b = Git.branch(at: cwd) { return b }
+        if let b = cwdBranch { return b }
         guard let path = workPath else { return nil }
-        return Git.branch(at: (path as NSString).deletingLastPathComponent)
+        if Git.readable(path) { return Git.branch(at: (path as NSString).deletingLastPathComponent) }
+        return fileBranch
     }
 
     var lastSeen: Date { max(lastEvent, transcriptChanged ?? .distantPast) }

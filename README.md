@@ -106,7 +106,17 @@ A first version for **Windows** is in [windows/](windows/README.md).
 
 Get the latest `Clouding-Bar-<version>.dmg` from
 [Releases](../../releases), open it and drag **Clouding Bar** into
-Applications. It's signed and notarized by Apple.
+Applications. Releases are signed and notarized by Apple.
+
+Test builds (marked *beta*) aren't notarized yet, so on first launch macOS
+says it can't check the app for malware. Click **Done**, then open
+**System Settings → Privacy & Security**, scroll down to *"Clouding Bar"
+was blocked* and click **Open Anyway** (on macOS 14 and earlier,
+right-click the app → **Open** works too). Or, in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Clouding Bar.app"
+```
 
 On first launch it asks to **connect to Claude Code**: it adds a small hook
 and a status line to `~/.claude/settings.json`. Your settings are merged,
@@ -128,12 +138,18 @@ This builds the app into `~/Applications`, puts the hook programs in
 
 ### Permissions macOS asks for
 
+One is needed; the rest are asked the first time you use what needs them,
+and only once — updates keep them.
+
 | Permission | Why | |
 |---|---|---|
-| Accessibility | to type your buttons, templates and chat lines into Claude's chat | needed for those |
+| Accessibility | to type your buttons, templates and chat lines into Claude's chat, and to read window titles | needed |
+| Automation (Terminal, iTerm) | to tell which tab is in front, and bring a chat's tab forward | only for chats in a terminal |
 | Microphone, Speech Recognition | dictation | only if you dictate |
 | Screen Recording | the screenshot button | only if you use it |
-| Automation (Terminal, iTerm) | to tell which tab is in front, and bring a chat's tab forward | only for chats in a terminal |
+
+Clouding Bar doesn't ask for your Documents or Desktop: the git branch of a
+project there is read by the hook, inside Claude Code.
 
 ### VS Code
 

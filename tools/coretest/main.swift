@@ -62,6 +62,21 @@ do {
     check(store.sessions["a"]?.branch == "feature-x", "branch: from the file it edits when its folder isn't a repo")
 }
 
+// In Documents the app doesn't read .git (macOS would ask): the hook's branch.
+do {
+    let home = NSHomeDirectory()
+    check(!Git.readable(home + "/Documents/GitHub/app") && !Git.readable(home + "/Desktop")
+          && !Git.readable("/Volumes/Disk/app") && Git.readable(home + "/claudebar") && Git.readable(home + "/Documents2"),
+          "readable: not Documents, Desktop or another disk")
+    store.apply(Inbound(raw: ["hook_event_name": "UserPromptSubmit", "session_id": "d", "cwd": home + "/Documents/GitHub/app",
+                              "git_branch": "release"]))
+    check(store.sessions["d"]?.branch == "release", "branch: as the hook read it, in Documents")
+    store.apply(Inbound(raw: ["hook_event_name": "PreToolUse", "session_id": "e", "cwd": home + "/Documents",
+                              "tool_name": "Edit", "tool_input": ["file_path": home + "/Documents/site/index.html"],
+                              "file_branch": "main"]))
+    check(store.sessions["e"]?.branch == "main", "branch: of the file it edits, as the hook read it")
+}
+
 // Activity
 event("b", "/Users/me/claudebar", "Stop")
 check(store.sessions["b"]?.activity == .sleep, "Stop → sleep")

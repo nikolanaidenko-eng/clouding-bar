@@ -20,10 +20,16 @@ OUT=build/release
 APP="$OUT/Clouding Bar.app"
 DMG="$OUT/Clouding-Bar-$VERSION.dmg"
 PROFILE=${NOTARY_PROFILE:-clouding-bar}
+LOCAL_KEYCHAIN="$HOME/.cloudingbar/signing.keychain-db"
+KEYCHAIN=()
 IDENTITY=${DEVELOPER_ID:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')}
 if [ -z "$IDENTITY" ]; then
   if [ "${DRY:-}" = 1 ]; then
-    IDENTITY="-" # a dry run without the certificate: ad-hoc, to check the rest
+    # A test build without the certificate: the self-signed identity from
+    # `make signing-identity` if there is one (macOS then keeps a tester's
+    # permissions from one build to the next), else ad-hoc.
+    if [ -f "$LOCAL_KEYCHAIN" ]; then IDENTITY="ClaudeBar Local Signing"; KEYCHAIN=(--keychain "$LOCAL_KEYCHAIN")
+    else IDENTITY="-"; fi
   else
     echo "No Developer ID Application certificate in the keychain." >&2
     echo "Xcode → Settings → Accounts → Manage Certificates → + → Developer ID Application." >&2
@@ -32,7 +38,7 @@ if [ -z "$IDENTITY" ]; then
 fi
 # Apple's timestamp server, which the notary wants (not for ad-hoc).
 TIMESTAMP=--timestamp
-[ "$IDENTITY" = "-" ] && TIMESTAMP=--timestamp=none
+[ "${DRY:-}" = 1 ] && TIMESTAMP=--timestamp=none
 echo "Clouding Bar $VERSION, signed by: $IDENTITY"
 
 rm -rf "$OUT"
@@ -49,7 +55,7 @@ universal() {
 }
 echo "Building (arm64 + x86_64)…"
 universal CloudingBar Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift
-universal cloudingbar-hook Sources/CloudingBarHook/*.swift
+universal cloudingbar-hook Sources/CloudingBarHook/*.swift Sources/CloudingBar/Core/Git.swift
 universal cloudingbar-tap Sources/CloudingBarTap/*.swift
 universal cloudingbar-key Sources/CloudingBarKey/*.swift
 
@@ -60,7 +66,7 @@ mv "$OUT/CloudingBar" "$OUT/cloudingbar-hook" "$OUT/cloudingbar-tap" "$OUT/cloud
 cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh "$APP/Contents/Resources/hooks/"
 
 echo "Signing…"
-sign() { codesign --force --options runtime $TIMESTAMP --sign "$IDENTITY" "$@"; }
+sign() { codesign --force --options runtime $TIMESTAMP ${KEYCHAIN[@]+"${KEYCHAIN[@]}"} --sign "$IDENTITY" "$@"; }
 sign --identifier dev.cloudingbar.hook "$APP/Contents/MacOS/cloudingbar-hook"
 sign --identifier dev.cloudingbar.tap "$APP/Contents/MacOS/cloudingbar-tap"
 sign --identifier dev.cloudingbar.key "$APP/Contents/MacOS/cloudingbar-key"
@@ -85,7 +91,7 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "Clouding Bar" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
-codesign --force $TIMESTAMP --sign "$IDENTITY" "$DMG"
+codesign --force $TIMESTAMP ${KEYCHAIN[@]+"${KEYCHAIN[@]}"} --sign "$IDENTITY" "$DMG"
 
 echo "Notarizing the disk image…"
 notarize "$DMG"

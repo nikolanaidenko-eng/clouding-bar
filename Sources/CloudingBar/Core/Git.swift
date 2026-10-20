@@ -3,6 +3,17 @@ import Foundation
 /// The current git branch of a folder, read from .git/HEAD — no git
 /// command runs. Works for worktrees too (.git as a "gitdir:" file).
 enum Git {
+    /// Whether the app can read here without macOS asking first: not in
+    /// Documents, Desktop, Downloads, iCloud Drive, cloud storage or on
+    /// another disk. There the hook reads the branch instead (it runs
+    /// inside Claude Code, which already may).
+    static func readable(_ path: String) -> Bool {
+        let home = NSHomeDirectory()
+        let asked = ["Documents", "Desktop", "Downloads", "Library/Mobile Documents", "Library/CloudStorage"]
+            .map { home + "/" + $0 }
+        return !path.hasPrefix("/Volumes/") && !asked.contains { path == $0 || path.hasPrefix($0 + "/") }
+    }
+
     static func branch(at path: String) -> String? {
         var dir = URL(fileURLWithPath: path)
         for _ in 0..<12 {

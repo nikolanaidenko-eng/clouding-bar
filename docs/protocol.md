@@ -23,12 +23,21 @@ a localhost port.
 
 This is the JSON Claude Code gives the hook, unchanged
 ([hooks reference](https://code.claude.com/docs/en/hooks)). `cloudingbar-hook`
-adds two fields:
+adds a few fields:
 
 | field | meaning |
 |---|---|
 | `claude_pid` | the Claude process (`CLAUDE_PID`, or found up the process tree). The app drops a session once this process is gone, even if `SessionEnd` never came. |
 | `claude_entrypoint` | `CLAUDE_CODE_ENTRYPOINT`: `claude-vscode`, `cli`, … |
+| `claude_effort` | `CLAUDE_EFFORT`, the turn's reasoning effort. |
+| `git_branch` | the branch of `cwd`, read from `.git/HEAD`. |
+| `file_branch` | the branch of the folder of `tool_input.file_path` (or `notebook_path`). |
+
+The branches are read in the hook because it runs inside Claude Code, which
+already may read the project. In Documents, Desktop, Downloads, iCloud Drive
+or on another disk the app would have to ask macOS first, so there it takes
+the hook's word; elsewhere it reads `.git/HEAD` itself, to notice a checkout
+between events.
 
 Registered events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`,
 `Notification`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,

@@ -5,7 +5,7 @@ SOURCES = $(wildcard Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift)
 TAP = build/cloudingbar-tap
 TAP_SOURCES = $(wildcard Sources/CloudingBarTap/*.swift)
 HOOK = build/cloudingbar-hook
-HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift)
+HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift) Sources/CloudingBar/Core/Git.swift
 KEY = build/cloudingbar-key
 KEY_SOURCES = $(wildcard Sources/CloudingBarKey/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the

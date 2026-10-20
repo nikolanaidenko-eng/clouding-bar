@@ -63,6 +63,17 @@ if CommandLine.arguments.contains("--codex") { event["claude_entrypoint"] = "cod
 if let effort = ProcessInfo.processInfo.environment["CLAUDE_EFFORT"] {
     event["claude_effort"] = effort
 }
+// The git branch of its folder, and of the file it reads or changes. Read
+// here, inside Claude Code, which already may read the project, so the app
+// never has to ask macOS for Documents or Desktop.
+if let cwd = event["cwd"] as? String, let branch = Git.branch(at: cwd) {
+    event["git_branch"] = branch
+}
+if let input = event["tool_input"] as? [String: Any],
+   let path = (input["file_path"] ?? input["notebook_path"]) as? String, path.hasPrefix("/"),
+   let branch = Git.branch(at: (path as NSString).deletingLastPathComponent) {
+    event["file_branch"] = branch
+}
 
 let eventName = event["hook_event_name"] as? String
 let isPermission = eventName == "PermissionRequest"

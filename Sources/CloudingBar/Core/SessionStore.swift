@@ -46,6 +46,7 @@ final class SessionStore {
         }
         sessions[id] = session
         if let cwd = m.cwd { session.cwd = cwd }
+        if m.event != nil, m.cwd != nil { session.cwdBranch = m.gitBranch }
         if let path = m.transcriptPath { session.transcriptPath = path }
         if let pid = m.claudePid { session.claudePid = pid }
         if let entry = m.entrypoint { session.entrypoint = entry }
@@ -58,6 +59,7 @@ final class SessionStore {
         if m.agentId == nil, let path = (m.toolInput["file_path"] ?? m.toolInput["notebook_path"]) as? String,
            path.hasPrefix("/") {
             session.workPath = path
+            session.fileBranch = m.fileBranch
         }
 
         if let event = m.event {
