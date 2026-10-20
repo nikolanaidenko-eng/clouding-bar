@@ -91,7 +91,7 @@ enum Cowork {
 
         let manifest: [String: Any] = [
             "name": "clouding-bar-cowork",
-            "version": "2.2.0",
+            "version": "2.3.0",
             "description": "Clouding Bar: reports Cowork context use to a connected folder.",
             "license": "MIT",
         ]
@@ -144,7 +144,7 @@ enum Cowork {
 
     private static let statusScript = #"""
     #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2.2. With Cowork on this Mac it writes
+    # Clouding Bar for Cowork, version 2.3. With Cowork on this Mac it writes
     # one line of JSON (context use; working or done) on every message and
     # reply into the folders connected to the task, where Clouding Bar reads
     # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
@@ -154,6 +154,12 @@ enum Cowork {
 
     MODE = "@MODE@"                # when Claude has to write it: "thresholds" or "every"
     SKIP = {"outputs", "uploads"}  # Cowork's own folders, not the Mac's
+
+    # Cowork runs Linux, on this Mac or in the cloud. Claude Desktop shares
+    # uploaded plugins with Claude Code on the Mac too, whose chats Clouding
+    # Bar follows by its own hooks: nothing to do there.
+    if sys.platform != "linux" and not os.environ.get("CLOUDING_BAR_TEST"):
+        sys.exit(0)
 
     try:
         d = json.load(sys.stdin)
