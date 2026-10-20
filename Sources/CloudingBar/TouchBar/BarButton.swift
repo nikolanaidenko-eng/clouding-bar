@@ -152,14 +152,16 @@ final class BarButton: NSButton {
         layer.addSublayer(box)
         scroller = box
         guard slides else { return }
-        // Rest at the start, glide to the end (about 25 pt/s), rest, again.
+        // Rest at the start, glide to the end (about 25 pt/s), rest, glide
+        // back, and on.
         let travel = width - room
-        let move = Double(travel) / 25, rest = 1.4
-        let total = rest + move + rest
+        let move = Double(travel) / 25, rest = 1.2
+        let total = (rest + move) * 2
         let slide = CAKeyframeAnimation(keyPath: "position.x")
         let start = width / 2
-        slide.values = [start, start, start - travel, start - travel]
-        slide.keyTimes = [0, NSNumber(value: rest / total), NSNumber(value: (rest + move) / total), 1]
+        slide.values = [start, start, start - travel, start - travel, start]
+        slide.keyTimes = [0, rest / total, (rest + move) / total, (rest + move + rest) / total, 1].map { NSNumber(value: $0) }
+        slide.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: 4)
         slide.duration = total
         slide.repeatCount = .infinity
         text.add(slide, forKey: "marquee")

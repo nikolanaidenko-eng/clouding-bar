@@ -24,6 +24,15 @@ enum Cowork {
         var title: String? = nil
     }
 
+    /// Cowork's context window: 1M for a "[1m]" model, else 500k (what its
+    /// /context says, 20.10), 200k for Haiku. What the plugin reported is a
+    /// guess of its own (it used to take 200k).
+    static func window(model: String?) -> Int {
+        let m = model ?? ""
+        if m.contains("[1m]") { return 1_000_000 }
+        return m.contains("haiku") ? 200_000 : 500_000
+    }
+
     /// The status files in a connected folder: one per task, and the one
     /// Claude writes when the plugin can't.
     static func statusFiles(folder: String) -> [URL] {
@@ -91,7 +100,7 @@ enum Cowork {
 
         let manifest: [String: Any] = [
             "name": "clouding-bar-cowork",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "description": "Clouding Bar: reports Cowork context use to a connected folder.",
             "license": "MIT",
         ]
@@ -144,7 +153,7 @@ enum Cowork {
 
     private static let statusScript = #"""
     #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2.3. With Cowork on this Mac it writes
+    # Clouding Bar for Cowork, version 2.4. With Cowork on this Mac it writes
     # one line of JSON (context use; working or done) on every message and
     # reply into the folders connected to the task, where Clouding Bar reads
     # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
@@ -264,7 +273,8 @@ enum Cowork {
             return False
 
     tokens, model, title = context()
-    window = 1000000 if "[1m]" in (model or "") or tokens > 200000 else 200000
+    # Cowork's window: 1M for "[1m]", else 500k (its /context), Haiku 200k.
+    window = 1000000 if "[1m]" in (model or "") else 200000 if "haiku" in (model or "") else 500000
     status = {
         "v": 2, "t": int(time.time()), "session": sid,
         "project": os.path.basename((d.get("cwd") or "").rstrip("/")) or None,

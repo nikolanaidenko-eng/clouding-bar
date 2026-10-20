@@ -196,6 +196,8 @@ do { // the hook writes into the connected folder itself: working, then done
                                       model: nil, time: Date().addingTimeInterval(-60), title: "Mail drafts"))
     check(store.sessions["cowork-c1"]?.displayName == "Bots landing" && store.sessions["cowork-c2"]?.displayName == "Mail drafts",
           "two Cowork tasks in one folder, told apart by name")
+    check(Cowork.window(model: "claude-sonnet-5-5") == 500_000 && Cowork.window(model: "claude-opus-5-5[1m]") == 1_000_000
+          && Cowork.window(model: "claude-haiku-5-5") == 200_000, "Cowork's window: 500k, 1M for [1m], 200k for Haiku")
     check(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id == "cowork-c1"
           && store.focus(windowTitle: "Claude", sticky: ["cowork-c2"], desktop: true)?.id == "cowork-c2"
           && store.focus(windowTitle: "Claude", sticky: ["a"], desktop: true)?.id == "cowork-c1",
