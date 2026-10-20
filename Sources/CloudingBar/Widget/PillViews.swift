@@ -967,7 +967,14 @@ struct PillFocus: View {
     var body: some View {
         Button { if gate() { ChatMenu.show(model) } } label: {
             HStack(spacing: 6) {
-                ChatDot(color: model.chatColor)
+                if model.chatDone {
+                    // Done here: the widget moves on to the chat at work.
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(Color(hex: 0x30D158))
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    ChatDot(color: model.chatColor)
+                }
                 if !dotOnly {
                     Text(model.chatName ?? "").font(.system(size: 12)).foregroundColor(.cbText)
                         .lineLimit(1).truncationMode(.tail)

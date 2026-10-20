@@ -35,8 +35,22 @@ pub struct State {
     /// the window in front can't tell which chat it shows.
     pub picked: Option<String>,
     pub last_followed: Option<String>,
+    /// Following the chat at work (the macOS app's rule): after the chat
+    /// shown finished, "done" for a moment, then the one still working —
+    /// or, none working, back to the one in front. `front` is the chat the
+    /// window in front showed then: another window ends it.
+    pub handoff: Option<Handoff>,
+    pub follow: Option<(String, String)>,
+    pub last_shown: Option<(String, Activity)>,
     pub hooks_connected: bool,
     pub setup_message: Option<String>,
+}
+
+pub struct Handoff {
+    pub done: String,
+    pub next: String,
+    pub until: Instant,
+    pub front: String,
 }
 
 #[derive(Clone, Default)]
@@ -159,10 +173,58 @@ impl State {
         }
     }
 
-    /// The chat the widget follows (Store::focus).
+    /// The chat the widget follows: the one done a moment ago, the one at
+    /// work it moved on to, else the window's (Store::focus).
     pub fn followed(&self, now: SystemTime) -> Option<&cloudingbar_core::store::Session> {
+        let alive = |id: &String| self.store.sessions.get(id).filter(|s| s.is_alive(now));
+        if let Some(s) = self.handoff.as_ref().and_then(|h| alive(&h.done)) { return Some(s); }
+        if let Some(s) = self.follow.as_ref().and_then(|f| alive(&f.0)) { return Some(s); }
+        self.front(now)
+    }
+
+    fn front(&self, now: SystemTime) -> Option<&cloudingbar_core::store::Session> {
         let sticky: Vec<String> = [self.picked.clone(), self.last_followed.clone()].into_iter().flatten().collect();
         self.store.focus(self.front_title.as_deref(), &sticky, now)
+    }
+
+    /// A chat picked in the widget: it, from now on.
+    pub fn pick(&mut self, id: &str) {
+        self.picked = Some(id.to_string());
+        self.last_followed = Some(id.to_string());
+        self.handoff = None;
+        self.follow = None;
+    }
+
+    /// Once a second: the chat shown finished → "done" for 4 s, then on.
+    pub fn update_following(&mut self) {
+        let now = SystemTime::now();
+        let key = self.store.in_window(self.front_title.as_deref(), now).map(|s| s.id.clone()).unwrap_or_default();
+        let front = self.front(now).map(|s| (s.id.clone(), s.activity));
+        if self.handoff.as_ref().is_some_and(|h| h.front != key) { self.handoff = None; }
+        if let Some((id, at)) = &self.follow {
+            let elsewhere = at != &key || front.as_ref().is_some_and(|(f, a)| f != id && *a != Activity::Sleep);
+            if elsewhere { self.follow = None; }
+        }
+        if self.handoff.as_ref().is_some_and(|h| Instant::now() >= h.until) {
+            let h = self.handoff.take().unwrap();
+            let alive = self.store.sessions.get(&h.next).is_some_and(|s| s.is_alive(now));
+            let in_front = front.as_ref().is_some_and(|(f, _)| f == &h.next);
+            self.follow = if alive && !in_front { Some((h.next, key.clone())) } else { None };
+        }
+        if self.handoff.is_some() { return; }
+        let Some((shown, activity)) = self.followed(now).map(|s| (s.id.clone(), s.activity)) else {
+            self.last_shown = None;
+            return;
+        };
+        let last = self.last_shown.replace((shown.clone(), activity));
+        if !last.is_some_and(|(id, a)| id == shown && a == Activity::Work && activity == Activity::Sleep) { return; }
+        let working = self.store.alive(now).into_iter()
+            .filter(|s| s.id != shown && s.activity == Activity::Work)
+            .max_by_key(|s| s.last_event).map(|s| s.id.clone());
+        let next = working.or_else(|| front.filter(|(f, _)| f != &shown).map(|(f, _)| f));
+        if let Some(next) = next {
+            self.handoff = Some(Handoff { done: shown, next, until: Instant::now() + Duration::from_secs(4), front: key });
+        }
     }
 
     /// Once a second: remember which chat that was.
@@ -204,6 +266,7 @@ impl State {
             chat_color: active.map(|s| s.color_hex()),
             chat_place: active.map(place),
             chat_status: active.map(|s| status(s, self.waiting(s), now)),
+            chat_done: active.is_some_and(|a| self.handoff.as_ref().is_some_and(|h| h.done == a.id)),
             sessions: {
                 let mut list: Vec<SessionView> = self.store.alive(now).iter().map(|s| SessionView {
                     id: s.id.clone(),
@@ -246,6 +309,8 @@ pub struct Snapshot {
     pub chat_color: Option<String>,
     pub chat_place: Option<String>,
     pub chat_status: Option<String>,
+    /// The chat shown just finished; the widget moves on in a moment.
+    pub chat_done: bool,
     pub sessions: Vec<SessionView>,
     pub request: Option<RequestView>,
     pub hooks_connected: bool,
@@ -280,12 +345,13 @@ fn place(s: &cloudingbar_core::store::Session) -> String {
     }
 }
 
-/// "Needs your OK", "Working · 3 min", "Idle · 12 min".
+/// "Needs your OK", "Working · 3 min", "Done · your turn", "Idle · 12 min".
 fn status(s: &cloudingbar_core::store::Session, waiting: bool, now: SystemTime) -> String {
     let minutes = |t: SystemTime| now.duration_since(t).unwrap_or_default().as_secs() / 60;
     let span = |m: u64| if m >= 60 { format!("{} h", m / 60) } else { format!("{m} min") };
     if waiting { "Needs your OK".into() }
     else if s.activity == Activity::Work { format!("Working · {}", span(minutes(s.activity_since))) }
+    else if s.finished_at.is_some_and(|t| minutes(t) < 15) { "Done · your turn".into() }
     else { format!("Idle · {}", span(minutes(s.last_event))) }
 }
 
@@ -342,6 +408,30 @@ mod tests {
     use super::*;
     use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions, Stream};
     use std::io::{BufRead, BufReader};
+
+    /// The chat shown finished while another works: "done" first, then
+    /// that one; another window in front ends it.
+    #[test]
+    fn follows_the_chat_at_work() {
+        let mut st = State::default();
+        let now = SystemTime::now();
+        let ev = |e: &str, id: &str| Inbound::parse(format!(
+            r#"{{"hook_event_name":"{e}","session_id":"{id}","cwd":"/p/{id}"}}"#).as_bytes()).unwrap();
+        st.store.apply(&ev("UserPromptSubmit", "a"), now);
+        st.store.apply(&ev("UserPromptSubmit", "b"), now);
+        st.front_title = Some("a — Visual Studio Code".into());
+        st.update_following();
+        assert_eq!(st.followed(now).map(|s| s.id.clone()).as_deref(), Some("a"));
+        st.store.apply(&ev("Stop", "a"), now);
+        st.update_following();
+        assert!(st.snapshot().chat_done, "a is shown as done first");
+        st.handoff.as_mut().unwrap().until = Instant::now();
+        st.update_following();
+        assert_eq!(st.followed(now).map(|s| s.id.clone()).as_deref(), Some("b"), "then b, still at work");
+        st.front_title = Some("b — Visual Studio Code".into());
+        st.update_following();
+        assert!(st.follow.is_none(), "another window in front: following it again");
+    }
 
     /// A request held, then answered from the widget: the hook gets the hold
     /// at once and the decision after.

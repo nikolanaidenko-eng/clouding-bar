@@ -124,7 +124,12 @@ struct NotchView: View {
                     .offset(x: 5, y: -3), alignment: .topTrailing)
             // Several chats: this one's colour, by Cloud.
             if model.sessions.count > 1 && !model.listening {
-                ChatDot(color: model.chatColor, size: 6).help(model.chatName ?? "")
+                if model.chatDone {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(Color(hex: 0x30D158)).help("\(model.chatName ?? "") is done")
+                } else {
+                    ChatDot(color: model.chatColor, size: 6).help(model.chatName ?? "")
+                }
             }
             if model.listening {
                 Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)

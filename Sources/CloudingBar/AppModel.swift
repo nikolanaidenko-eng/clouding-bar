@@ -57,6 +57,9 @@ final class AppModel: ObservableObject {
     @Published var chatPlace: String?
     /// "Working · 3 min", "Idle · 12 min".
     @Published var chatStatus: String?
+    /// The chat shown just finished and the widget is about to move on to
+    /// the one at work: a tick instead of its dot.
+    @Published var chatDone = false
     @Published var sessionPercent: Double?
     @Published var resetShort: String?
     @Published var resetLong: String?

@@ -90,8 +90,7 @@ fn touch(shared: tauri::State<'_, Shared>, id: u64) { shared.lock().touch(id); }
 fn focus_session(app: AppHandle, shared: tauri::State<'_, Shared>, id: String) {
     let vscode = {
         let mut st = shared.lock();
-        st.picked = Some(id.clone());
-        st.last_followed = Some(id.clone());
+        st.pick(&id);
         st.store.sessions.get(&id).is_some_and(|s| s.entrypoint.as_deref() == Some("claude-vscode"))
     };
     changed(&app, &shared);
@@ -203,6 +202,7 @@ fn main() {
                         st.expire();
                         st.store.account.expire(SystemTime::now());
                         if tick % 2 == 0 { st.store.poll_transcripts(); }
+                        st.update_following();
                         st.remember_followed();
                     }
                     changed(&handle, &ticking);

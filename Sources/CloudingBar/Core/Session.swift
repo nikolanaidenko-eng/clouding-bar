@@ -22,10 +22,15 @@ final class Session {
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT)
     var entrypoint: String?
     var activity: Activity = .sleep {
-        didSet { if activity != oldValue { activitySince = Date() } }
+        didSet {
+            if activity != oldValue { activitySince = Date() }
+            if oldValue == .work && activity == .sleep { finishedAt = Date() }
+        }
     }
     /// When the current activity began ("Working · 2 min").
     var activitySince = Date()
+    /// When Claude last finished a turn here (work → idle).
+    var finishedAt: Date?
     /// A Notification said Claude is waiting for you.
     var waitingNotice = false
     var lastEvent: Date

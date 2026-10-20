@@ -127,6 +127,9 @@ struct Config: Equatable {
     var itemOrder: [String] = []
     /// Hovering the pill for 2 s opens the full panel; off: only a click does.
     var hoverOpens = true
+    /// The chat in front finished while another is at work: "done" for a
+    /// moment, then the widget and the bar show the one at work.
+    var followWorking = true
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
@@ -244,6 +247,7 @@ struct Config: Equatable {
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
         if let v = obj["widgetHides"] as? [String] { config.widgetHides = v }
         if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
+        if let v = obj["followWorking"] as? Bool { config.followWorking = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)

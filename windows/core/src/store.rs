@@ -40,6 +40,8 @@ pub struct Session {
     pub title: Option<String>,
     /// Its colour in the widget: an index into `COLORS`.
     pub color: usize,
+    /// When Claude last finished a turn here (work → idle).
+    pub finished_at: Option<SystemTime>,
 }
 
 /// One colour per chat, so two chats of one project are told apart; none
@@ -52,7 +54,7 @@ impl Session {
             id: id.to_string(), cwd: None, transcript_path: None, entrypoint: None,
             activity: Activity::Sleep, activity_since: now, waiting_notice: false, last_event: now,
             model: None, effort: None, status_context_percent: None, context_window_size: None, context_tokens: None,
-            title: None, color: 0,
+            title: None, color: 0, finished_at: None,
         }
     }
 
@@ -73,6 +75,7 @@ impl Session {
     }
 
     fn set_activity(&mut self, a: Activity, now: SystemTime) {
+        if self.activity == Activity::Work && a == Activity::Sleep { self.finished_at = Some(now); }
         if self.activity != a {
             self.activity = a;
             self.activity_since = now;
@@ -247,6 +250,18 @@ impl Store {
         let mut list: Vec<&Session> = self.sessions.values().filter(|s| s.is_alive(now)).collect();
         list.sort_by(|a, b| b.last_event.cmp(&a.last_event));
         list
+    }
+
+    /// The chat the window in front surely shows: by its title, or the
+    /// only chat of its project. None when it can't be told.
+    pub fn in_window(&self, window_title: Option<&str>, now: SystemTime) -> Option<&Session> {
+        let parts = title_parts(window_title?);
+        let alive = self.alive(now);
+        let titled = |s: &Session| s.title.as_ref().is_some_and(|t| parts.iter().any(|p| p == t
+            || (p.ends_with('…') && t.starts_with(p.trim_end_matches('…')))));
+        if let Some(s) = alive.iter().find(|s| titled(s)) { return Some(*s); }
+        let mine: Vec<&Session> = alive.iter().copied().filter(|s| s.project_name().is_some_and(|n| parts.contains(&n))).collect();
+        if mine.len() == 1 { Some(mine[0]) } else { None }
     }
 
     /// The session the window in front shows, else the latest.
