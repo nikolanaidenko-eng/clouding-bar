@@ -1026,13 +1026,15 @@ struct TouchBarTab: View {
                     Text("On the bar").font(.system(size: 13))
                     ChipSet(model: model, key: "touchBarShows",
                             options: [("session", "Session"), ("reset", "Reset"), ("context", "Context"),
-                                      ("model", "Model"), ("agents", "Agents"), ("buttons", "Buttons"),
+                                      ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
+                                      ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
+                                      ("templates", "Templates"), ("buttons", "Buttons"),
                                       ("shot", "Screenshot"), ("mic", "Mic")], small: true)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Claude's questions and permission requests always show. Tap the model on the bar to switch it, the subagents to see who's working; the buttons are set up in Buttons.")
+            Text("Claude's questions and permission requests always show. Tap Write to send Claude a message, typed or dictated; Templates to type one in; the model to switch it; the subagents to see who's working. Buttons and templates are set up in Buttons.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
@@ -1296,10 +1298,13 @@ struct TouchBarPreview: View {
             ? (model.agents == 0 ? "No agents" : "\(model.agents) agent\(model.agents == 1 ? "" : "s")") : nil
         let agentsWidth = agentsText.map { Self.text($0, 10) + 16 } ?? 0
         let icons = [shows.contains("shot") ? "camera.viewfinder" : nil, shows.contains("mic") ? "mic" : nil].compactMap { $0 }
+        let extras = [("lines", "+120 −8"), ("branch", model.branch ?? "main"), ("cost", "$1.20"), ("chat", "Write"),
+                      ("templates", "Templates")].filter { shows.contains($0.0) }.map(\.1)
+        let extraWidths = extras.map { Self.text($0, 10) + 16 }
         let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + (agentsText == nil ? 0 : 1) + icons.count
-            + (session || context ? 1 : 0)
+            + (session || context ? 1 : 0) + extras.count
         let used = Self.pad * 2 + Self.character + buttonWidths.reduce(0, +) + modelWidth + agentsWidth
-            + CGFloat(icons.count) * Self.icon + Self.gap * CGFloat(items - 1)
+            + extraWidths.reduce(0, +) + CGFloat(icons.count) * Self.icon + Self.gap * CGFloat(items - 1)
         let room = max(0, width - used)
         return HStack(spacing: Self.gap) {
             key { MascotIcon(activity: model.activity, size: 22).frame(width: 22, height: 22) }
@@ -1312,6 +1317,9 @@ struct TouchBarPreview: View {
             }
             if let agentsText {
                 key { Text(agentsText).font(.system(size: 10)).lineLimit(1) }.frame(width: agentsWidth)
+            }
+            ForEach(Array(extras.enumerated()), id: \.offset) { i, text in
+                key { Text(text).font(.system(size: 10)).lineLimit(1) }.frame(width: extraWidths[i])
             }
             ForEach(Array(buttons.enumerated()), id: \.offset) { i, label in
                 key(fill: highlightLast && i == buttons.count - 1 ? Color(hex: 0x0A3D78) : Color(hex: 0x2C2C2E)) {

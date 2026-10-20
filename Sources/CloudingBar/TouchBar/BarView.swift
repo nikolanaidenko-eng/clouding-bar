@@ -14,6 +14,9 @@ struct BarModel: Equatable {
         case agents
         /// The live chats, opened from the chat button: pick one to follow.
         case chats
+        /// Your templates, opened from the templates button: tap one to
+        /// type it into the chat.
+        case templates
     }
 
     /// A live chat, for the chat button and the chats panel.
@@ -47,6 +50,16 @@ struct BarModel: Equatable {
     var chats: [Chat] = []
     /// The chat a request comes from (with several chats).
     var requestChat: Chat?
+    /// The typing field's word before it and its placeholder: an answer
+    /// ("Other") or a message to the chat ("To Status bar").
+    var typingLabel = "Other"
+    var typingPlaceholder = "Type your answer"
+    /// Your templates, as they read.
+    var templates: [String] = []
+    /// What the widget can show too: "+120 −8", "main", "$1.20".
+    var lines: String?
+    var branch: String?
+    var cost: String?
 
     var current: Chat? { chats.count > 1 ? chats.first(where: \.current) : nil }
 }
@@ -66,6 +79,11 @@ enum BarAction {
     case agents
     /// The chat button shows the chats; a pick follows that one.
     case chats, pickChat(String)
+    /// Write: a message to the chat, typed on the keyboard or dictated,
+    /// sent when Claude is free (like the widget's message box).
+    case write, cancelTyping
+    /// The templates button lists them; a pick types one into the chat.
+    case templates, pickTemplate(Int)
     /// Done: back from the picker or the subagents.
     case closePanel
 }
@@ -154,7 +172,10 @@ final class BarView: NSView {
             + "|" + m.shows.sorted().joined(separator: ",")
         let chat = (m.current.map { "\($0.id)|\($0.name)" } ?? "") + "|" + (m.requestChat?.id ?? "")
         switch m.mode {
-        case .normal: return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)"
+        case .normal:
+            let info = [m.lines, m.branch, m.cost].map { $0 ?? "" }.joined(separator: "|")
+            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)"
+        case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
         case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
         case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
@@ -162,7 +183,7 @@ final class BarView: NSView {
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
         case let .question(text, options, multi, picked):
             return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
-        case .typing: return "typing"
+        case .typing: return "typing|\(m.typingLabel)|\(m.typingPlaceholder)"
         }
     }
 
@@ -200,6 +221,26 @@ final class BarView: NSView {
                 let b = BarButton(n == 0 ? "No agents" : "\(n) agent\(n == 1 ? "" : "s")", fontSize: 12,
                                   symbol: ("person.2.fill", 0x40C8E0)) {
                     [weak self] in self?.onAction?(.agents)
+                }
+                add(b, .shrinkable(b.fittingWidth(padding: 14)))
+            }
+            // What the widget shows besides: lines, branch, cost.
+            for (key, text, symbol) in [("lines", model.lines, ("chevron.left.forwardslash.chevron.right", UInt32(0x30D158))),
+                                        ("branch", model.branch, ("arrow.triangle.branch", UInt32(0xFF9F0A))),
+                                        ("cost", model.cost, ("dollarsign.circle", UInt32(0xFFD60A)))] {
+                guard shows.contains(key), let text else { continue }
+                let b = BarButton(text, fontSize: 12, symbol: symbol)
+                add(b, .shrinkable(min(150, b.fittingWidth(padding: 12))))
+            }
+            if shows.contains("chat") {
+                let b = BarButton("Write", fontSize: 12, symbol: ("square.and.pencil", 0x64A8FF)) { [weak self] in
+                    self?.onAction?(.write)
+                }
+                add(b, .shrinkable(b.fittingWidth(padding: 14)))
+            }
+            if shows.contains("templates"), !model.templates.isEmpty {
+                let b = BarButton("Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
+                    self?.onAction?(.templates)
                 }
                 add(b, .shrinkable(b.fittingWidth(padding: 14)))
             }
@@ -322,6 +363,21 @@ final class BarView: NSView {
             group.append(done)
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
 
+        case .templates:
+            var group: [NSView] = []
+            let word = sectionLabel("Templates")
+            add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
+            for (i, text) in model.templates.enumerated() {
+                let b = BarButton(text, fontSize: 12) { [weak self] in self?.onAction?(.pickTemplate(i)) }
+                add(b, .shrinkable(min(220, b.fittingWidth(padding: 12))))
+                group.append(b)
+            }
+            add(NSView(), .flex(weight: 1, min: 0))
+            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
+            add(done, .fixed(done.fittingWidth(padding: 14)))
+            group.append(done)
+            group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
+
         case .agents:
             var group: [NSView] = []
             let word = sectionLabel("Subagents")
@@ -346,12 +402,13 @@ final class BarView: NSView {
             let mini = MiniMetersView()
             self.mini = mini
             add(mini, .fixed(60))
-            let label = NSTextField(labelWithString: "Other")
+            let label = NSTextField(labelWithString: model.typingLabel)
             label.font = .systemFont(ofSize: Palette.labelFont)
             label.textColor = Palette.secondary
             label.alignment = .right
             add(label, .fixed(ceil(label.intrinsicContentSize.width) + 4))
             let field = TypingFieldView()
+            field.placeholder = model.typingPlaceholder
             self.field = field
             add(field, .flex(weight: 1, min: 120))
             animate(field) { $0.slideIn(duration: 0.24) }
@@ -359,6 +416,9 @@ final class BarView: NSView {
             let mic = BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.mic) }
             add(send, .fixed(85))
             add(mic, .fixed(48))
+            if let x = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Cancel") {
+                add(BarButton("Cancel", icon: x) { [weak self] in self?.onAction?(.cancelTyping) }, .fixed(40))
+            }
         }
         needsLayout = true
     }

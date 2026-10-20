@@ -99,7 +99,14 @@ final class Session {
     }
 
     /// What the widget calls it: its title, else its project.
-    var displayName: String { title ?? projectName ?? "Claude" }
+    var displayName: String { desktopTitle ?? title ?? projectName ?? "Claude" }
+
+    /// A chat of the Claude desktop app: Cowork, or Code in the app.
+    var inDesktopApp: Bool { entrypoint == "cowork" || entrypoint == "claude-desktop" }
+    /// Its chat in the Claude desktop app ("/chat/64a92e6f-…") and the name
+    /// the app gives it, once known to be this session.
+    var desktopChat: String?
+    var desktopTitle: String?
 
     /// Distinct on the dark widget, none of them the orange of "needs you".
     static let colors: [UInt32] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE]
@@ -157,13 +164,16 @@ final class Session {
         var title: String?
         var colorIndex: Int?
         var workPath: String?
+        var desktopChat: String?
+        var desktopTitle: String?
     }
 
     var record: Record {
         Record(id: id, cwd: cwd, transcriptPath: transcriptPath, claudePid: claudePid,
                entrypoint: entrypoint, activity: activity, lastEvent: lastEvent, model: model,
                contextTokens: contextTokens, contextWindowSize: contextWindowSize,
-               statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath)
+               statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath,
+               desktopChat: desktopChat, desktopTitle: desktopTitle)
     }
 
     convenience init(record r: Record) {
@@ -180,6 +190,8 @@ final class Session {
         title = r.title
         colorIndex = r.colorIndex ?? 0
         workPath = r.workPath
+        desktopChat = r.desktopChat
+        desktopTitle = r.desktopTitle
     }
 }
 

@@ -58,7 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var attachments: [String: [String]] = [:]
     /// The Touch Bar shows the model picker or the subagents; either closes
     /// by itself when left alone.
-    private enum BarPanel { case models, agents, chats }
+    private enum BarPanel { case models, agents, chats, templates }
+    /// Writing to the chat from the bar (Write); the words wait in
+    /// `composeDraft` while a request has the bar.
+    private var composing = false
+    private var composeDraft = ""
     private var barPanel: BarPanel?
     private var barPickerClose: DispatchWorkItem?
     /// Picked on the bar, until Claude confirms it.
@@ -67,6 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
     private var coworkSeen: [String: String] = [:]
+    private let desktopChat = DesktopChat()
+    /// The chat Claude Desktop shows, and since when.
+    private var desktopShown: (chat: String, since: Date)?
     private var coworkFolders: (list: [String], at: Date) = ([], .distantPast)
 
     // MARK: - Launch
@@ -227,6 +234,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.setNeedsRefresh()
             }
             readFrontTTY(app)
+        } else if let app = frontApp {
+            readDesktopChat(app)
         }
         if ticks % 2 == 0 {
             store.pollTranscripts()
@@ -244,6 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func frontmostAppChanged(_ note: Notification) {
         frontApp = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         frontTitle = nil
+        desktopShown = nil
         frontTTY = nil
         refresh()
         if let app = frontApp, isTerminal(app) {
@@ -252,7 +262,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.setNeedsRefresh()
             }
             readFrontTTY(app)
+        } else if let app = frontApp {
+            readDesktopChat(app)
         }
+    }
+
+    static let desktopBundle = "com.anthropic.claudefordesktop"
+
+    /// Claude Desktop in front, with chats of its own: the one its sidebar
+    /// shows open (its window title is always "Claude").
+    private func readDesktopChat(_ app: NSRunningApplication) {
+        guard app.bundleIdentifier == Self.desktopBundle, store.alive.contains(where: \.inDesktopApp) else { return }
+        desktopChat.readOpenChat(of: app) { [weak self] shown in
+            guard let self, self.frontApp == app, let shown,
+                  shown.chat != self.desktopShown?.chat || shown.title != self.frontTitle else { return }
+            if shown.chat != self.desktopShown?.chat { self.desktopShown = (shown.chat, Date()) }
+            self.frontTitle = shown.title
+            // Known by its title: remembered by its chat too.
+            if let title = shown.title, self.store.session(inDesktop: nil, chat: shown.chat) == nil,
+               let s = self.store.session(inDesktop: title), s.desktopChat == nil {
+                self.store.link(s, desktopChat: shown.chat, title: title)
+            }
+            DebugLog.note("desktop chat: \(shown.title ?? "…") → \(self.store.session(inDesktop: shown.title, chat: shown.chat)?.displayName ?? "not known")")
+            self.setNeedsRefresh()
+        }
+    }
+
+    /// A Cowork chat reported (its reply just ended) while Claude Desktop
+    /// has shown one chat for a while, and only that one reported: that's
+    /// the chat, unless it's known already.
+    private func learnDesktopChat(from reported: [Cowork.Status]) {
+        guard frontApp?.bundleIdentifier == Self.desktopBundle, reported.count == 1, let status = reported.first,
+              let shown = desktopShown, Date().timeIntervalSince(shown.since) > 8,
+              status.time > shown.since, Date().timeIntervalSince(status.time) < 300,
+              store.session(inDesktop: nil, chat: shown.chat) == nil,
+              let session = store.sessions["cowork-" + status.session], session.desktopChat == nil else { return }
+        store.link(session, desktopChat: shown.chat, title: frontTitle)
+        DebugLog.note("desktop chat learned: \(frontTitle ?? shown.chat) is \(status.session.prefix(8))")
     }
 
     /// Terminal or iTerm in front, with a terminal chat alive: which tab.
@@ -307,14 +353,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) < 4,
            let s = store.sessions[id], s.isAlive() { return s }
         return store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 },
-                           desktop: frontApp?.bundleIdentifier == "com.anthropic.claudefordesktop")
+                           desktop: frontApp?.bundleIdentifier == Self.desktopBundle, desktopChat: desktopShown?.chat)
     }
 
     private func refresh() {
         refreshQueued = false
         // Gone to another chat yourself: the pick is over.
-        if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) >= 4,
-           let shown = store.session(inWindow: frontTitle, tty: frontTTY), shown.id != id {
+        let shown = frontApp?.bundleIdentifier == Self.desktopBundle
+            ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat) : store.session(inWindow: frontTitle, tty: frontTTY)
+        if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) >= 4, let shown, shown.id != id {
             pickedSessionId = nil
         }
         let active = focusedSession
@@ -359,12 +406,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.chats = model.sessions.map {
             BarModel.Chat(id: $0.id, name: Self.short($0.name, 24), color: $0.color, current: $0.current, waiting: $0.waiting)
         }
+        bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
+        if let active, active.linesAdded + active.linesRemoved > 0 {
+            bar.lines = "+\(active.linesAdded) −\(active.linesRemoved)"
+        }
+        bar.branch = active.flatMap(branch(of:))
+        bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 20),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
                                             current: s.id == active?.id, waiting: true)
         }
 
+        if composing, currentRequest(active: active) != nil {
+            // A request takes the bar: the words wait for later.
+            composeDraft = typingText
+            stopTyping()
+        }
         if let request = currentRequest(active: active) {
             bar.activity = .wait
             switch request.kind {
@@ -379,6 +437,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                          multiSelect: q.multiSelect, picked: request.picked)
                 }
             }
+        } else if composing {
+            bar.mode = .typing(text: typingText)
+            bar.typingLabel = active.map { "To " + Self.short($0.displayName, 18) } ?? "Write"
+            bar.typingPlaceholder = config.taskQueue ? "Sent when Claude is free" : "Typed into the chat"
         } else if let active, let percent = bar.contextPercent {
             if percent < config.contextWarnPercent {
                 active.contextSnoozedUntil = nil // warn again next time it fills up
@@ -394,7 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // request takes the bar over and closes them.
         if let panel = barPanel {
             if currentRequest(active: active) == nil && active != nil {
-                bar.mode = panel == .models ? .models : panel == .agents ? .agents : .chats
+                bar.mode = panel == .models ? .models : panel == .agents ? .agents : panel == .templates ? .templates : .chats
             } else {
                 closeBarPicker()
             }
@@ -481,6 +543,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             typing.begin()
             extendHold(request)
             setNeedsRefresh()
+
+        case .write:
+            guard request == nil else { return }
+            DebugLog.tap("write (bar)")
+            closeBarPicker()
+            composing = true
+            typingText = composeDraft
+            typing.begin(with: composeDraft)
+            setNeedsRefresh()
+
+        case .cancelTyping:
+            DebugLog.tap("cancel typing (bar)")
+            if composing { composeDraft = "" }
+            stopTyping()
+
+        case .templates:
+            DebugLog.tap("templates (bar)")
+            if composing { stopTyping() }
+            barPanel = .templates
+            closeBarPickerLater(after: 20)
+            setNeedsRefresh()
+
+        case let .pickTemplate(i):
+            closeBarPicker()
+            guard config.templates.indices.contains(i) else { return }
+            insertTemplate(config.templates[i])
+
+        case .send where composing:
+            let text = typingText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            DebugLog.tap("send message (bar)")
+            composeDraft = ""
+            stopTyping()
+            if config.taskQueue {
+                model.addToQueue(text) // sent when Claude is free, like the widget's
+            } else {
+                // Into the chat in front, once the keys are back with it.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                    self?.widget.releaseKey()
+                    KeySender.type(text, pressReturn: true)
+                }
+            }
 
         case .send:
             guard let request = typingFor else { return }
@@ -602,6 +706,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func stopTyping() {
         typing.end()
+        composing = false
         typingFor = nil
         typingText = ""
         setNeedsRefresh()
@@ -1005,11 +1110,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func openSession(_ id: String) {
         guard let session = store.sessions[id] else { NSSound.beep(); return }
         DebugLog.tap("open session \(session.displayName)")
-        if session.entrypoint == "cowork" {
-            // Cowork lives in the Claude desktop app; it has no link to one task.
-            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.anthropic.claudefordesktop").first {
+        if session.inDesktopApp {
+            // The Claude desktop app has no link to one chat: brought up,
+            // then the chat's row in its sidebar pressed.
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first {
                 app.activate(options: [])
-            } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") {
+                if let title = session.desktopTitle ?? session.title {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                        self?.desktopChat.open(title: title, in: app) { pressed in
+                            DebugLog.note("desktop chat open \(title): \(pressed ? "pressed" : "no row")")
+                        }
+                    }
+                }
+            } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.desktopBundle) {
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             }
             return
@@ -1392,6 +1505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let folders = watchedCoworkFolders
         model.coworkFolders = folders.map { URL(fileURLWithPath: $0).lastPathComponent }
         var newest: Cowork.Status?
+        var reported: [Cowork.Status] = []
         for folder in folders {
             for url in Cowork.statusFiles(folder: folder) {
                 guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
@@ -1406,6 +1520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                           title: status.title)
                 let seen = "\(mtime.timeIntervalSince1970) \(named.working)"
                 if seen != coworkSeen[url.path] {
+                    if coworkSeen[url.path] != nil || Date().timeIntervalSince(status.time) < 300 { reported.append(named) }
                     coworkSeen[url.path] = seen
                     store.apply(cowork: named)
                     DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens\(status.working ? ", working" : "")")
@@ -1413,6 +1528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if newest == nil || named.time > newest!.time { newest = named }
             }
         }
+        learnDesktopChat(from: reported)
         if let s = newest {
             let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())
             model.coworkLast = "\(AppModel.ago(s.time)) · \(s.project ?? "Cowork") \(pct)%"
