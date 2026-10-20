@@ -50,6 +50,10 @@ let chats = [BarModel.Chat(id: "1", name: "Status bar", color: Session.colors[0]
              BarModel.Chat(id: "3", name: "Сайт ordermeshop portf…", color: Session.colors[2], current: false, waiting: false)]
 add("normal-chats") { $0.chats = chats }
 add("chats") { $0.chats = chats; $0.mode = .chats }
+let longChats = [BarModel.Chat(id: "1", name: "привет, давай небольшой анализ по постам в Threads", color: Session.colors[3], current: true, waiting: false),
+                 BarModel.Chat(id: "2", name: "Промо-видео Remotion для автосервиса", color: Session.colors[1], current: false, waiting: false)]
+add("normal-longchat") { $0.chats = longChats }
+add("chats-long") { $0.chats = longChats + chats; $0.mode = .chats }
 add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
 add("normal-write-templates") { $0.shows = ["session", "reset", "context", "lines", "branch", "chat", "templates", "buttons", "mic"]

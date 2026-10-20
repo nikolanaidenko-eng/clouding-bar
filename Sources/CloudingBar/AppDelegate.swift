@@ -412,7 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
         }
         bar.chats = model.sessions.map {
-            BarModel.Chat(id: $0.id, name: Self.short($0.name, 24), color: $0.color, current: $0.current, waiting: $0.waiting)
+            BarModel.Chat(id: $0.id, name: Self.short($0.name, 60), color: $0.color, current: $0.current, waiting: $0.waiting)
         }
         bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
         if let active, active.linesAdded + active.linesRemoved > 0 {
@@ -422,7 +422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         bar.chatName = active.map { Self.short($0.displayName, 18) }
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
-            bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 20),
+            bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
                                             current: s.id == active?.id, waiting: true)
         }
