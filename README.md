@@ -97,8 +97,8 @@ A first version for **Windows** is in [windows/](windows/README.md).
   week, the month or everything, your sessions, active time, tokens and
   days in a row, your favourite model and peak hour; every day of the last
   half year as a square (point at one to see it); the projects the time
-  went to. From local transcripts, and kept after Claude Code clears old
-  ones.
+  went to — for Claude Code, Cowork or both. From local transcripts (and
+  what the Cowork plugin reports), kept after Claude Code clears old ones.
 - **Cowork** chats show up too, through a small plugin that notes each
   task's name and context in a folder you connected to it, where Clouding
   Bar picks it up — two tasks in one folder are two chats.

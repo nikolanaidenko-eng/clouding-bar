@@ -15,6 +15,13 @@ struct StatsTab: View {
     @State private var hoveredDay: String?
     /// "7", "30" or "all".
     @AppStorage("stats.range") private var range = "7"
+    /// "both", "code" or "cowork".
+    @AppStorage("stats.source") private var source = "both"
+
+    /// The days of the source picked.
+    private func days(_ s: WeekStats) -> [String: DayStats] {
+        source == "code" ? s.history : source == "cowork" ? s.coworkHistory : DayStats.merged(s.history, s.coworkHistory)
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var rangeDays: Int? { Int(range) }
@@ -24,12 +31,18 @@ struct StatsTab: View {
         VStack(alignment: .leading, spacing: 18) {
             limits.tourAnchor("stats.limits")
             if let stats {
-                let sum = StatsSummary.of(stats.history, days: rangeDays)
+                let history = days(stats)
+                let sum = StatsSummary.of(history, days: rangeDays)
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Your Claude Code").font(.system(size: 17, weight: .semibold))
-                            Text(subline(sum)).font(.system(size: 11)).foregroundColor(.sSecondary).lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source == "code" ? "Your Claude Code" : source == "cowork" ? "Your Cowork" : "Your Claude")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text(subline(sum)).font(.system(size: 11)).foregroundColor(.sSecondary).lineLimit(1)
+                    }
+                    HStack {
+                        SettingsSegments(options: [("both", "Both"), ("code", "Code"), ("cowork", "Cowork")],
+                                         selected: source, tint: 0xFF375F) { r in
+                            withAnimation(.cb(0.3)) { source = r }
                         }
                         Spacer(minLength: 8)
                         SettingsSegments(options: [("7", "Week"), ("30", "Month"), ("all", "All")],
@@ -38,8 +51,8 @@ struct StatsTab: View {
                         }
                     }
                     tiles(sum)
-                    dayGrid(stats)
-                    dayLine(stats)
+                    dayGrid(history)
+                    dayLine(history)
                 }
                 .tourAnchor("stats.map")
                 VStack(alignment: .leading, spacing: 10) {
@@ -326,9 +339,9 @@ struct StatsTab: View {
         }
     }
 
-    private func dayGrid(_ s: WeekStats) -> some View {
+    private func dayGrid(_ history: [String: DayStats]) -> some View {
         let weeks = Self.gridDays()
-        let peak = max(1, weeks.joined().compactMap { $0 }.map { s.history[DayStats.key($0)]?.minutes ?? 0 }.max() ?? 1)
+        let peak = max(1, weeks.joined().compactMap { $0 }.map { history[DayStats.key($0)]?.minutes ?? 0 }.max() ?? 1)
         let size = Self.daySize
         let month = DateFormatter()
         month.locale = Locale(identifier: "en_US")
@@ -355,7 +368,7 @@ struct StatsTab: View {
                     ForEach(weeks.indices, id: \.self) { w in
                         if let day = weeks[w][d] {
                             let key = DayStats.key(day)
-                            let minutes = s.history[key]?.minutes ?? 0
+                            let minutes = history[key]?.minutes ?? 0
                             let inRange = rangeDays.map { Calendar.current.dateComponents([.day], from: day, to: Date()).day! < $0 } ?? true
                             let on = hoveredDay == key
                             RoundedRectangle(cornerRadius: 3)
@@ -384,20 +397,21 @@ struct StatsTab: View {
     }
 
     /// Under the grid: the day under the pointer; else today.
-    private func dayLine(_ s: WeekStats) -> some View {
+    private func dayLine(_ history: [String: DayStats]) -> some View {
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "en_US")
         fmt.dateFormat = "EEEE d MMM"
         let key = hoveredDay ?? DayStats.key(Date())
-        let day = s.history[key]
+        let day = history[key]
         let date = DayStats.keyFormat.date(from: key) ?? Date()
         let projects = (day?.projects ?? [:]).sorted { $0.value > $1.value }.prefix(3).map(\.key)
-        let n = day?.sessions.count ?? 0
+        let n = Set(day?.sessions ?? []).count
+        let cowork = Set((day?.sessions ?? []).filter { $0.hasPrefix("cowork-") }).count
         let parts: [String?] = [
             hoveredDay == nil ? "Today" : fmt.string(from: date),
             (day?.minutes ?? 0) > 0 ? "worked \(Self.duration(day!.minutes))" : "no Claude Code",
             (day?.tokens ?? 0) > 0 ? "\(AppModel.compact(day!.tokens)) tokens" : nil,
-            n > 0 ? "\(n) session\(n == 1 ? "" : "s")" : nil,
+            n > 0 ? "\(n) session\(n == 1 ? "" : "s")" + (cowork > 0 && cowork < n ? " (\(cowork) Cowork)" : "") : nil,
             projects.isEmpty ? nil : projects.joined(separator: ", "),
         ]
         return (Text(parts.compactMap { $0 }.joined(separator: " · ")).foregroundColor(hoveredDay == nil ? .sSecondary : .sText)

@@ -225,6 +225,11 @@ which is Cowork running on this Mac):
 {"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","title":"Bots landing","state":"working"}
 ```
 
+`usage` is what the chat spent, by unix hour: `{"<hour>": [tokens, minutes]}`
+— tokens as Stats counts them (fresh input, cache writes, output, each reply
+once), minutes with a reply (5-minute spans). The app keeps it per chat in
+`~/.cloudingbar/cowork-usage.json` for Stats.
+
 `title` is the task's title from its transcript, else your first words in
 it (up to 40 characters), so two tasks in one folder are told apart. `state`
 is `working` from your message to Claude's reply, then `done`. A
