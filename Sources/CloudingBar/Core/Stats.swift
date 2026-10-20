@@ -42,6 +42,8 @@ struct WeekStats {
     /// stats-days.json so it outlives Claude Code's cleanup of old
     /// transcripts (30 days).
     var history: [String: DayStats] = [:]
+    /// The same for Cowork, from what its plugin reports (cowork-usage.json).
+    var coworkHistory: [String: DayStats] = [:]
 
     var isEmpty: Bool { grid.allSatisfy { $0.allSatisfy { $0 == 0 } } }
 
@@ -77,6 +79,52 @@ struct DayStats: Codable, Equatable {
         return f
     }()
     static func key(_ date: Date) -> String { keyFormat.string(from: date) }
+
+    /// Two records of a day as one (Claude Code and Cowork).
+    func adding(_ o: DayStats) -> DayStats {
+        var d = self
+        d.tokens += o.tokens
+        d.minutes += o.minutes
+        d.sessions += o.sessions
+        d.longest = max(d.longest, o.longest)
+        for (k, v) in o.projects { d.projects[k, default: 0] += v }
+        for (k, v) in o.models { d.models[k, default: 0] += v }
+        for h in 0..<min(24, o.hours.count) { d.hours[h] += o.hours[h] }
+        return d
+    }
+
+    static func merged(_ a: [String: DayStats], _ b: [String: DayStats]) -> [String: DayStats] {
+        a.merging(b) { $0.adding($1) }
+    }
+
+    /// Cowork's days, from what each of its chats spent by hour.
+    static func cowork(_ kept: [String: Cowork.Kept]) -> [String: DayStats] {
+        let cal = Calendar.current
+        var days: [String: DayStats] = [:]
+        for (id, chat) in kept {
+            var mine: [String: Int] = [:] // this chat's minutes by day
+            for (key, spent) in chat.usage {
+                guard let hour = Int(key) else { continue }
+                let date = Date(timeIntervalSince1970: Double(hour) * 3600)
+                let k = DayStats.key(date)
+                var d = days[k] ?? DayStats()
+                d.tokens += spent.tokens
+                d.minutes += spent.minutes
+                d.hours[cal.component(.hour, from: date)] += spent.tokens
+                d.projects[chat.project ?? "Cowork", default: 0] += spent.minutes
+                if let model = chat.model { d.models[Session.displayName(model), default: 0] += spent.tokens }
+                days[k] = d
+                mine[k, default: 0] += spent.minutes
+            }
+            for (k, minutes) in mine {
+                guard var d = days[k] else { continue }
+                d.sessions.append("cowork-" + id)
+                d.longest = max(d.longest, minutes)
+                days[k] = d
+            }
+        }
+        return days
+    }
 }
 
 /// A stretch of days in numbers, the way Claude Code's /stats puts them.
@@ -299,6 +347,7 @@ enum StatsBuilder {
         }
         if let data = try? JSONEncoder().encode(history) { try? data.write(to: historyURL, options: .atomic) }
         stats.history = history
+        stats.coworkHistory = DayStats.cowork(Cowork.kept())
 
         stats.projects = shares(projectTokens)
         stats.models = shares(modelTokens)

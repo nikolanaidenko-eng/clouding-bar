@@ -1616,6 +1616,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     if coworkSeen[url.path] != nil || Date().timeIntervalSince(status.time) < 300 { reported.append(named) }
                     coworkSeen[url.path] = seen
                     store.apply(cowork: named)
+                    var spent = named
+                    spent.usage = status.usage
+                    Cowork.keep(spent)
                     DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens\(status.working ? ", working" : "")")
                 }
                 if newest == nil || named.time > newest!.time { newest = named }

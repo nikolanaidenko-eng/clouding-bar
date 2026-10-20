@@ -22,6 +22,13 @@ enum Cowork {
         var working = false
         /// The task's title, else its first words.
         var title: String? = nil
+        /// For Stats, by unix hour: tokens spent, minutes with a reply.
+        var usage: [Int: Spent] = [:]
+    }
+
+    struct Spent: Equatable, Codable {
+        var tokens: Int
+        var minutes: Int
     }
 
     /// Cowork's context window: 1M for a "[1m]" model, else 500k (what its
@@ -35,11 +42,53 @@ enum Cowork {
 
     /// The status files in a connected folder: one per task, and the one
     /// Claude writes when the plugin can't.
+    /// What each Cowork chat spent, kept in cowork-usage.json: the plugin's
+    /// own files go after 3 days, and Stats wants them longer.
+    struct Kept: Codable {
+        var project: String?
+        var title: String?
+        var model: String?
+        /// Unix hour → spent.
+        var usage: [String: Spent]
+    }
+
+    private static var keptURL: URL { Config.directory.appendingPathComponent("cowork-usage.json") }
+
+    static func kept() -> [String: Kept] {
+        (try? JSONDecoder().decode([String: Kept].self, from: Data(contentsOf: keptURL))) ?? [:]
+    }
+
+    /// Keeps a status's usage (each status carries the chat's whole usage).
+    static func keep(_ s: Status) {
+        guard !s.usage.isEmpty else { return }
+        var all = kept()
+        var record = all[s.session] ?? Kept(project: nil, title: nil, model: nil, usage: [:])
+        record.project = s.project ?? record.project
+        record.title = s.title ?? record.title
+        record.model = s.model ?? record.model
+        for (hour, spent) in s.usage {
+            let k = String(hour)
+            // A later report covers more of the same hour.
+            if spent.tokens >= (record.usage[k]?.tokens ?? 0) { record.usage[k] = spent }
+        }
+        all[s.session] = record
+        if let data = try? JSONEncoder().encode(all) { try? data.write(to: keptURL, options: .atomic) }
+    }
+
     static func statusFiles(folder: String) -> [URL] {
         let dir = URL(fileURLWithPath: folder).appendingPathComponent(".clouding-bar")
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
         return names.filter { $0.hasPrefix("cowork-") && $0.hasSuffix(".json") }.sorted()
             .map { dir.appendingPathComponent($0) }
+    }
+
+    private static func usage(_ value: Any?) -> [Int: Spent] {
+        var out: [Int: Spent] = [:]
+        for (key, pair) in value as? [String: Any] ?? [:] {
+            guard let hour = Int(key), let p = pair as? [NSNumber], p.count >= 2 else { continue }
+            out[hour] = Spent(tokens: p[0].intValue, minutes: p[1].intValue)
+        }
+        return out
     }
 
     static func read(_ url: URL) -> Status? {
@@ -53,7 +102,8 @@ enum Cowork {
                       model: o["model"] as? String,
                       time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date(),
                       working: o["state"] as? String == "working",
-                      title: (o["title"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+                      title: (o["title"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                      usage: usage(o["usage"]))
     }
 
     /// Folders connected to Cowork, from Claude Desktop's own records — its
@@ -100,7 +150,7 @@ enum Cowork {
 
         let manifest: [String: Any] = [
             "name": "clouding-bar-cowork",
-            "version": "2.4.0",
+            "version": "2.5.0",
             "description": "Clouding Bar: reports Cowork context use to a connected folder.",
             "license": "MIT",
         ]
@@ -146,20 +196,22 @@ enum Cowork {
         when Claude writes, so the hooks ask Claude to write the line. How often: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
 
         No network. What it writes: the task id, its title (or your first words in it, so two
-        tasks in one folder are told apart), a folder name, the token count and the model.
+        tasks in one folder are told apart), a folder name, the token count, the model, and for
+        Clouding Bar's Stats the tokens and minutes it spent by hour.
         To turn it off, remove the plugin in Claude Desktop.
         """
     }
 
     private static let statusScript = #"""
     #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2.4. With Cowork on this Mac it writes
+    # Clouding Bar for Cowork, version 2.5. With Cowork on this Mac it writes
     # one line of JSON (context use; working or done) on every message and
     # reply into the folders connected to the task, where Clouding Bar reads
     # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
     # write the line instead (MODE says how often). No network; of what you
     # wrote, only the task's first words, as its name.
     import json, os, sys, time
+    from datetime import datetime
 
     MODE = "@MODE@"                # when Claude has to write it: "thresholds" or "every"
     SKIP = {"outputs", "uploads"}  # Cowork's own folders, not the Mac's
@@ -184,10 +236,19 @@ enum Cowork {
         text = " ".join((text or "").split())
         return None if not text or text.startswith("<") else text
 
+    def stamp(o):
+        try:
+            return datetime.fromisoformat(o.get("timestamp", "").replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return None
+
     def context():
-        # Context use, the model, and a name for the task: the title it was
-        # given, else the first words you wrote.
+        # Context use, the model, a name for the task (the title it was
+        # given, else the first words you wrote), and for Stats what it
+        # spent by hour: tokens (fresh input, cache writes, output, each
+        # reply once) and minutes with a reply (5-minute spans).
         tokens, model, titles, first = 0, None, {}, None
+        spent, spans, counted = {}, {}, set()
         try:
             for raw in open(d.get("transcript_path") or ""):
                 try:
@@ -198,9 +259,19 @@ enum Cowork {
                 if kind in ("custom-title", "ai-title", "summary"):
                     titles[kind] = o.get("customTitle") or o.get("aiTitle") or o.get("summary")
                     continue
+                m = o.get("message") or {}
+                if kind == "assistant" and m.get("model") != "<synthetic>":
+                    t = stamp(o)
+                    if t is not None:
+                        hour = int(t // 3600)
+                        spans.setdefault(hour, set()).add(int(t // 300))
+                        u = m.get("usage")
+                        if u and m.get("id") not in counted:
+                            counted.add(m.get("id"))
+                            spent[hour] = spent.get(hour, 0) + u.get("input_tokens", 0) \
+                                + u.get("cache_creation_input_tokens", 0) + u.get("output_tokens", 0)
                 if o.get("isSidechain"):
                     continue
-                m = o.get("message") or {}
                 if kind == "user" and first is None and not o.get("isMeta"):
                     c = m.get("content")
                     if isinstance(c, list):
@@ -218,7 +289,8 @@ enum Cowork {
                  or first or words(d.get("prompt")))
         if title and len(title) > 40:
             title = title[:39].rstrip() + "…"
-        return tokens, model, title
+        usage = {str(h): [spent.get(h, 0), len(spans[h]) * 5] for h in sorted(spans)}
+        return tokens, model, title, usage
 
     def live():
         # Shared straight from the Mac (Cowork on this Mac): virtiofs, 9p,
@@ -272,7 +344,7 @@ enum Cowork {
         except Exception:
             return False
 
-    tokens, model, title = context()
+    tokens, model, title, usage = context()
     # Cowork's window: 1M for "[1m]", else 500k (its /context), Haiku 200k.
     window = 1000000 if "[1m]" in (model or "") else 200000 if "haiku" in (model or "") else 500000
     status = {
@@ -280,6 +352,7 @@ enum Cowork {
         "project": os.path.basename((d.get("cwd") or "").rstrip("/")) or None,
         "context_tokens": tokens, "context_window": window, "model": model, "title": title,
         "state": "working" if event == "UserPromptSubmit" else "done",
+        "usage": usage,
     }
     wrote = [write(f, json.dumps(status)) for f in folders()]
     if any(wrote):

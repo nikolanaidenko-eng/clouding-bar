@@ -175,7 +175,7 @@ do { // the hook writes into the connected folder itself: working, then done
     try? FileManager.default.removeItem(at: task)
     try? FileManager.default.createDirectory(at: mac, withIntermediateDirectories: true)
     let transcript = task.appendingPathComponent("t.jsonl")
-    try? #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5}}}"#
+    try? #"{"type":"assistant","timestamp":"2026-10-20T10:02:00.000Z","message":{"id":"r1","model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5,"output_tokens":90}}}"#
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
     func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil) -> String {
         let p = Process()
@@ -202,6 +202,15 @@ do { // the hook writes into the connected folder itself: working, then done
     let done = Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)
     check(done?.working == false && done?.session == "s1", "cowork hook: on the reply, \"done\"")
     check(working?.title == "Fix the landing page for the bots, and…", "cowork hook: named by your first words")
+    let hour = Int(ISO8601DateFormatter().date(from: "2026-10-20T10:02:00Z")!.timeIntervalSince1970 / 3600)
+    check(working?.usage[hour] == Cowork.Spent(tokens: 100, minutes: 5), "cowork hook: what it spent by hour, for Stats")
+    if let w = working { Cowork.keep(w) }
+    let days = DayStats.cowork(Cowork.kept())
+    let day = days[DayStats.key(Date(timeIntervalSince1970: Double(hour) * 3600))]
+    check(day?.tokens == 100 && day?.minutes == 5 && day?.sessions == ["cowork-s1"]
+          && DayStats.merged([DayStats.key(Date(timeIntervalSince1970: Double(hour) * 3600)): DayStats(tokens: 1, minutes: 10)], days)
+            .values.first?.minutes == 15,
+          "Cowork's days kept and added to Claude Code's")
     if let h = try? FileHandle(forWritingTo: transcript) {
         h.seekToEndOfFile(); h.write(Data((#"{"type":"ai-title","aiTitle":"Bots landing"}"# + "\n").utf8)); try? h.close()
     }
