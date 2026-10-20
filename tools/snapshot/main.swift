@@ -437,6 +437,13 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
                    name: "s-general-gray")
         mg.config.buttonColors = "color"
     }
+    if tab == "stats" { // all of it, More open
+        UserDefaults.standard.set(true, forKey: "settings.more.stats")
+        let tabOnly = StatsTab(model: m).padding(.leading, SettingsCloud.gutter).padding(.trailing, 18).padding(.vertical, 16)
+            .frame(width: SettingsView.width, alignment: .top).background(Color.sBackground)
+        renderView(NSHostingView(rootView: tabOnly), size: NSSize(width: SettingsView.width, height: 1240), name: "s-stats-full")
+        UserDefaults.standard.removeObject(forKey: "settings.more.stats")
+    }
     if ["general", "widget", "stats"].contains(tab) {
         let light = NSHostingView(rootView: SettingsView(model: m, tab: tab))
         renderView(light, size: NSSize(width: SettingsView.width, height: 560), name: "s-\(tab)-light", light: true)

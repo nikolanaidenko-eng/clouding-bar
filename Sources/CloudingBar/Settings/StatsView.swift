@@ -1,41 +1,60 @@
 import SwiftUI
 
-/// The Stats tab: both limits now (the 5-hour one with its last 24 hours),
-/// the week as a days × hours heat map (orange where the limit was hit),
-/// then a few short lines — tokens, models, projects, active time, tools.
+/// The Stats tab, the way Claude Code's /stats puts it: both limits now;
+/// then, for the week, the month or everything, a few big numbers
+/// (sessions, time, tokens, days in a row), every day as a square, and the
+/// projects the time went to. The week hour by hour, the models and the
+/// tools wait behind More.
 struct StatsTab: View {
     @ObservedObject var model: AppModel
     @State private var stats: WeekStats?
     @State private var shown = false
     /// The heat map's square under the pointer: day and hour.
     @State private var hovered: (d: Int, h: Int)?
+    /// The day square under the pointer ("2026-10-20").
+    @State private var hoveredDay: String?
+    /// "7", "30" or "all".
+    @AppStorage("stats.range") private var range = "7"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var rangeDays: Int? { Int(range) }
+    private var rangeName: String { range == "7" ? "this week" : range == "30" ? "this month" : "so far" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             limits.tourAnchor("stats.limits")
             if let stats {
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(stats.headline).font(.system(size: 17, weight: .semibold))
-                        Text(subtitle(stats)).font(.system(size: 11)).foregroundColor(.sSecondary)
+                let sum = StatsSummary.of(stats.history, days: rangeDays)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Your Claude Code").font(.system(size: 17, weight: .semibold))
+                            Text(subline(sum)).font(.system(size: 11)).foregroundColor(.sSecondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        SettingsSegments(options: [("7", "Week"), ("30", "Month"), ("all", "All")],
+                                         selected: range, tint: 0x30D158) { r in
+                            withAnimation(.cb(0.3)) { range = r }
+                        }
                     }
-                    heatMap(stats).tourAnchor("stats.map")
-                    hoverLine(stats)
+                    tiles(sum)
+                    dayGrid(stats)
+                    dayLine(stats)
                 }
+                .tourAnchor("stats.map")
                 VStack(alignment: .leading, spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Where the time went").font(.system(size: 17, weight: .semibold))
-                        Text("How long Claude worked this week, and on what. More has tokens, models and tools")
+                        Text("The projects Claude worked on \(rangeName). More has the week hour by hour, the models and the tools")
                             .font(.system(size: 11)).foregroundColor(.sSecondary)
                     }
-                    details(stats)
+                    projects(sum, stats)
                 }
                 .tourAnchor("stats.time")
             } else {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Reading this week's sessions…").font(.system(size: 12)).foregroundColor(.sSecondary)
+                    Text("Reading your sessions…").font(.system(size: 12)).foregroundColor(.sSecondary)
                 }
             }
         }
@@ -163,7 +182,7 @@ struct StatsTab: View {
     /// The heat map fills the tab: 24 hours across, the days' names before.
     private static let labelWidth: CGFloat = 26, cellGap: CGFloat = 3
     private static var cell: CGFloat {
-        let inner = SettingsView.width - SettingsCloud.gutter - 18 // the tab's padding
+        let inner = SettingsView.width - SettingsCloud.gutter - 18 - 24 // the tab's padding, the group's
         return floor((inner - labelWidth - cellGap - 23 * cellGap) / 24)
     }
 
@@ -246,25 +265,203 @@ struct StatsTab: View {
         return v < 0.05 ? Color.sMeterTrack : Color.sChart.opacity(0.18 + v * 0.82)
     }
 
-    // MARK: Details
+    // MARK: Days
 
-    private func details(_ s: WeekStats) -> some View {
-        SettingsGroup {
-            row("Worked") {
-                Text(([Self.duration(s.activeMinutes)] + s.activeByProject.map { "\($0.name) \(Self.duration($0.minutes))" })
-                        .joined(separator: " · "))
+    /// "Mostly Opus 5.5 · peak hour 14:00 · busiest on Tuesdays"
+    private func subline(_ s: StatsSummary) -> String {
+        let weekday = DateFormatter()
+        weekday.locale = Locale(identifier: "en_US")
+        let parts: [String?] = [
+            s.favoriteModel.map { "Mostly \($0)" },
+            s.peakHour.map { "peak hour \($0):00" },
+            s.busiestWeekday.map { "busiest on \(weekday.weekdaySymbols[$0 - 1])s" },
+        ]
+        let text = parts.compactMap { $0 }.joined(separator: " · ")
+        return text.isEmpty ? "Nothing yet \(rangeName)" : text
+    }
+
+    private func tiles(_ s: StatsSummary) -> some View {
+        HStack(spacing: 10) {
+            tile("Sessions", "\(s.sessions)", s.activeDays > 0 ? "on \(s.activeDays) day\(s.activeDays == 1 ? "" : "s")" : nil)
+            tile("Active", Self.duration(s.minutes), s.longest > 0 ? "longest \(Self.duration(s.longest))" : nil)
+            tile("Tokens", AppModel.compact(s.tokens), "read and written")
+            tile("Streak", "\(s.currentStreak) day\(s.currentStreak == 1 ? "" : "s")",
+                 s.longestStreak > 0 ? "best \(s.longestStreak)" : nil)
+        }
+    }
+
+    private func tile(_ title: String, _ value: String, _ note: String?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 11)).foregroundColor(.sSecondary)
+            Text(value).font(.system(size: 20, weight: .semibold).monospacedDigit())
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(note ?? " ").font(.system(size: 10)).foregroundColor(.sMuted).lineLimit(1)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.sGroup))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.sLine, lineWidth: 0.5))
+    }
+
+    /// Every day of the last 26 weeks as a square, weeks across, Monday on
+    /// top: the brighter, the longer Claude worked.
+    private static let gridWeeks = 26, dayGap: CGFloat = 3
+    private static var daySize: CGFloat {
+        let inner = SettingsView.width - SettingsCloud.gutter - 18
+        return min(18, floor((inner - labelWidth - dayGap - CGFloat(gridWeeks - 1) * dayGap) / CGFloat(gridWeeks)))
+    }
+
+    /// The grid's days: [week][weekday], nil after today.
+    private static func gridDays(now: Date = Date()) -> [[Date?]] {
+        var cal = Calendar.current
+        cal.firstWeekday = 2 // Monday
+        let today = cal.startOfDay(for: now)
+        let thisWeek = cal.dateInterval(of: .weekOfYear, for: today)!.start
+        let first = cal.date(byAdding: .weekOfYear, value: -(gridWeeks - 1), to: thisWeek)!
+        return (0..<gridWeeks).map { w in
+            (0..<7).map { d in
+                let day = cal.date(byAdding: .day, value: w * 7 + d, to: first)!
+                return day <= today ? day : nil
             }
-            if !s.projects.isEmpty { row("Projects") { shares(s.projects) } }
-            MoreRows("stats", count: 3) {
-                row("Tokens") {
-                    Text("\(AppModel.compact(s.weekTokens)) this week · \(AppModel.compact(s.todayTokens)) today")
-                        + Text(" · text Claude read and wrote").foregroundColor(.sSecondary)
+        }
+    }
+
+    private func dayGrid(_ s: WeekStats) -> some View {
+        let weeks = Self.gridDays()
+        let peak = max(1, weeks.joined().compactMap { $0 }.map { s.history[DayStats.key($0)]?.minutes ?? 0 }.max() ?? 1)
+        let size = Self.daySize
+        let month = DateFormatter()
+        month.locale = Locale(identifier: "en_US")
+        month.dateFormat = "MMM"
+        let names = ["Mon", "", "Wed", "", "Fri", "", ""]
+        let months = weeks.map { Calendar.current.component(.month, from: $0[0]!) }
+        return VStack(alignment: .leading, spacing: Self.dayGap) {
+            // Months over the weeks they start in.
+            HStack(spacing: Self.dayGap) {
+                Color.clear.frame(width: Self.labelWidth, height: 12)
+                ForEach(weeks.indices, id: \.self) { w in
+                    let start = weeks[w][0]!
+                    // The first week's month only if a new one doesn't start right after.
+                    let newMonth = w == 0 ? (months.count < 3 || (months[1] == months[0] && months[2] == months[0]))
+                        : months[w - 1] != months[w]
+                    Text(newMonth ? month.string(from: start) : "").font(.system(size: 9)).foregroundColor(.sSecondary)
+                        .fixedSize().frame(width: size, height: 12, alignment: .leading)
                 }
-                if !s.models.isEmpty { row("Models") { shares(s.models) } }
+            }
+            ForEach(0..<7, id: \.self) { d in
+                HStack(spacing: Self.dayGap) {
+                    Text(names[d]).font(.system(size: 9)).foregroundColor(.sSecondary)
+                        .frame(width: Self.labelWidth, alignment: .leading)
+                    ForEach(weeks.indices, id: \.self) { w in
+                        if let day = weeks[w][d] {
+                            let key = DayStats.key(day)
+                            let minutes = s.history[key]?.minutes ?? 0
+                            let inRange = rangeDays.map { Calendar.current.dateComponents([.day], from: day, to: Date()).day! < $0 } ?? true
+                            let on = hoveredDay == key
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(minutes == 0 ? Color.sMeterTrack
+                                      : Color.sChart.opacity(0.25 + 0.75 * min(1, Double(minutes) / Double(peak))))
+                                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(Color.sText.opacity(on ? 0.85 : 0), lineWidth: 1.5))
+                                .opacity(inRange ? 1 : 0.35)
+                                .frame(width: size, height: size)
+                                .scaleEffect(shown ? (on ? 1.2 : 1) : 0.4)
+                                .opacity(shown ? 1 : 0)
+                                .zIndex(on ? 1 : 0)
+                                .animation(.cb(0.26).delay(Double(w * 10 + d * 6) / 1000), value: shown)
+                                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
+                                .onHover { inside in
+                                    if inside { hoveredDay = key } else if on { hoveredDay = nil }
+                                }
+                        } else {
+                            Color.clear.frame(width: size, height: size)
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Days of Claude Code over the last half year")
+    }
+
+    /// Under the grid: the day under the pointer; else today.
+    private func dayLine(_ s: WeekStats) -> some View {
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US")
+        fmt.dateFormat = "EEEE d MMM"
+        let key = hoveredDay ?? DayStats.key(Date())
+        let day = s.history[key]
+        let date = DayStats.keyFormat.date(from: key) ?? Date()
+        let projects = (day?.projects ?? [:]).sorted { $0.value > $1.value }.prefix(3).map(\.key)
+        let n = day?.sessions.count ?? 0
+        let parts: [String?] = [
+            hoveredDay == nil ? "Today" : fmt.string(from: date),
+            (day?.minutes ?? 0) > 0 ? "worked \(Self.duration(day!.minutes))" : "no Claude Code",
+            (day?.tokens ?? 0) > 0 ? "\(AppModel.compact(day!.tokens)) tokens" : nil,
+            n > 0 ? "\(n) session\(n == 1 ? "" : "s")" : nil,
+            projects.isEmpty ? nil : projects.joined(separator: ", "),
+        ]
+        return (Text(parts.compactMap { $0 }.joined(separator: " · ")).foregroundColor(hoveredDay == nil ? .sSecondary : .sText)
+            + Text(hoveredDay == nil ? "\nPoint at a day to see it" : "").foregroundColor(.sMuted))
+            .font(.system(size: 11).monospacedDigit()).lineSpacing(3).lineLimit(2)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .topLeading)
+            .animation(nil, value: hoveredDay)
+    }
+
+    // MARK: Projects
+
+    private func projects(_ sum: StatsSummary, _ s: WeekStats) -> some View {
+        let top = Array(sum.projects.prefix(5))
+        let peak = max(1, top.first?.minutes ?? 1)
+        let rest = sum.projects.dropFirst(5)
+        let shades = [Color.sChart, Color(hex: 0xBF5AF2), Color(hex: 0x30B0C7), Color(hex: 0xFF9F0A), Color(hex: 0x30D158)]
+        return SettingsGroup {
+            if top.isEmpty {
+                row("") { Text("No projects \(rangeName) yet").foregroundColor(.sSecondary) }
+            }
+            ForEach(Array(top.enumerated()), id: \.offset) { i, p in
+                HStack(spacing: 10) {
+                    Circle().fill(shades[i]).frame(width: 7, height: 7)
+                    Text(p.name).lineLimit(1).truncationMode(.middle).frame(width: 130, alignment: .leading)
+                    GeometryReader { geo in
+                        Capsule().fill(shades[i].opacity(0.85))
+                            .frame(width: max(4, geo.size.width * CGFloat(p.minutes) / CGFloat(peak) * (shown ? 1 : 0.05)))
+                            .frame(maxHeight: .infinity, alignment: .center)
+                            .animation(.cb(0.5).delay(Double(i) * 0.05), value: shown)
+                    }
+                    .frame(height: 6)
+                    Text(Self.duration(p.minutes)).foregroundColor(.sSecondary).frame(width: 82, alignment: .trailing)
+                }
+                .font(.system(size: 12).monospacedDigit())
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
+            }
+            if !rest.isEmpty {
+                row("") {
+                    Text("+ \(rest.count) more · \(Self.duration(rest.reduce(0) { $0 + $1.minutes }))").foregroundColor(.sSecondary)
+                }
+            }
+            MoreRows("stats", count: 3) {
+                VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("The week, hour by hour").font(.system(size: 12, weight: .semibold))
+                        Text(s.headline + " · " + subtitle(s).prefix(1).lowercased() + subtitle(s).dropFirst())
+                            .font(.system(size: 11)).foregroundColor(.sSecondary)
+                    }
+                    heatMap(s)
+                    hoverLine(s)
+                }
+                .padding(12)
+                .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
+                let models = sum.models.filter { $0.share >= 0.005 }
+                if !models.isEmpty {
+                    row("Models") {
+                        shares(models.count > 4 ? Array(models.prefix(3)) + [(name: "other", share: models.dropFirst(3).reduce(0) { $0 + $1.share })] : models)
+                    }
+                }
                 row("Tools") {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.tools.isEmpty ? "—" : s.tools.map { "\($0.name) \($0.count)" }.joined(separator: " · "))
-                        Text("\(s.subagents) subagent\(s.subagents == 1 ? "" : "s") started").foregroundColor(.sSecondary)
+                        Text("this week · \(s.subagents) subagent\(s.subagents == 1 ? "" : "s") started").foregroundColor(.sSecondary)
                     }
                 }
             }

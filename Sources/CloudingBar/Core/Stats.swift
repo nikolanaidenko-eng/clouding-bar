@@ -38,6 +38,10 @@ struct WeekStats {
     var cellMinutes: [[Int]] = Array(repeating: Array(repeating: 0, count: 24), count: 7)
     var cellProjects: [[[String: Int]]] = Array(repeating: Array(repeating: [:], count: 24), count: 7)
     var cellLimit: [[Double?]] = Array(repeating: Array(repeating: nil, count: 24), count: 7)
+    /// Every day there's a record of ("2026-10-20" → its numbers), kept in
+    /// stats-days.json so it outlives Claude Code's cleanup of old
+    /// transcripts (30 days).
+    var history: [String: DayStats] = [:]
 
     var isEmpty: Bool { grid.allSatisfy { $0.allSatisfy { $0 == 0 } } }
 
@@ -48,6 +52,100 @@ struct WeekStats {
         case 2: return "Hit the 5-hour limit twice this week"
         default: return "Hit the 5-hour limit \(limitHits) times this week"
         }
+    }
+}
+
+/// One day of Claude Code.
+struct DayStats: Codable, Equatable {
+    /// Fresh input, cache writes and output (as the week's tokens).
+    var tokens = 0
+    /// Minutes with Claude replying (5-minute spans, subagents' overlapping).
+    var minutes = 0
+    /// The chats active that day (their transcripts' ids).
+    var sessions: [String] = []
+    /// The most minutes one chat had that day.
+    var longest = 0
+    /// Minutes by project, tokens by model, tokens by hour (0…23).
+    var projects: [String: Int] = [:]
+    var models: [String: Int] = [:]
+    var hours: [Int] = Array(repeating: 0, count: 24)
+
+    static let keyFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    static func key(_ date: Date) -> String { keyFormat.string(from: date) }
+}
+
+/// A stretch of days in numbers, the way Claude Code's /stats puts them.
+struct StatsSummary {
+    var sessions = 0
+    var minutes = 0
+    var tokens = 0
+    var activeDays = 0
+    /// The most minutes one chat had in a day.
+    var longest = 0
+    /// Days in a row with Claude Code: up to today (or yesterday, before
+    /// today's first chat), and the longest run on record.
+    var currentStreak = 0
+    var longestStreak = 0
+    var favoriteModel: String?
+    var peakHour: Int?
+    /// 1 Sunday … 7 Saturday.
+    var busiestWeekday: Int?
+    var projects: [(name: String, minutes: Int)] = []
+    var models: [(name: String, share: Double)] = []
+
+    /// The last `days` days up to `now`, or all of `history` (nil).
+    static func of(_ history: [String: DayStats], days: Int?, now: Date = Date()) -> StatsSummary {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        var sum = StatsSummary()
+        var sessions = Set<String>(), projects: [String: Int] = [:], models: [String: Int] = [:]
+        var hours = Array(repeating: 0, count: 24), weekdays = Array(repeating: 0, count: 8)
+        let first = days.map { cal.date(byAdding: .day, value: -($0 - 1), to: today)! }
+        for (key, day) in history {
+            guard let date = DayStats.keyFormat.date(from: key), date <= today, first.map({ date >= $0 }) ?? true else { continue }
+            sum.tokens += day.tokens
+            sum.minutes += day.minutes
+            if day.minutes > 0 || day.tokens > 0 { sum.activeDays += 1 }
+            sum.longest = max(sum.longest, day.longest)
+            sessions.formUnion(day.sessions)
+            for (p, m) in day.projects { projects[p, default: 0] += m }
+            for (m, t) in day.models { models[m, default: 0] += t }
+            for h in 0..<min(24, day.hours.count) { hours[h] += day.hours[h] }
+            weekdays[cal.component(.weekday, from: date)] += day.minutes
+        }
+        sum.sessions = sessions.count
+        sum.projects = projects.filter { $0.value > 0 }.sorted { $0.value > $1.value }.map { (name: $0.key, minutes: $0.value) }
+        let modelTotal = models.values.reduce(0, +)
+        sum.models = modelTotal == 0 ? [] : models.sorted { $0.value > $1.value }
+            .map { (name: $0.key, share: Double($0.value) / Double(modelTotal)) }
+        sum.favoriteModel = sum.models.first?.name
+        if let peak = hours.indices.max(by: { hours[$0] < hours[$1] }), hours[peak] > 0 { sum.peakHour = peak }
+        if let busy = weekdays.indices.dropFirst().max(by: { weekdays[$0] < weekdays[$1] }), weekdays[busy] > 0 {
+            sum.busiestWeekday = busy
+        }
+        // Streaks, over everything on record.
+        let active = Set(history.filter { $0.value.minutes > 0 || $0.value.tokens > 0 }.keys)
+        var run = 0, best = 0
+        var day = active.compactMap { DayStats.keyFormat.date(from: $0) }.min() ?? today
+        while day <= today {
+            run = active.contains(DayStats.key(day)) ? run + 1 : 0
+            best = max(best, run)
+            day = cal.date(byAdding: .day, value: 1, to: day)!
+        }
+        sum.longestStreak = best
+        var current = 0
+        var back = active.contains(DayStats.key(today)) ? today : cal.date(byAdding: .day, value: -1, to: today)!
+        while active.contains(DayStats.key(back)) {
+            current += 1
+            back = cal.date(byAdding: .day, value: -1, to: back)!
+        }
+        sum.currentStreak = current
+        return sum
     }
 }
 
@@ -71,6 +169,7 @@ enum StatsBuilder {
     }
 
     private static var cacheURL: URL { Config.directory.appendingPathComponent("stats-cache.json") }
+    private static var historyURL: URL { Config.directory.appendingPathComponent("stats-days.json") }
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
 
     /// Slow (reads transcripts): call off the main thread.
@@ -91,6 +190,19 @@ enum StatsBuilder {
         var projectSpans: [String: Set<Int>] = [:]
         var todayFiles = 0
         var todayProjects = Set<String>()
+        // Every day, for the history: numbers, and spans to count minutes once.
+        var fresh: [String: DayStats] = [:]
+        var daySpans: [String: Set<Int>] = [:]
+        var dayProjectSpans: [String: [String: Set<Int>]] = [:]
+        // An hour's day and hour of day, worked out once per hour.
+        var hourInfo: [Int: (key: String, hour: Int)] = [:]
+        func info(hour: Int) -> (key: String, hour: Int) {
+            if let known = hourInfo[hour] { return known }
+            let date = Date(timeIntervalSince1970: Double(hour) * 3600)
+            let found = (key: DayStats.key(date), hour: cal.component(.hour, from: date))
+            hourInfo[hour] = found
+            return found
+        }
         let firstHour = Int(start.timeIntervalSince1970 / 3600)
 
         /// The day (0…6) an hour falls on, or nil outside the week.
@@ -104,8 +216,9 @@ enum StatsBuilder {
         let keys: [URLResourceKey] = [.fileSizeKey, .contentModificationDateKey]
         if let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys) {
             for case let url as URL in walker where url.pathExtension == "jsonl" {
+                // Older transcripts too: they add to the history.
                 guard let values = try? url.resourceValues(forKeys: Set(keys)),
-                      let mtime = values.contentModificationDate, mtime >= start,
+                      let mtime = values.contentModificationDate,
                       let size = values.fileSize.map(UInt64.init) else { continue }
                 let path = url.path
                 seen.insert(path)
@@ -116,6 +229,33 @@ enum StatsBuilder {
                 }
                 guard let file else { continue }
                 let project = file.project ?? "other"
+                // The history: this chat's share of each day it was active.
+                var fileDayMinutes: [String: Int] = [:]
+                for (key, tokens) in file.hours {
+                    guard let hour = Int(key) else { continue }
+                    let at = info(hour: hour)
+                    fresh[at.key, default: DayStats()].tokens += tokens
+                    fresh[at.key, default: DayStats()].hours[at.hour] += tokens
+                }
+                for (key, byModel) in file.models {
+                    guard let hour = Int(key) else { continue }
+                    let k = info(hour: hour).key
+                    for (m, t) in byModel { fresh[k, default: DayStats()].models[m, default: 0] += t }
+                }
+                for span in file.spans {
+                    let k = info(hour: span / 12).key
+                    daySpans[k, default: []].insert(span)
+                    dayProjectSpans[k, default: [:]][project, default: []].insert(span)
+                    fileDayMinutes[k, default: 0] += 5
+                }
+                if !file.isSubagent {
+                    let id = url.deletingPathExtension().lastPathComponent
+                    for (k, minutes) in fileDayMinutes {
+                        fresh[k, default: DayStats()].sessions.append(id)
+                        fresh[k, default: DayStats()].longest = max(fresh[k]?.longest ?? 0, minutes)
+                    }
+                }
+                guard mtime >= start else { continue } // the rest is this week's
                 var activeToday = false
                 for (key, tokens) in file.hours {
                     guard let hour = Int(key), let at = day(hour) else { continue }
@@ -143,9 +283,22 @@ enum StatsBuilder {
                 }
             }
         }
-        // Forget files that are gone or too old.
+        // Forget files that are gone.
         cache = cache.filter { seen.contains($0.key) }
         if let data = try? JSONEncoder().encode(cache) { try? data.write(to: cacheURL, options: .atomic) }
+
+        // The history: today's numbers from the transcripts there are, kept
+        // days whose transcripts are gone (a day keeps its fuller record).
+        for (k, spans) in daySpans { fresh[k, default: DayStats()].minutes = spans.count * 5 }
+        for (k, byProject) in dayProjectSpans {
+            fresh[k, default: DayStats()].projects = byProject.mapValues { $0.count * 5 }
+        }
+        var history = (try? JSONDecoder().decode([String: DayStats].self, from: Data(contentsOf: historyURL))) ?? [:]
+        for (k, day) in fresh where day.minutes >= (history[k]?.minutes ?? 0) || day.tokens >= (history[k]?.tokens ?? 0) {
+            history[k] = day
+        }
+        if let data = try? JSONEncoder().encode(history) { try? data.write(to: historyURL, options: .atomic) }
+        stats.history = history
 
         stats.projects = shares(projectTokens)
         stats.models = shares(modelTokens)
