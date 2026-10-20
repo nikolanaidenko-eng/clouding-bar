@@ -948,6 +948,39 @@ struct ChatTag: View {
     }
 }
 
+/// A name too long for its room plays across it, slowly, and back.
+struct MarqueeText: View {
+    let text: String
+    let size: CGFloat
+    var weight: NSFont.Weight = .regular
+    let maxWidth: CGFloat
+    @State private var shift: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let over = ceil(MainPanel.textWidth(text, size, weight: weight)) + 1 - maxWidth
+        let font = Font.system(size: size, weight: weight == .semibold ? .semibold : weight == .bold ? .bold : .regular)
+        if over <= 0 || reduceMotion {
+            Text(text).font(font)
+                .lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: maxWidth, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+        } else {
+            Text(text).font(font).lineLimit(1).fixedSize()
+                .offset(x: shift)
+                .frame(width: maxWidth, alignment: .leading)
+                .clipped()
+                .id(text)
+                .onAppear {
+                    shift = 0
+                    withAnimation(.linear(duration: Double(over) / 25).delay(1.4).repeatForever(autoreverses: true)) {
+                        shift = -over
+                    }
+                }
+        }
+    }
+}
+
 /// Every live chat as a tab (owner's request, 20.10): the one the widget
 /// follows lit in its colour, the light gliding over when you pick another
 /// (which brings that chat up). The ones that don't fit wait behind "+n".
@@ -1007,10 +1040,7 @@ struct ChatTabs: View {
         Button { if !r.current { model.focusSession(r.id) } } label: {
             HStack(spacing: 6) {
                 ChatDot(color: r.color)
-                Text(r.name).font(.system(size: 12, weight: r.current ? .semibold : .regular))
-                    .lineLimit(1).truncationMode(.tail)
-                    .frame(maxWidth: Self.nameMax, alignment: .leading)
-                    .fixedSize(horizontal: true, vertical: false)
+                MarqueeText(text: r.name, size: 12, weight: r.current ? .semibold : .regular, maxWidth: Self.nameMax)
                 if r.waiting { PulseDot(size: 7, still: model.config.doNotDisturb) }
             }
             .padding(.horizontal, 10)

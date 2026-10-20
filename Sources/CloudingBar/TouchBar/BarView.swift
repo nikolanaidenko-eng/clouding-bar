@@ -208,7 +208,7 @@ final class BarView: NSView {
         case .normal:
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
-                let b = BarButton(chat.name, fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.chats) }
+                let b = BarButton(chat.name, fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
                 add(b, .shrinkable(min(150, b.fittingWidth(padding: 10))))
             }
             let shows = model.shows
@@ -363,7 +363,7 @@ final class BarView: NSView {
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for chat in model.chats {
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
-                                  fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
                 group.append(b)
             }
@@ -457,7 +457,7 @@ final class BarView: NSView {
     /// Several chats: the one a request comes from, before it.
     private func addRequestChat() {
         guard model.chats.count > 1, let chat = model.requestChat else { return }
-        let b = BarButton(chat.name, style: .outline, fontSize: 12, dot: chat.color)
+        let b = BarButton(chat.name, style: .outline, fontSize: 12, dot: chat.color, marquee: true)
         add(b, .shrinkable(min(130, b.fittingWidth(padding: 10))))
     }
 
