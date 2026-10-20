@@ -107,7 +107,7 @@ final class SessionStore {
         session.contextWindowSize = s.contextWindow
         session.model = s.model
         session.lastEvent = s.time
-        session.activity = .sleep
+        session.activity = s.working ? .work : .sleep
         scheduleSave()
         onChange?()
     }

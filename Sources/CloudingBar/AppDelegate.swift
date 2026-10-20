@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var barPendingEffort: String?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
-    private var coworkSeen: [String: Date] = [:]
+    private var coworkSeen: [String: String] = [:]
     private var coworkFolders: (list: [String], at: Date) = ([], .distantPast)
 
     // MARK: - Launch
@@ -1392,20 +1392,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.coworkFolders = folders.map { URL(fileURLWithPath: $0).lastPathComponent }
         var newest: Cowork.Status?
         for folder in folders {
-            let url = Cowork.statusURL(folder: folder)
-            guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                  let status = Cowork.read(folder: folder) else { continue }
-            // Inside Cowork's machine the folder name means nothing; the Mac
-            // folder the status landed in is the project.
-            let named = Cowork.Status(session: status.session, project: URL(fileURLWithPath: folder).lastPathComponent,
-                                      contextTokens: status.contextTokens, contextWindow: status.contextWindow,
-                                      model: status.model, time: status.time)
-            if mtime != coworkSeen[folder] {
-                coworkSeen[folder] = mtime
-                store.apply(cowork: named)
-                DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens")
+            for url in Cowork.statusFiles(folder: folder) {
+                guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                      let status = Cowork.read(url) else { continue }
+                // Inside Cowork's machine the folder name means nothing; the
+                // Mac folder the status landed in is the project. A turn
+                // that never ended (Cowork quit) isn't work any more.
+                let named = Cowork.Status(session: status.session, project: URL(fileURLWithPath: folder).lastPathComponent,
+                                          contextTokens: status.contextTokens, contextWindow: status.contextWindow,
+                                          model: status.model, time: status.time,
+                                          working: status.working && Date().timeIntervalSince(status.time) < 30 * 60)
+                let seen = "\(mtime.timeIntervalSince1970) \(named.working)"
+                if seen != coworkSeen[url.path] {
+                    coworkSeen[url.path] = seen
+                    store.apply(cowork: named)
+                    DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens\(status.working ? ", working" : "")")
+                }
+                if newest == nil || named.time > newest!.time { newest = named }
             }
-            if newest == nil || named.time > newest!.time { newest = named }
         }
         if let s = newest {
             let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())

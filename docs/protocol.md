@@ -212,18 +212,29 @@ Question answered via `PreToolUse`:
 
 ## Cowork status file
 
-Cowork's hooks run away from this Mac. The `clouding-bar-cowork` plugin
-(made in Settings → Cowork) works around that:
-- its Stop hook works out the context fill;
-- when it's time to report, it asks Claude to write one line to
-  `.clouding-bar/cowork-status.json` in a folder connected to Cowork.
+Cowork runs Claude in a machine of its own, so its hooks can't reach the
+app. The `clouding-bar-cowork` plugin (made in Settings → Cowork) works
+around that. Its hooks fire on `UserPromptSubmit` and `Stop`; each time they
+work out the context fill from the transcript and write one line to
+`.clouding-bar/cowork-<session>.json` in the task's connected folders, as
+Cowork mounts them (`<cwd>/mnt/*`, `~/mnt/*`, `/mnt/*`, at most three):
 
 ```json
-{"v":1,"t":1792100000,"session":"…","project":"DiaRoute","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5"}
+{"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","state":"working"}
 ```
 
-The app reads the file every 2 s. It shows the line as a session
-`cowork-<session>`, which ends after 3 hours without news.
+`state` is `working` from your message to Claude's reply, then `done`. A
+`.gitignore` with `*` sits next to it; files of tasks quiet for 3 days are
+removed.
+
+Only when no connected folder is visible to the hook does the Stop hook ask
+Claude to write the line to `.clouding-bar/cowork-status.json` (with
+`"via":"claude"`), as often as the mode says.
+
+The app finds the connected folders in Claude Desktop's own records and
+reads every `cowork-*.json` in them every 2 s. Each task is a session
+`cowork-<session>`, which ends after 3 hours without news; a `working` line
+older than 30 minutes counts as done.
 
 ## Files in `~/.cloudingbar`
 

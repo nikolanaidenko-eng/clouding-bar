@@ -89,7 +89,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   behind **More**.
 - **Stats**: both limits, your week hour by hour (point at an hour for that
   hour and that day), where the time went — from local transcripts.
-- **Cowork** chats can report their context through a small plugin.
+- **Cowork** chats show up too, through a small plugin: on every message
+  and reply it notes the context and whether Claude is working in a folder
+  you connected to the task, where Clouding Bar picks it up.
 
 <p align="center">
   <img src="docs/images/notch-question.png" width="420" alt="The notch grown for a question">
@@ -149,7 +151,8 @@ and only once — updates keep them.
 | Screen Recording | the screenshot button | only if you use it |
 
 Clouding Bar doesn't ask for your Documents or Desktop: the git branch of a
-project there is read by the hook, inside Claude Code.
+project there is read by the hook, inside Claude Code. (With Cowork on, a
+folder you connected to Cowork there is read by the app, so macOS asks once.)
 
 ### VS Code
 

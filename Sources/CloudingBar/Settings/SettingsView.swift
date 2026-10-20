@@ -1506,8 +1506,8 @@ struct CoworkTab: View {
 
     private let notes = [
         "off": "Cowork chats are not tracked.",
-        "thresholds": "Saves after a task's first reply, at 50, 80, 90% and when a longer turn ends. Almost free.",
-        "every": "After every reply: about +5–15% usage, +1–3 s per reply.",
+        "thresholds": "On every message, free. If the plugin can't reach the folder, Claude saves it: first reply, 50, 80, 90%.",
+        "every": "On every message, free. If the plugin can't reach the folder, Claude saves it after every reply: +5–15% usage.",
     ]
 
     var body: some View {
@@ -1516,7 +1516,7 @@ struct CoworkTab: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Cowork status").font(.system(size: 13))
-                        Text("Claude saves context to a connected folder").font(.system(size: 11)).foregroundColor(.sSecondary)
+                        Text("The plugin saves context to a connected folder").font(.system(size: 11)).foregroundColor(.sSecondary)
                     }
                     Spacer()
                     SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
@@ -1530,7 +1530,7 @@ struct CoworkTab: View {
             if model.config.coworkMode != "off" {
                 SettingsGroup {
                     SettingsRow(title: "Plugin",
-                                hint: "Upload it in Claude Desktop → Settings → Plugins. Make it again after changing the mode.") {
+                                hint: "Upload it in Claude Desktop → Settings → Plugins, in place of an older one.") {
                         Button("Make plugin") { model.makeCoworkPlugin() }
                     }
                     SettingsRow(title: "Folders",

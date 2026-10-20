@@ -152,6 +152,43 @@ let zip = try? Cowork.makePlugin(mode: "thresholds", into: pluginDir)
 check(zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false, "cowork plugin zip is made")
 check(FileManager.default.fileExists(atPath: pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path),
       "cowork plugin has its hook script")
+do { // the hook writes into the connected folder itself: working, then done
+    let task = pluginDir.appendingPathComponent("cowork-task")
+    let mac = task.appendingPathComponent("mnt/24H")
+    try? FileManager.default.removeItem(at: task)
+    try? FileManager.default.createDirectory(at: mac, withIntermediateDirectories: true)
+    let transcript = task.appendingPathComponent("t.jsonl")
+    try? #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5}}}"#
+        .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
+    func hook(_ event: String, cwd: URL) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
+        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin"]
+        let input = Pipe(), output = Pipe()
+        p.standardInput = input; p.standardOutput = output
+        try? p.run()
+        let event: [String: Any] = ["hook_event_name": event, "session_id": "s1", "cwd": cwd.path,
+                                    "transcript_path": transcript.path]
+        input.fileHandleForWriting.write(try! JSONSerialization.data(withJSONObject: event))
+        try? input.fileHandleForWriting.close()
+        p.waitUntilExit()
+        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    }
+    let out = hook("UserPromptSubmit", cwd: task)
+    let files = Cowork.statusFiles(folder: mac.path)
+    let working = files.first.flatMap(Cowork.read)
+    check(out.isEmpty && files.map(\.lastPathComponent) == ["cowork-s1.json"] && working?.working == true
+          && working?.contextTokens == 40010, "cowork hook: on a message, \"working\" written to the folder itself")
+    _ = hook("Stop", cwd: task)
+    let done = Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)
+    check(done?.working == false && done?.session == "s1", "cowork hook: on the reply, \"done\"")
+    check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/.gitignore").path),
+          "cowork hook: git ignores it")
+    let lonely = pluginDir.appendingPathComponent("cowork-nofolder")
+    try? FileManager.default.createDirectory(at: lonely, withIntermediateDirectories: true)
+    check(hook("Stop", cwd: lonely).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
+}
 
 // MARK: Model and effort
 
