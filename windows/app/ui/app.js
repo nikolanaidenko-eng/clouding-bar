@@ -43,9 +43,10 @@ function cloud(activity, size, grab = false) {
 }
 
 /** A chat's colour dot and its name; "other chat" when it isn't the one shown. */
-function chatTag(name, color, elsewhere = false) {
+function chatTag(name, color, elsewhere = false, done = false) {
   if (!name) return "";
-  return `<span class="chat-tag"><i class="cdot" style="background:${esc(color)}"></i><span class="cname">${esc(name)}</span>${
+  const dot = done ? `<i class="cdone">✓</i>` : `<i class="cdot" style="background:${esc(color)}"></i>`;
+  return `<span class="chat-tag">${dot}<span class="cname">${esc(name)}</span>${
     elsewhere ? `<span class="other-chat">other chat</span>` : ""}</span>`;
 }
 
@@ -62,7 +63,7 @@ function pill(s) {
   }
   const reset = s.resetShort ? `<div class="item"><span class="label">↻</span><span class="num">${esc(s.resetShort)}</span></div>` : "";
   // With several chats: which one this is.
-  const chat = s.sessions.length > 1 ? `<div class="item">${chatTag(s.chatName, s.chatColor)}</div>` : "";
+  const chat = s.sessions.length > 1 ? `<div class="item">${chatTag(s.chatName, s.chatColor, false, s.chatDone)}</div>` : "";
   return `<div class="pill glass ${s.request ? "waiting" : ""}" data-open>
     ${cloud(s.activity, 30, true)}${chat}
     <div class="item">${bar(s.sessionPercent)}<span class="num">${pct(s.sessionPercent)}</span></div>

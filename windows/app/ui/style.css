@@ -108,3 +108,6 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: def
 .tab:hover { background: rgba(255,255,255,0.1); }
 .tab.current { color: var(--text); font-weight: 600; background: color-mix(in srgb, var(--c) 22%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 75%, transparent); }
+
+/* The chat shown just finished: a tick, then the widget moves on. */
+.cdone { font-style: normal; font-size: 10px; font-weight: 700; color: #30D158; width: 8px; display: inline-block; }

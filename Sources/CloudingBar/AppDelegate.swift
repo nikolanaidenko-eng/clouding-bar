@@ -35,6 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ticks = 0
     private var refreshQueued = false
     private var lastActiveId: String?
+    /// Following the chat at work (owner's request, 20.10): after the chat
+    /// shown finished, "done" for a moment (`handoff`), then the one still
+    /// working (`followWorking`). `front` is what was in front then: going
+    /// to another window or tab, or picking a chat, ends it.
+    private var handoff: (doneId: String, nextId: String, until: Date, front: String)?
+    private var followWorking: (id: String, front: String)?
+    private var lastShown: (id: String, activity: Activity)?
     /// The chat picked in the widget, and when: it's followed until you
     /// go to another chat yourself.
     private var pickedSessionId: String?
@@ -360,7 +367,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var focusedSession: Session? {
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) < 4,
            let s = store.sessions[id], s.isAlive() { return s }
-        return store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 },
+        if let h = handoff, let s = store.sessions[h.doneId], s.isAlive() { return s }
+        if let f = followWorking, let s = store.sessions[f.id], s.isAlive() { return s }
+        return frontSession
+    }
+
+    /// The chat of the window or tab in front (SessionStore.focus).
+    private var frontSession: Session? {
+        store.focus(windowTitle: frontTitle, tty: frontTTY, sticky: [pickedSessionId, lastActiveId].compactMap { $0 },
                            desktop: frontApp?.bundleIdentifier == Self.desktopBundle, desktopChat: desktopShown?.chat)
     }
 
@@ -372,6 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let id = pickedSessionId, Date().timeIntervalSince(pickedAt) >= 4, let shown, shown.id != id {
             pickedSessionId = nil
         }
+        updateFollowing()
         let active = focusedSession
         if active?.id != lastActiveId {
             lastActiveId = active?.id
@@ -412,7 +427,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
         }
         bar.chats = model.sessions.map {
-            BarModel.Chat(id: $0.id, name: Self.short($0.name, 60), color: $0.color, current: $0.current, waiting: $0.waiting)
+            BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.short($0.name, 60), color: $0.color,
+                          current: $0.current, waiting: $0.waiting)
         }
         bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
         if let active, active.linesAdded + active.linesRemoved > 0 {
@@ -1010,6 +1026,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.chatColor, Session.colors[(active?.colorIndex ?? 0) % Session.colors.count])
         set(\.chatPlace, active.map { place(of: $0) })
         set(\.chatStatus, active.map { status(of: $0, waiting: activity(of: $0) == .wait) })
+        set(\.chatDone, handoff != nil && active?.id == handoff?.doneId)
         // A Codex session in front: Codex's own limits (a different account).
         let isCodex = active?.entrypoint == "codex"
         let account = isCodex ? store.codexAccount : store.account
@@ -1090,11 +1107,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return ([s.title != nil ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// "Needs your OK", "Working · 3 min", "Idle · 12 min".
+    /// "Needs your OK", "Working · 3 min", "Done · your turn", "Idle · 12 min".
     private func status(of s: Session, waiting: Bool) -> String {
         waiting ? "Needs your OK"
             : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
+            : handoff?.doneId == s.id || (s.finishedAt.map { Date().timeIntervalSince($0) < 15 * 60 } ?? false) ? "Done · your turn"
             : "Idle · \(AppModel.duration(since: s.lastSeen))"
+    }
+
+    /// What's in front, to tell when you've gone elsewhere: the app and the
+    /// chat its window or tab surely shows (not the title's text, which
+    /// changes as Claude works).
+    private var frontKey: String {
+        let shown = frontApp?.bundleIdentifier == Self.desktopBundle
+            ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)?.id ?? desktopShown?.chat
+            : store.session(inWindow: frontTitle, tty: frontTTY)?.id
+        return (frontApp?.bundleIdentifier ?? "") + "|" + (shown ?? "")
+    }
+
+    /// The chat shown finished: "done" for a moment, then the one still at
+    /// work — or, with none at work, back to the chat in front. Your own
+    /// move (another window or tab, a pick) or the chat in front starting
+    /// again ends it.
+    private func updateFollowing() {
+        guard config.followWorking else { handoff = nil; followWorking = nil; lastShown = nil; return }
+        let picked = pickedSessionId != nil && Date().timeIntervalSince(pickedAt) < 4
+        let front = frontSession
+        let key = frontKey
+        if let h = handoff, h.front != key || picked { handoff = nil }
+        if let f = followWorking, f.front != key || picked || (front.map { $0.id != f.id && $0.activity != .sleep } ?? false) {
+            followWorking = nil
+        }
+        // The "done" moment is over: on to the next.
+        if let h = handoff, Date() >= h.until {
+            handoff = nil
+            if let next = store.sessions[h.nextId], next.isAlive(), next.id != front?.id {
+                followWorking = (next.id, key)
+                DebugLog.note("follow working: \(next.displayName)")
+            } else {
+                followWorking = nil
+            }
+        }
+        guard handoff == nil, let shown = focusedSession else { lastShown = nil; return }
+        defer { lastShown = (shown.id, shown.activity) }
+        guard !picked, let last = lastShown, last.id == shown.id, last.activity == .work, shown.activity == .sleep else { return }
+        let working = store.alive.filter { $0.id != shown.id && $0.activity == .work }.max { $0.lastSeen < $1.lastSeen }
+        guard let next = working ?? (front.flatMap { $0.id != shown.id ? $0 : nil }) else { return }
+        handoff = (shown.id, next.id, Date().addingTimeInterval(4), key)
+        DebugLog.note("done: \(shown.displayName); next \(next.displayName)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.05) { [weak self] in self?.setNeedsRefresh() }
     }
 
     private func card(for r: PendingRequest, active: Session?) -> AppModel.RequestCard {

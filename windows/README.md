@@ -11,7 +11,8 @@ Chats are told apart as on the Mac: each by its title (VS Code's chat tab
 shows the same) and its own colour. The widget follows the chat whose title
 the window in front shows, else the one you picked or followed last; a click
 on a tab follows that chat and opens it in VS Code. Requests say which chat
-they come from.
+they come from. When the chat shown finishes while another is still at work,
+it shows a tick ("Done · your turn") and a moment later the chat at work.
 
 It speaks the same protocol as the macOS app ([docs/protocol.md](../docs/protocol.md)),
 over a named pipe (`\\.\pipe\cloudingbar`) instead of a unix socket.

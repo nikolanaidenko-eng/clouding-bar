@@ -28,9 +28,13 @@ A first version for **Windows** is in [windows/](windows/README.md).
   one VS Code's tab shows, or the one you gave it), so two chats in one
   project are told apart. Clouding Bar follows the chat in front — VS
   Code's chat tab, a Terminal or iTerm tab — and stays with it when you
-  switch to another app. With Claude Desktop in front, it's its chat
-  (Cowork, Code) you picked, else the latest. Pick another one in the
-  widget, the menu or the Touch Bar, and it's brought up.
+  switch to another app. With Claude Desktop in front, it's the chat open
+  there. Pick another one in the widget, the menu or the Touch Bar, and
+  it's brought up.
+- **The chat at work.** When the chat shown finishes while another is still
+  working, it says so — a tick, "Done · your turn" — and a moment later
+  shows the one at work. Going to another window or tab, or picking a
+  chat, puts you back in charge.
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, lines changed, the git branch,
   subagents. Pull its outline to resize it — wider shows more, taller
@@ -89,8 +93,12 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **Everything is optional**: each number, detail and control has its own
   switch in Settings. What most people need is up front; the rest waits
   behind **More**.
-- **Stats**: both limits, your week hour by hour (point at an hour for that
-  hour and that day), where the time went — from local transcripts.
+- **Stats**, the way Claude Code's /stats puts them: both limits; for the
+  week, the month or everything, your sessions, active time, tokens and
+  days in a row, your favourite model and peak hour; every day of the last
+  half year as a square (point at one to see it); the projects the time
+  went to. From local transcripts, and kept after Claude Code clears old
+  ones.
 - **Cowork** chats show up too, through a small plugin that notes each
   task's name and context in a folder you connected to it, where Clouding
   Bar picks it up — two tasks in one folder are two chats.
@@ -209,8 +217,9 @@ as you move the pointer, and walks along the tabs.
 - **General** — appearance (auto, light, dark), colourful or grey buttons,
   open at login, do not disturb, the Claude Code connection (and Codex, and
   the 5-hour limit in VS Code), the context warning, the dictation language.
-- **Widget** — show it, in the notch; behind More: keep the pill visible,
-  open on hover, its position; what it shows (a chip for each thing).
+- **Widget** — show it, in the notch; behind More: follow the chat at
+  work, keep the pill visible, open on hover, its position; what it shows
+  (a chip for each thing).
 - **Touch Bar** — on or off, what it shows (everything the widget can,
   and Write and Templates), with a live preview.
 - **Buttons** — your buttons and their shortcuts, a set per project;
@@ -224,6 +233,9 @@ optional.
 <p align="center">
   <img src="docs/images/settings.png" width="420" alt="Settings">
   <img src="docs/images/tour.png" width="420" alt="The tour">
+</p>
+<p align="center">
+  <img src="docs/images/stats.png" width="600" alt="Stats: both limits, sessions, active time, tokens, streak, every day as a square">
 </p>
 
 ## Uninstall
