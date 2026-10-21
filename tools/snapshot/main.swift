@@ -69,6 +69,8 @@ add("normal-short", width: 685) { $0.short = true; $0.chats = chats
 add("normal-short-all", width: 685) { $0.short = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "lines", "chat", "templates", "buttons", "shot", "mic"]
     $0.modelLabel = "Opus 5.5 1M"; $0.lines = "+120 −8"; $0.templates = ["Review"] }
+add("normal-expanded") { $0.expanded = true; $0.chats = chats; $0.buttons = seven
+    $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
 add("permission-short", width: 685) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy -- --prod") }
 add("question-short", width: 685) { $0.short = true; $0.activity = .wait

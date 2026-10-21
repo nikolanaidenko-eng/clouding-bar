@@ -49,8 +49,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   context as two lines (the context as "312k of 1M"); the model, lines,
   branch and subagents; and a message box that says which chat it writes to.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
-  is in front — or in every app, if you like (there short, the chat and
-  the meters beside Apple's brightness and volume, or the whole bar): which chat (tap it for the others), meters, the model,
+  is in front — or in every app, if you like (there short, beside Apple's
+  brightness and volume, with a button that opens the whole bar and one
+  that folds it back): which chat (tap it for the others), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
   or dictated), **Templates**, your buttons, the mic — each one optional.
 - Limits are blue, orange from 70%, red from 90% — everywhere.

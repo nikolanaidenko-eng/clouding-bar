@@ -59,9 +59,11 @@ struct BarModel: Equatable {
     var typingCommands = false
     /// The chat the bar shows, for the chat field: "Status bar".
     var chatName: String?
-    /// Outside Claude's apps, beside Apple's buttons: the chat and the
-    /// meters only.
+    /// Beside Apple's buttons: everything smaller, the rest left out — and a
+    /// button that opens the whole bar (`expand`).
     var short = false
+    /// Opened from short: a button folds it back, Apple's buttons return.
+    var expanded = false
     /// Your templates, as they read.
     var templates: [String] = []
     /// What the widget can show too: "+120 −8", "main", "$1.20".
@@ -92,6 +94,8 @@ enum BarAction {
     case write, cancelTyping
     /// The templates button lists them; a pick types one into the chat.
     case templates, pickTemplate(Int)
+    /// Beside Apple's buttons: the whole bar for Claude, and back.
+    case expand, collapse
     /// Done: back from the picker or the subagents.
     case closePanel
 }
@@ -192,7 +196,7 @@ final class BarView: NSView {
         switch m.mode {
         case .normal:
             let info = [m.lines, m.branch, m.cost, m.chatName].map { $0 ?? "" }.joined(separator: "|")
-            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)"
+            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)|\(m.expanded)"
         case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
         case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
@@ -232,7 +236,7 @@ final class BarView: NSView {
             if session || context {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
-                add(pair, .flex(weight: 1, min: short ? 150 : 80))
+                add(pair, .flex(weight: 1, min: short ? 150 : session && context ? 120 : 80))
             }
             if shows.contains("model"), let label = model.modelLabel {
                 let b = BarButton(label, fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
@@ -285,6 +289,15 @@ final class BarView: NSView {
             }
             // No meters: the rest stays at the left, after the character.
             if meters == nil { add(NSView(), .flex(weight: 1, min: 0)) }
+            // Short: one button opens the whole bar; opened: one folds it back.
+            if short || model.expanded,
+               let icon = NSImage(systemSymbolName: short ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
+                                  accessibilityDescription: short ? "Whole bar" : "Fold back") {
+                let b = BarButton(short ? "Whole bar" : "Fold back", icon: icon) { [weak self] in
+                    self?.onAction?(short ? .expand : .collapse)
+                }
+                add(b, .fixed(40))
+            }
 
         case .contextWarning:
             let pair = MetersPair(padding: 8, contextWidth: 210)
@@ -580,14 +593,17 @@ final class BarView: NSView {
                 }
             }
         }
+        // Flexible slots: each its minimum first, then the rest by weight.
         let remaining = max(0, available - gaps - widths.reduce(0, +))
         let weights = vis.reduce(CGFloat(0)) {
             if case let .flex(w, _) = $1.width { return $0 + w }
             return $0
         }
+        let extra = max(0, remaining - flexMin)
+        let squeeze = flexMin > 0 ? min(1, remaining / flexMin) : 1
         for (i, slot) in vis.enumerated() {
-            if case let .flex(w, _) = slot.width, weights > 0 {
-                widths[i] = remaining * w / weights
+            if case let .flex(w, min) = slot.width, weights > 0 {
+                widths[i] = min * squeeze + extra * w / weights
             }
         }
 

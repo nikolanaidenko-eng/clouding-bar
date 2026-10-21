@@ -262,6 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func frontmostAppChanged(_ note: Notification) {
         frontApp = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         frontTitle = nil
+        barExpanded = false
         desktopShown = nil
         frontTTY = nil
         refresh()
@@ -352,8 +353,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Over the Control Strip in Claude's apps; next to it elsewhere (the
     /// bar in every app), so volume and brightness stay at hand.
     private var barFullWidth: Bool {
-        inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole"
+        barExpanded || (inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole")
     }
+
+    /// The short bar opened to the whole Touch Bar, until folded back or
+    /// another app comes to the front.
+    private var barExpanded = false
 
     /// A terminal, VS Code or Claude in front.
     private var inClaudeApp: Bool { frontApp.map(isTerminal) ?? false }
@@ -447,6 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         bar.chatName = active.map { Self.short($0.displayName, 18) }
         bar.short = !barFullWidth // beside Apple's buttons: everything smaller
+        bar.expanded = barExpanded
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -710,6 +716,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let backToDraft = templatesIntoDraft
             closeBarPicker()
             if backToDraft { perform(.write) }
+
+        case .expand:
+            DebugLog.tap("whole bar")
+            barExpanded = true
+            setNeedsRefresh()
+
+        case .collapse:
+            DebugLog.tap("fold back")
+            barExpanded = false
+            setNeedsRefresh()
 
         case .later:
             DebugLog.tap("later (context warning)")
