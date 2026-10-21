@@ -236,6 +236,20 @@ final class WidgetController: NSObject {
         if !wants { releaseKey() }
     }
 
+    /// Opens the panel at its message box (files just attached go with
+    /// what you write there).
+    func openMessage() {
+        closeWork?.cancel()
+        pinned = true
+        set(.panel)
+        guard model.config.taskQueue, model.request == nil else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.state.mode == .panel else { return }
+            self.panel.makeKey()
+            self.state.focusMessage += 1
+        }
+    }
+
     /// Hands the keyboard back to the app in front, if the widget has it.
     func releaseKey() {
         guard panel.isKeyWindow else { return }

@@ -1573,11 +1573,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func takeScreenshot() {
         DebugLog.tap("screenshot")
         widget.releaseKey()
+        // Where it goes is decided now: the app in front may change while
+        // you pick the area.
+        let intoChat = inClaudeApp
         Screenshot.take { [weak self] path in
-            guard let path else { return } // cancelled
-            self?.widget.releaseKey()
-            KeySender.type(path + " ")
-            DebugLog.note("screenshot → path typed")
+            guard let self, let path else { return } // cancelled
+            if intoChat {
+                self.widget.releaseKey()
+                KeySender.type(path + " ")
+                DebugLog.note("screenshot → path typed")
+            } else if self.config.widget, self.attach([URL(fileURLWithPath: path)]) {
+                // Another app in front: not typed there, but attached to the
+                // chat shown, to go with your next message.
+                self.refresh()
+                self.widget.openMessage()
+                DebugLog.note("screenshot → attached to the chat shown")
+            } else if let active = self.focusedSession {
+                // No widget: the chat comes up, and the path goes in there.
+                self.openSession(active.id)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { KeySender.type(path + " ") }
+                DebugLog.note("screenshot → chat brought up, path typed")
+            }
         }
     }
 
