@@ -81,6 +81,9 @@ struct Config: Equatable {
 
     /// Take the whole Touch Bar, hiding the Control Strip while it's up.
     var hideControlStrip = true
+    /// Claude's bar in every app, not only while a terminal, VS Code or
+    /// Claude is in front (there, next to the Control Strip).
+    var touchBarEverywhere = false
 
     /// Context fill at which the bar turns red and offers to compact.
     var contextWarnPercent: Double = 80
@@ -278,6 +281,7 @@ struct Config: Equatable {
         if let v = obj["touchBar"] as? String { config.touchBar = v }
         if let v = obj["touchBar"] as? Bool { config.touchBar = v ? "on" : "off" }
         if let v = obj["hideControlStrip"] as? Bool { config.hideControlStrip = v }
+        if let v = obj["touchBarEverywhere"] as? Bool { config.touchBarEverywhere = v }
         if let v = (obj["contextWarnPercent"] as? NSNumber)?.doubleValue { config.contextWarnPercent = v }
         if let v = (obj["questionHoldSeconds"] as? NSNumber)?.doubleValue { config.questionHoldSeconds = max(0, v) }
         if let v = (obj["permissionHoldSeconds"] as? NSNumber)?.doubleValue { config.permissionHoldSeconds = max(0, v) }

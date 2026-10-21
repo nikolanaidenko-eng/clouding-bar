@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var config = Config.load()
     private let store = SessionStore()
     private var server: SocketServer?
-    private lazy var touchBar = TouchBarController(fullWidth: config.hideControlStrip)
+    private let touchBar = TouchBarController()
     private let typing = TypingInput()
     private let frontWindow = FrontWindow()
     private var statusItem: NSStatusItem?
@@ -344,9 +344,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var barShouldShow: Bool {
-        guard touchBarEnabled, SystemModalTouchBar.isSupported,
-              let app = frontApp, isTerminal(app) else { return false }
-        return !store.alive.isEmpty
+        guard touchBarEnabled, SystemModalTouchBar.isSupported, let app = frontApp else { return false }
+        if config.touchBarEverywhere { return true }
+        return isTerminal(app) && !store.alive.isEmpty
+    }
+
+    /// Over the Control Strip in Claude's apps; next to it elsewhere (the
+    /// bar in every app), so volume and brightness stay at hand.
+    private var barFullWidth: Bool {
+        config.hideControlStrip && (frontApp.map(isTerminal) ?? false)
     }
 
     /// Somewhere a request can be answered: the Touch Bar or the widget.
@@ -487,7 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 closeBarPicker()
             }
         }
-        touchBar.show(bar)
+        touchBar.show(bar, fullWidth: barFullWidth)
     }
 
     /// A name cut to `n` characters with "…".

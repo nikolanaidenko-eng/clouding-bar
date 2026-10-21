@@ -1032,6 +1032,16 @@ struct TouchBarTab: View {
                         get: { model.config.touchBar != "off" },
                         set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
                 }
+                if model.config.touchBar != "off" {
+                    SettingsRow(title: "In every app",
+                                hint: model.config.touchBarEverywhere
+                                    ? "Everywhere; outside Claude next to the Control Strip. Buttons type into the app in front"
+                                    : "Only while Claude Code, VS Code or Claude is in front") {
+                        CBSwitch(title: "In every app", on: Binding(
+                            get: { model.config.touchBarEverywhere },
+                            set: { model.setConfig("touchBarEverywhere", $0) }))
+                    }
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     Text("On the bar").font(.system(size: 13))
                     ChipSet(model: model, key: "touchBarShows",
@@ -1044,7 +1054,7 @@ struct TouchBarTab: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Claude's questions and permission requests always show. Tap Write to send Claude a message, typed or dictated; Templates to type one in; the model to switch it; the subagents to see who's working. Buttons and templates are set up in Buttons.")
+            Text("Claude's questions and permission requests always show. Tap the message field (Write) to send Claude a message, typed or dictated; Templates to type one in; the model to switch it; the subagents to see who's working. Buttons and templates are set up in Buttons.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
