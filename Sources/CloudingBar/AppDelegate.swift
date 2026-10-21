@@ -352,8 +352,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Over the Control Strip in Claude's apps; next to it elsewhere (the
     /// bar in every app), so volume and brightness stay at hand.
     private var barFullWidth: Bool {
-        config.hideControlStrip && (frontApp.map(isTerminal) ?? false)
+        inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole"
     }
+
+    /// A terminal, VS Code or Claude in front.
+    private var inClaudeApp: Bool { frontApp.map(isTerminal) ?? false }
 
     /// Somewhere a request can be answered: the Touch Bar or the widget.
     private var canShowRequests: Bool {
@@ -443,6 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.branch = active.flatMap(branch(of:))
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         bar.chatName = active.map { Self.short($0.displayName, 18) }
+        bar.short = !inClaudeApp && config.touchBarOutside != "whole"
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
                                             color: Session.colors[s.colorIndex % Session.colors.count],

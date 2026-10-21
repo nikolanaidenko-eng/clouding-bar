@@ -84,6 +84,9 @@ struct Config: Equatable {
     /// Claude's bar in every app, not only while a terminal, VS Code or
     /// Claude is in front (there, next to the Control Strip).
     var touchBarEverywhere = false
+    /// Outside Claude's apps: "short" (the chat and the meters, beside
+    /// Apple's brightness and volume) or "whole" (the whole Touch Bar).
+    var touchBarOutside = "short"
 
     /// Context fill at which the bar turns red and offers to compact.
     var contextWarnPercent: Double = 80
@@ -282,6 +285,7 @@ struct Config: Equatable {
         if let v = obj["touchBar"] as? Bool { config.touchBar = v ? "on" : "off" }
         if let v = obj["hideControlStrip"] as? Bool { config.hideControlStrip = v }
         if let v = obj["touchBarEverywhere"] as? Bool { config.touchBarEverywhere = v }
+        if let v = obj["touchBarOutside"] as? String { config.touchBarOutside = v }
         if let v = (obj["contextWarnPercent"] as? NSNumber)?.doubleValue { config.contextWarnPercent = v }
         if let v = (obj["questionHoldSeconds"] as? NSNumber)?.doubleValue { config.questionHoldSeconds = max(0, v) }
         if let v = (obj["permissionHoldSeconds"] as? NSNumber)?.doubleValue { config.permissionHoldSeconds = max(0, v) }

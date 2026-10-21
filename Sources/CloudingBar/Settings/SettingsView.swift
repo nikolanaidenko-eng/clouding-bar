@@ -1034,12 +1034,22 @@ struct TouchBarTab: View {
                 }
                 if model.config.touchBar != "off" {
                     SettingsRow(title: "In every app",
-                                hint: model.config.touchBarEverywhere
-                                    ? "Everywhere; outside Claude next to the Control Strip. Buttons type into the app in front"
+                                hint: model.config.touchBarEverywhere ? "Not only while Claude Code, VS Code or Claude is in front"
                                     : "Only while Claude Code, VS Code or Claude is in front") {
                         CBSwitch(title: "In every app", on: Binding(
                             get: { model.config.touchBarEverywhere },
                             set: { model.setConfig("touchBarEverywhere", $0) }))
+                    }
+                    if model.config.touchBarEverywhere {
+                        SettingsRow(title: "Outside Claude",
+                                    hint: model.config.touchBarOutside == "whole"
+                                        ? "The whole Touch Bar, as in Claude's apps; Apple's brightness and volume hidden"
+                                        : "Short: the chat and the meters, beside Apple's brightness and volume") {
+                            SettingsSegments(options: [("short", "Short"), ("whole", "Whole bar")],
+                                             selected: model.config.touchBarOutside, tint: 0xBF5AF2) {
+                                model.setConfig("touchBarOutside", $0)
+                            }
+                        }
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
