@@ -117,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         frontApp = NSWorkspace.shared.frontmostApplication
 
         touchBar.barView.onAction = { [weak self] in self?.perform($0) }
+        touchBar.barView.onWidth = { DebugLog.note("touch bar: \($0)") }
         typing.onChange = { [weak self] text in self?.typingChanged(text) }
         typing.onSubmit = { [weak self] _ in self?.perform(.send) }
         typing.onCancel = { [weak self] in self?.stopTyping() }

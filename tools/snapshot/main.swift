@@ -64,18 +64,18 @@ add("compose") { $0.mode = .typing(text: "Check the landing page on mobile too")
     $0.typingPlaceholder = "Sent when Claude is free"; $0.typingCommands = true
     $0.shows = ["session", "context", "templates", "buttons"]; $0.templates = ["Review {branch}"] }
 add("compose-empty") { $0.mode = .typing(text: ""); $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free" }
-add("normal-short", width: 685) { $0.short = true; $0.chats = chats
+add("normal-short", width: 628) { $0.short = true; $0.chats = chats
     $0.shows = ["session", "reset", "context", "model", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
-add("normal-short-all", width: 685) { $0.short = true; $0.chats = chats; $0.buttons = seven
+add("normal-short-all", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "lines", "chat", "templates", "buttons", "shot", "mic"]
     $0.modelLabel = "Opus 5.5 1M"; $0.lines = "+120 −8"; $0.templates = ["Review"] }
 add("normal-expanded") { $0.expanded = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
-add("permission-short", width: 685) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
+add("permission-short", width: 628) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy -- --prod") }
-add("question-short", width: 685) { $0.short = true; $0.activity = .wait
+add("question-short", width: 628) { $0.short = true; $0.activity = .wait
     $0.mode = .question(text: "Storage for offline routes?", options: ["SQLite", "MMKV", "AsyncStorage"], multiSelect: false, picked: []) }
-add("compose-short", width: 685) { $0.short = true; $0.mode = .typing(text: "Check the landing page on mobile too")
+add("compose-short", width: 628) { $0.short = true; $0.mode = .typing(text: "Check the landing page on mobile too")
     $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free"; $0.typingCommands = true; $0.shows = ["buttons"] }
 add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
 

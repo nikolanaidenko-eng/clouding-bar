@@ -122,7 +122,7 @@ final class BarView: NSView {
     /// 13" MacBook Pro); layout follows whatever width we actually get.
     static let preferredWidth: CGFloat = 1004
     /// Beside the Control Strip (Apple's brightness, volume…).
-    static let narrowWidth: CGFloat = 685
+    static let narrowWidth: CGFloat = 628 // measured: screencapture -b, Chrome in front
 
     /// Beside the Control Strip: as wide as the room there, so nothing slips
     /// under Apple's buttons.
@@ -543,8 +543,14 @@ final class BarView: NSView {
 
     // MARK: Layout
 
+    /// Diagnostics: the width the Touch Bar really gives, and what holds it.
+    var onWidth: ((String) -> Void)?
+    private var reportedWidth = ""
+
     override func layout() {
         super.layout()
+        let report = "bounds \(Int(bounds.width)), superview \(Int(superview?.bounds.width ?? -1)), window \(Int(window?.frame.width ?? -1)), narrow \(narrow)"
+        if report != reportedWidth { reportedWidth = report; onWidth?(report) }
         let available = bounds.width - Palette.edge * 2
         // Too much even when shrunk: leave out droppable things from the right.
         var shown = Array(slots.indices)
