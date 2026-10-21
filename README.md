@@ -49,7 +49,8 @@ A first version for **Windows** is in [windows/](windows/README.md).
   context as two lines (the context as "312k of 1M"); the model, lines,
   branch and subagents; and a message box that says which chat it writes to.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
-  is in front: which chat (tap it for the others), meters, the model,
+  is in front — or in every app, if you like (next to the Control Strip
+  there): which chat (tap it for the others), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
   or dictated), **Templates**, your buttons, the mic — each one optional.
 - Limits are blue, orange from 70%, red from 90% — everywhere.
@@ -220,8 +221,9 @@ as you move the pointer, and walks along the tabs.
 - **Widget** — show it, in the notch; behind More: follow the chat at
   work, keep the pill visible, open on hover, its position; what it shows
   (a chip for each thing).
-- **Touch Bar** — on or off, what it shows (everything the widget can,
-  and Write and Templates), with a live preview.
+- **Touch Bar** — on or off, in every app or only Claude's, what it shows
+  (everything the widget can, and Write and Templates), with a live
+  preview.
 - **Buttons** — your buttons and their shortcuts, a set per project;
   templates.
 - **Cowork** — the plugin and its folders; behind More, the claude.ai limit.

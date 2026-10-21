@@ -7,23 +7,22 @@ import AppKit
 final class TouchBarController: NSObject, NSTouchBarDelegate {
     let barView = BarView()
     private var presentedBar: NSTouchBar?
-    private let fullWidth: Bool
+    private var presentedFullWidth = true
 
     var isShowing: Bool { presentedBar != nil }
 
-    init(fullWidth: Bool) {
-        self.fullWidth = fullWidth
-        super.init()
-    }
-
-    func show(_ model: BarModel) {
+    /// `fullWidth`: over the Control Strip too; else next to it (put up
+    /// again when that changes).
+    func show(_ model: BarModel, fullWidth: Bool) {
         barView.update(model)
+        if presentedBar != nil && presentedFullWidth != fullWidth { hide() }
         guard presentedBar == nil else { return }
         let bar = NSTouchBar()
         bar.delegate = self
         bar.defaultItemIdentifiers = [.root]
         SystemModalTouchBar.present(bar, fullWidth: fullWidth)
         presentedBar = bar
+        presentedFullWidth = fullWidth
     }
 
     func hide() {
