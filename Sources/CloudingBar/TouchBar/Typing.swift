@@ -154,7 +154,7 @@ final class ComposeFieldButton: NSButton {
 /// while you answer "Other…" an invisible panel of ours takes the keyboard
 /// (a non-activating panel: your editor stays the frontmost app). A real
 /// text field means every keyboard layout and dictation work.
-final class TypingInput: NSObject, NSTextFieldDelegate {
+final class TypingInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     var onChange: ((String) -> Void)?
     var onSubmit: ((String) -> Void)?
     var onCancel: (() -> Void)?
@@ -177,6 +177,7 @@ final class TypingInput: NSObject, NSTextFieldDelegate {
             p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             field.frame = p.contentView!.bounds
             field.delegate = self
+            p.delegate = self // its field editor brings no Touch Bar of its own
             field.isBezeled = false
             field.focusRingType = .none
             field.cell?.isScrollable = true
@@ -233,8 +234,25 @@ final class TypingInput: NSObject, NSTextFieldDelegate {
             return false
         }
     }
+
+    /// The hidden field's editor: no Touch Bar of its own (typing
+    /// suggestions), which beside Apple's buttons would take the place of
+    /// Clouding Bar's while you type.
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        quietEditor.isFieldEditor = true
+        quietEditor.isAutomaticTextCompletionEnabled = false
+        return quietEditor
+    }
+
+    private let quietEditor = QuietEditor()
+}
+
+private final class QuietEditor: NSTextView {
+    override func makeTouchBar() -> NSTouchBar? { nil }
+    override var touchBar: NSTouchBar? { get { nil } set {} }
 }
 
 private final class KeyPanel: NSPanel {
     override var canBecomeKey: Bool { true }
+    override func makeTouchBar() -> NSTouchBar? { nil }
 }

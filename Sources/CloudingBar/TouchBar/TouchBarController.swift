@@ -8,6 +8,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     let barView = BarView()
     private var presentedBar: NSTouchBar?
     private var presentedFullWidth = true
+    private var presentedAt = Date.distantPast
 
     var isShowing: Bool { presentedBar != nil }
 
@@ -17,6 +18,9 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         barView.narrow = !fullWidth
         barView.update(model)
         if presentedBar != nil && presentedFullWidth != fullWidth { hide() }
+        // Taken off the Touch Bar meanwhile (a window of ours came to the
+        // keyboard): put it back.
+        if presentedBar != nil && barView.window == nil && Date().timeIntervalSince(presentedAt) > 5 { hide() }
         guard presentedBar == nil else { return }
         let bar = NSTouchBar()
         bar.delegate = self
@@ -24,6 +28,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
         SystemModalTouchBar.present(bar, fullWidth: fullWidth)
         presentedBar = bar
         presentedFullWidth = fullWidth
+        presentedAt = Date()
     }
 
     func hide() {
