@@ -59,6 +59,9 @@ struct BarModel: Equatable {
     var typingCommands = false
     /// The chat the bar shows, for the chat field: "Status bar".
     var chatName: String?
+    /// Outside Claude's apps, beside Apple's buttons: the chat and the
+    /// meters only.
+    var short = false
     /// Your templates, as they read.
     var templates: [String] = []
     /// What the widget can show too: "+120 −8", "main", "$1.20".
@@ -179,7 +182,7 @@ final class BarView: NSView {
         switch m.mode {
         case .normal:
             let info = [m.lines, m.branch, m.cost, m.chatName].map { $0 ?? "" }.joined(separator: "|")
-            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)"
+            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)"
         case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
         case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
@@ -211,7 +214,8 @@ final class BarView: NSView {
                 let b = BarButton(chat.name, fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
                 add(b, .shrinkable(min(150, b.fittingWidth(padding: 10))))
             }
-            let shows = model.shows
+            // Short (outside Claude, beside Apple's buttons): the meters only.
+            let shows = model.short ? model.shows.intersection(["session", "reset", "context"]) : model.shows
             let session = shows.contains("session"), context = shows.contains("context")
             if session || context {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
