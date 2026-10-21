@@ -10,13 +10,23 @@
 #   - the notary's credentials, kept in your keychain as "clouding-bar":
 #     /Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials clouding-bar \
 #         --apple-id <you> --team-id <team>
-# With the Xcode license not accepted (after a macOS update), build with the
-# Command Line Tools: DEVELOPER_DIR=/Library/Developer/CommandLineTools
+# With the Xcode license not accepted (after a macOS update) make refuses
+# too: run this script directly, it finds Xcode's tools itself.
 #
 # DRY=1 skips Apple's notary (checks everything else); DEVELOPER_ID and
 # NOTARY_PROFILE pick another certificate or credentials.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# The Xcode license not accepted again after a macOS update (xcrun, make and
+# swiftc in /usr/bin refuse): Xcode's own compiler, SDK and tools directly.
+# (The Command Line Tools alone lack SwiftUI's macros in the macOS 27 SDK.)
+if ! xcrun --find swiftc >/dev/null 2>&1 && [ -d /Applications/Xcode.app/Contents/Developer ]; then
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+  export SDKROOT="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+  export PATH="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
+  echo "Xcode license not accepted: building with Xcode's toolchain directly"
+fi
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" packaging/Info.plist)
 OUT=build/release
