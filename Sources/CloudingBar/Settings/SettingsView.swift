@@ -853,6 +853,11 @@ struct VoiceGroup: View {
 
     var body: some View {
         SettingsGroup {
+            SettingsRow(title: "Check before sending",
+                        hint: model.config.voiceReview ? "The words wait in the widget: edit them, then Send"
+                            : "Typed into the app in front as you stop") {
+                CBSwitch(title: "Check before sending", on: settingBinding(model, "voiceReview") { $0.voiceReview })
+            }
             SettingsRow(title: "Language", hint: "Hold the right ⌥ key alone, or use the mic",
                         divider: !model.voiceOffline) {
                 Picker("", selection: Binding(get: { model.config.voiceLanguage },

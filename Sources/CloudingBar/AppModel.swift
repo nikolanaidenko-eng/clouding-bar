@@ -139,6 +139,12 @@ final class AppModel: ObservableObject {
 
     @Published var listening = false
     @Published var heard = ""
+    /// Dictated text to look over before it's sent (nil: none).
+    @Published var dictated: String?
+    var sendDictated: () -> Void = {}
+    var discardDictated: () -> Void = {}
+    /// Dictation in the widget: listening, or the text to check.
+    var voiceShown: Bool { listening || dictated != nil }
     /// What's typed in the widget's "Other" field.
     @Published var otherDraft = ""
 

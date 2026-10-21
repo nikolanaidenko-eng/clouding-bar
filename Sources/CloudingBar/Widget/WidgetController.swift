@@ -110,6 +110,20 @@ final class WidgetController: NSObject {
 
     /// Called after every model refresh.
     func update() {
+        // Dictated words to check: the widget takes the keyboard for them.
+        let reviewing = model.dictated != nil
+        if reviewing != wasReviewing {
+            wasReviewing = reviewing
+            if reviewing {
+                updateKeyAllowance()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    guard let self, self.model.dictated != nil else { return }
+                    self.panel.makeKey()
+                }
+            } else {
+                releaseKey()
+            }
+        }
         let id = model.request?.id
         if id != shownRequest {
             shownRequest = id
@@ -134,9 +148,9 @@ final class WidgetController: NSObject {
         updateKeyAllowance()
         // While you dictate, the pill shows the words as they come, so an
         // open panel folds away.
-        if model.listening && model.request == nil && state.mode != .pill { set(.pill) }
+        if model.voiceShown && model.request == nil && state.mode != .pill { set(.pill) }
         if state.mode == .strip && rest == .pill { set(.pill) }
-        if rest == .strip && !model.listening && state.mode == .pill && !hovering && !pinned && model.request == nil {
+        if rest == .strip && !model.voiceShown && state.mode == .pill && !hovering && !pinned && model.request == nil {
             set(.strip)
         }
     }
@@ -175,7 +189,7 @@ final class WidgetController: NSObject {
             if pinned && state.mode == .panel { pinned = false } // seen it; normal rules from now on
             closeWork?.cancel()
             let work = DispatchWorkItem { [weak self] in
-                guard let self, !self.hovering, !self.pinned, !self.model.listening, !self.state.pillTyping else { return }
+                guard let self, !self.hovering, !self.pinned, !self.model.voiceShown, !self.state.pillTyping else { return }
                 self.set(self.rest)
             }
             closeWork = work
@@ -194,7 +208,7 @@ final class WidgetController: NSObject {
     private func scheduleOpen() {
         openWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.hovering, self.state.mode == .pill, !self.model.listening,
+            guard let self, self.hovering, self.state.mode == .pill, !self.model.voiceShown,
                   !self.suppressOpen, !self.overControl, self.state.pillEditSize == nil,
                   !self.state.pillTyping, !self.state.pillRearrange.isDragging else { return }
             self.set(.panel)
@@ -212,10 +226,12 @@ final class WidgetController: NSObject {
         updateKeyAllowance()
     }
 
+    private var wasReviewing = false
+
     private func updateKeyAllowance() {
         // The queue's text field needs the keyboard too.
         let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue)
-            || state.mode == .pill && state.pillTyping
+            || state.mode == .pill && (state.pillTyping || model.dictated != nil)
         panel.allowsKey = wants
         if !wants { releaseKey() }
     }
@@ -325,7 +341,7 @@ final class WidgetController: NSObject {
             model.voiceToggle()
             return
         }
-        if state.pillTyping { return }
+        if state.pillTyping || model.dictated != nil { return }
         openWork?.cancel() // holding it: don't open the panel underneath
         let mouse = NSEvent.mouseLocation
         if state.mode == .pill, model.hasSession, model.request == nil, !model.listening,
@@ -530,7 +546,7 @@ final class WidgetController: NSObject {
         guard size.width > 0, size.height > 0 else { return }
         // Pill, panel, sessions — or the notch growing for a question, for
         // writing, for dictation.
-        let phase = "\(state.mode)|\(state.notched)|\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)"
+        let phase = "\(state.mode)|\(state.notched)|\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)|\(model.dictated != nil)"
         if phase != shownPhase {
             shownPhase = phase
             settleUntil = Date().addingTimeInterval(0.45)

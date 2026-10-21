@@ -17,7 +17,28 @@ final class VoiceInput {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var best = ""
+    /// What was heard before the recognizer started over (after a pause it
+    /// may begin a new transcription, or finish one and need another).
+    private var committed = ""
+    private var recognizer: SFSpeechRecognizer?
+    private var offline = false
     private var finishing = false
+
+    /// Everything heard so far.
+    private var heard: String { Self.join(committed, best) }
+
+    private static func join(_ a: String, _ b: String) -> String {
+        [a, b].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// The new transcription isn't a revision of the last one: it began again.
+    private static func startedOver(_ new: String, after old: String) -> Bool {
+        guard !new.isEmpty, !old.isEmpty, new.count < old.count else { return false }
+        let a = Array(new.lowercased()), b = Array(old.lowercased())
+        var same = 0
+        while same < min(a.count, b.count), a[same] == b[same] { same += 1 }
+        return same < min(4, a.count)
+    }
     private var silence: DispatchWorkItem?
 
     /// Stop by itself after a pause (tap-to-talk); nil: only stop() stops it.
@@ -74,18 +95,21 @@ final class VoiceInput {
     }
 
     private func begin(_ recognizer: SFSpeechRecognizer, offline: Bool) {
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.requiresOnDeviceRecognition = offline
+        self.recognizer = recognizer
+        self.offline = offline
+        let request = newRequest()
         self.request = request
         best = ""
+        committed = ""
         finishing = false
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            request.append(buffer)
+        // Into whichever request is current: a new one after the recognizer
+        // finished one mid-speech.
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            self?.request?.append(buffer)
         }
         do {
             engine.prepare()
@@ -97,15 +121,42 @@ final class VoiceInput {
             return
         }
         onLog?("listening, \(recognizer.locale.identifier), " + (offline ? "on this Mac" : "Apple servers"))
-        armSilence(stopAfterPause.map { _ in 6 })
+        armSilence(stopAfterPause.map { _ in 8 })
+        recognize(request)
+    }
+
+    private func newRequest() -> SFSpeechAudioBufferRecognitionRequest {
+        let request = SFSpeechAudioBufferRecognitionRequest()
+        request.shouldReportPartialResults = true
+        request.requiresOnDeviceRecognition = offline
+        return request
+    }
+
+    private func recognize(_ request: SFSpeechAudioBufferRecognitionRequest) {
+        guard let recognizer else { return }
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.request === request else { return }
                 if let result {
-                    self.best = result.bestTranscription.formattedString
-                    self.onPartial?(self.best)
+                    let text = result.bestTranscription.formattedString
+                    if Self.startedOver(text, after: self.best) {
+                        self.committed = Self.join(self.committed, self.best)
+                    }
+                    self.best = text
+                    self.onPartial?(self.heard)
                     self.armSilence(self.stopAfterPause)
-                    if result.isFinal { self.deliver() }
+                    if result.isFinal {
+                        if self.finishing {
+                            self.deliver()
+                        } else {
+                            // Finished after a pause while you go on: keep it, listen on.
+                            self.committed = Self.join(self.committed, self.best)
+                            self.best = ""
+                            let next = self.newRequest()
+                            self.request = next
+                            self.recognize(next)
+                        }
+                    }
                 } else if let error {
                     self.onLog?("recognizer: \(error.localizedDescription)")
                     if self.finishing { self.deliver() }
@@ -141,7 +192,7 @@ final class VoiceInput {
 
     private func deliver() {
         guard request != nil else { return }
-        let text = best.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = heard.trimmingCharacters(in: .whitespacesAndNewlines)
         cleanUp()
         onFinal?(text.isEmpty ? nil : text)
     }
@@ -154,6 +205,7 @@ final class VoiceInput {
         task?.cancel()
         task = nil
         request = nil
+        recognizer = nil
         finishing = false
     }
 }

@@ -446,7 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.branch = active.flatMap(branch(of:))
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         bar.chatName = active.map { Self.short($0.displayName, 18) }
-        bar.short = !inClaudeApp && config.touchBarOutside != "whole"
+        bar.short = !barFullWidth // beside Apple's buttons: everything smaller
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -997,13 +997,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.model.openAtLogin = LoginItem.isEnabled
         }
         model.voice = { [weak self] down in down ? self?.voiceBegin() : self?.voice.stop() }
+        model.sendDictated = { [weak self] in self?.sendDictated() }
+        model.discardDictated = { [weak self] in
+            DebugLog.tap("discard dictated")
+            self?.model.dictated = nil
+            self?.widget.update()
+        }
         model.voiceToggle = { [weak self] in
             guard let self else { return }
             if self.model.listening {
                 self.voice.stop()
             } else {
-                // Tap-to-talk: ends by itself after a 2 s pause.
-                self.voiceBegin(stopAfterPause: 2)
+                // Tap-to-talk: ends by itself after a 5 s pause (shorter
+                // pauses are part of speaking), or with another tap.
+                self.voiceBegin(stopAfterPause: 5)
             }
         }
         model.resetWidgetPosition = { [weak self] in self?.resetWidgetPosition() }
@@ -1322,6 +1329,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The checked words go where the widget's message box sends them: to
+    /// the queue (when Claude is free), or typed into the chat with Enter.
+    private func sendDictated() {
+        guard let text = model.dictated?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+        model.dictated = nil
+        widget.update()
+        DebugLog.tap("send dictated (\(text.count) characters)")
+        if config.taskQueue && focusedSession != nil {
+            model.addToQueue(text)
+        } else {
+            widget.releaseKey()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                KeySender.type(text, pressReturn: self.focusedSession != nil)
+            }
+        }
+    }
+
     private func voiceBegin(stopAfterPause: TimeInterval? = nil) {
         guard !voice.isRunning, !model.listening else { return }
         DebugLog.tap(stopAfterPause == nil ? "voice (hold ⌥)" : "voice (mic)")
@@ -1340,6 +1364,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             typing.insert(text)
         } else if model.request?.kind == .question, widget.state.mode == .panel {
             model.otherDraft = model.otherDraft.isEmpty ? text : model.otherDraft + " " + text
+        } else if config.voiceReview && config.widget {
+            // To check in the widget first ("Say more" adds to it).
+            let before = (model.dictated ?? "").trimmingCharacters(in: .whitespaces)
+            model.dictated = before.isEmpty ? text : before + " " + text
         } else {
             widget.releaseKey()
             KeySender.type(text)
