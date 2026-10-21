@@ -77,7 +77,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   the widget shows the words as you speak, growing with them, then lets you
   check and edit them before you Send (or type them straight in, if you
   prefer — Settings → General → Voice).
-- **Screenshot** an area of the screen straight into the chat.
+- **Screenshot** an area of the screen straight into the chat (taken from
+  another app, it's attached to the chat shown and goes with your next
+  message).
 
 **Steer it**
 - Switch the **model and effort** from the panel or the Touch Bar.
