@@ -117,6 +117,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         frontApp = NSWorkspace.shared.frontmostApplication
 
         touchBar.barView.onAction = { [weak self] in self?.perform($0) }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.setNeedsRefresh()
+            }
+        }
         touchBar.barView.onWidth = { DebugLog.note("touch bar: \($0)") }
         typing.onChange = { [weak self] text in self?.typingChanged(text) }
         typing.onSubmit = { [weak self] _ in self?.perform(.send) }
@@ -354,7 +359,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Over the Control Strip in Claude's apps; next to it elsewhere (the
     /// bar in every app), so volume and brightness stay at hand.
     private var barFullWidth: Bool {
-        barExpanded || (inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole")
+        // A window of ours has the keyboard (writing on the bar, the widget's
+        // message box, Settings): beside Apple's buttons macOS would put that
+        // window's own Touch Bar in Claude's place, so the whole bar it is.
+        barExpanded || NSApp.keyWindow != nil
+            || (inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole")
     }
 
     /// The short bar opened to the whole Touch Bar, until folded back or

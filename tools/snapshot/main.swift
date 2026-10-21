@@ -75,6 +75,9 @@ add("permission-short", width: 628) { $0.short = true; $0.chats = chats; $0.requ
     $0.mode = .permission(verb: "Run", detail: "npm run deploy -- --prod") }
 add("question-short", width: 628) { $0.short = true; $0.activity = .wait
     $0.mode = .question(text: "Storage for offline routes?", options: ["SQLite", "MMKV", "AsyncStorage"], multiSelect: false, picked: []) }
+add("compose-short-long", width: 628) { $0.short = true; $0.buttons = three
+    $0.mode = .typing(text: "Check the landing page on mobile too, and the form at the bottom of it")
+    $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free"; $0.typingCommands = true; $0.shows = ["buttons"] }
 add("compose-short", width: 628) { $0.short = true; $0.mode = .typing(text: "Check the landing page on mobile too")
     $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free"; $0.typingCommands = true; $0.shows = ["buttons"] }
 add("normal-model-narrow", width: 685) { $0.shows = ["session", "context", "model", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh" }
