@@ -117,6 +117,14 @@ final class BarView: NSView {
     /// Width of the full-width system-modal bar (2008 px measured on the
     /// 13" MacBook Pro); layout follows whatever width we actually get.
     static let preferredWidth: CGFloat = 1004
+    /// Beside the Control Strip (Apple's brightness, volume…).
+    static let narrowWidth: CGFloat = 685
+
+    /// Beside the Control Strip: as wide as the room there, so nothing slips
+    /// under Apple's buttons.
+    var narrow = false {
+        didSet { if narrow != oldValue { invalidateIntrinsicContentSize(); needsLayout = true } }
+    }
 
     private(set) var model = BarModel()
     private var builtFor: String?
@@ -140,6 +148,8 @@ final class BarView: NSView {
     private var animatedViews: [NSView] = []
 
     private struct Slot {
+        /// Left out, from the right, when even shrunk things don't fit.
+        var droppable = false
         enum Width {
             case fixed(CGFloat)
             case shrinkable(CGFloat)  // fixed, but gives way when space runs out
@@ -158,7 +168,7 @@ final class BarView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: Self.preferredWidth, height: Palette.height)
+        NSSize(width: narrow ? Self.narrowWidth : Self.preferredWidth, height: Palette.height)
     }
 
     func update(_ new: BarModel) {
@@ -209,22 +219,24 @@ final class BarView: NSView {
 
         switch model.mode {
         case .normal:
+            let short = model.short
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
-                let b = BarButton(chat.name, fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
-                add(b, .shrinkable(min(150, b.fittingWidth(padding: 10))))
+                let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
+                add(b, .shrinkable(min(short ? 110 : 150, b.fittingWidth(padding: short ? 8 : 10))))
             }
-            // Short (outside Claude, beside Apple's buttons): the meters only.
-            let shows = model.short ? model.shows.intersection(["session", "reset", "context"]) : model.shows
+            // Short (beside Apple's buttons): everything, smaller; what
+            // still doesn't fit is left out from the right (layout()).
+            let shows = model.shows
             let session = shows.contains("session"), context = shows.contains("context")
             if session || context {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
-                add(pair, .flex(weight: 1, min: 80))
+                add(pair, .flex(weight: 1, min: short ? 150 : 80))
             }
             if shows.contains("model"), let label = model.modelLabel {
-                let b = BarButton(label, fontSize: 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
-                add(b, .shrinkable(min(190, b.fittingWidth(padding: 12))))
+                let b = BarButton(label, fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
+                add(b, .shrinkable(min(short ? 120 : 190, b.fittingWidth(padding: short ? 8 : 12))), droppable: true)
             }
             if shows.contains("agents") {
                 let n = model.agents.count
@@ -232,15 +244,15 @@ final class BarView: NSView {
                                   symbol: ("person.2.fill", 0x40C8E0)) {
                     [weak self] in self?.onAction?(.agents)
                 }
-                add(b, .shrinkable(b.fittingWidth(padding: 14)))
+                add(b, .shrinkable(b.fittingWidth(padding: short ? 8 : 14)), droppable: true)
             }
             // What the widget shows besides: lines, branch, cost.
             for (key, text, symbol) in [("lines", model.lines, ("chevron.left.forwardslash.chevron.right", UInt32(0x30D158))),
                                         ("branch", model.branch, ("arrow.triangle.branch", UInt32(0xFF9F0A))),
                                         ("cost", model.cost, ("dollarsign.circle", UInt32(0xFFD60A)))] {
                 guard shows.contains(key), let text else { continue }
-                let b = BarButton(text, fontSize: 12, symbol: symbol)
-                add(b, .shrinkable(min(150, b.fittingWidth(padding: 12))))
+                let b = BarButton(text, fontSize: short ? 11 : 12, symbol: symbol)
+                add(b, .shrinkable(min(short ? 100 : 150, b.fittingWidth(padding: short ? 8 : 12))), droppable: true)
             }
             if shows.contains("chat") {
                 // The chat's name is on the bar already when there are several.
@@ -248,28 +260,28 @@ final class BarView: NSView {
                 let field = ComposeFieldButton(placeholder: placeholder) {
                     [weak self] in self?.onAction?(.write)
                 }
-                let box = ChatBoxView(field: field, commands: commandButtons())
-                add(box, .flex(weight: 1.2, min: 150 + box.commandsWidth))
+                let box = ChatBoxView(field: field, commands: short ? [] : commandButtons())
+                add(box, .flex(weight: 1.2, min: (short ? 110 : 150) + box.commandsWidth), droppable: true)
             }
             if shows.contains("templates"), !model.templates.isEmpty {
-                let b = BarButton("Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
+                let b = BarButton(short ? "" : "Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
                     self?.onAction?(.templates)
                 }
-                add(b, .shrinkable(b.fittingWidth(padding: 14)))
+                add(b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), droppable: true)
             }
-            // With the chat field, your buttons are inside it.
-            if shows.contains("buttons") && !shows.contains("chat") {
+            // With the chat field, your buttons are inside it (short: beside).
+            if shows.contains("buttons") && (!shows.contains("chat") || short) {
                 for (i, spec) in model.buttons.enumerated() {
-                    let b = customButton(spec.label) { [weak self] in self?.onAction?(.button(i)) }
-                    add(b.button, .shrinkable(b.width))
+                    let b = customButton(spec.label, compact: short) { [weak self] in self?.onAction?(.button(i)) }
+                    add(b.button, .shrinkable(b.width), droppable: true)
                     animate(b.button) { $0.popIn() }
                 }
             }
             if shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
-                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(48))
+                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(short ? 40 : 48), droppable: true)
             }
             if shows.contains("mic") {
-                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48))
+                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(short ? 40 : 48), droppable: true)
             }
             // No meters: the rest stays at the left, after the character.
             if meters == nil { add(NSView(), .flex(weight: 1, min: 0)) }
@@ -288,14 +300,14 @@ final class BarView: NSView {
         case let .permission(verb, detail):
             addRequestChat()
             let message = MessageView(verb: verb, detail: detail, monospaced: true, quiet: model.quiet)
-            add(message, .flex(weight: 1, min: 120))
+            add(message, .flex(weight: 1, min: model.short ? 100 : 120))
             animate(message) { $0.slideIn() }
             let allow = BarButton("Allow", style: .primary) { [weak self] in self?.onAction?(.allow) }
             let always = BarButton("Always") { [weak self] in self?.onAction?(.always) }
             let deny = BarButton("Deny", style: .deny) { [weak self] in self?.onAction?(.deny) }
-            add(allow, .fixed(100))
-            add(always, .fixed(100))
-            add(deny, .fixed(75))
+            add(allow, .fixed(model.short ? 76 : 100))
+            add(always, .fixed(model.short ? 80 : 100))
+            add(deny, .fixed(model.short ? 62 : 75))
             [allow, always, deny].forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
 
         case let .question(text, options, multi, picked):
@@ -308,7 +320,7 @@ final class BarView: NSView {
                 let b = BarButton(label, style: picked.contains(i) ? .selected : .normal) { [weak self] in
                     self?.onAction?(.option(i))
                 }
-                add(b, .shrinkable(min(b.fittingWidth(padding: 14), 180)))
+                add(b, .shrinkable(min(b.fittingWidth(padding: model.short ? 10 : 14), model.short ? 130 : 180)))
                 group.append(b)
             }
             if multi && !picked.isEmpty {
@@ -416,15 +428,17 @@ final class BarView: NSView {
             let mini = MiniMetersView()
             self.mini = mini
             add(mini, .fixed(60))
-            let label = NSTextField(labelWithString: model.typingLabel)
-            label.font = .systemFont(ofSize: Palette.labelFont)
-            label.textColor = Palette.secondary
-            label.alignment = .right
-            add(label, .fixed(ceil(label.intrinsicContentSize.width) + 4))
+            if !model.short {
+                let label = NSTextField(labelWithString: model.typingLabel)
+                label.font = .systemFont(ofSize: Palette.labelFont)
+                label.textColor = Palette.secondary
+                label.alignment = .right
+                add(label, .fixed(ceil(label.intrinsicContentSize.width) + 4))
+            }
             let field = TypingFieldView()
             field.placeholder = model.typingPlaceholder
             self.field = field
-            if model.typingCommands {
+            if model.typingCommands && !model.short {
                 let box = ChatBoxView(field: field, commands: commandButtons())
                 add(box, .flex(weight: 1, min: 120 + box.commandsWidth))
                 animate(box) { $0.slideIn(duration: 0.24) }
@@ -434,8 +448,8 @@ final class BarView: NSView {
             }
             let send = BarButton("Send", style: .primary) { [weak self] in self?.onAction?(.send) }
             let mic = BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.mic) }
-            add(send, .fixed(85))
-            if model.typingCommands {
+            add(send, .fixed(model.short ? 70 : 85))
+            if model.typingCommands && !model.short {
                 // Your commands right by the field, if the bar shows them.
                 if model.shows.contains("templates"), !model.templates.isEmpty,
                    let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Templates") {
@@ -474,9 +488,9 @@ final class BarView: NSView {
         return label
     }
 
-    private func add(_ view: NSView, _ width: Slot.Width) {
+    private func add(_ view: NSView, _ width: Slot.Width, droppable: Bool = false) {
         addSubview(view)
-        slots.append(Slot(view: view, width: width))
+        slots.append(Slot(droppable: droppable, view: view, width: width))
     }
 
     private func animate(_ view: NSView, _ animation: @escaping (CALayer) -> Void) {
@@ -487,7 +501,13 @@ final class BarView: NSView {
 
     /// A configured button: 13 pt, 15 pt padding, at most 130 pt wide; a
     /// long name drops to 11 pt, then gets "…".
-    private func customButton(_ label: String, onTap: @escaping () -> Void) -> (button: BarButton, width: CGFloat) {
+    private func customButton(_ label: String, compact: Bool = false,
+                              onTap: @escaping () -> Void) -> (button: BarButton, width: CGFloat) {
+        if compact {
+            // Beside Apple's buttons: 11 pt, tighter, at most 96 pt.
+            let b = BarButton(label, fontSize: 11, onTap: onTap)
+            return (b, min(96, max(44, b.fittingWidth(padding: 9))))
+        }
         var b = BarButton(label, onTap: onTap)
         var width = b.fittingWidth(padding: 15)
         if width > 130 {
@@ -513,15 +533,32 @@ final class BarView: NSView {
     override func layout() {
         super.layout()
         let available = bounds.width - Palette.edge * 2
-        let gaps = Palette.gap * CGFloat(max(0, slots.count - 1))
-        var widths: [CGFloat] = slots.map {
+        // Too much even when shrunk: leave out droppable things from the right.
+        var shown = Array(slots.indices)
+        func need(_ list: [Int]) -> CGFloat {
+            list.reduce(CGFloat(0)) { sum, i in
+                switch slots[i].width {
+                case let .fixed(w): return sum + w
+                case let .shrinkable(w): return sum + min(w, 72) // readable, not crammed
+                case let .flex(_, min): return sum + min
+                }
+            } + Palette.gap * CGFloat(max(0, list.count - 1))
+        }
+        while need(shown) > available, let last = shown.lastIndex(where: { slots[$0].droppable }) {
+            shown.remove(at: last)
+        }
+        for i in slots.indices { slots[i].view.isHidden = !shown.contains(i) }
+        let vis = shown.map { slots[$0] }
+
+        let gaps = Palette.gap * CGFloat(max(0, vis.count - 1))
+        var widths: [CGFloat] = vis.map {
             switch $0.width {
             case let .fixed(w), let .shrinkable(w): return w
             case .flex: return 0
             }
         }
         let fixed = widths.reduce(0, +)
-        let flexMin = slots.reduce(CGFloat(0)) {
+        let flexMin = vis.reduce(CGFloat(0)) {
             if case let .flex(_, min) = $1.width { return $0 + min }
             return $0
         }
@@ -535,27 +572,27 @@ final class BarView: NSView {
         // Not enough room: shrinkable slots give way first.
         let overflow = fixed + gaps + flexMin - available
         if overflow > 0 {
-            let shrinkable = slots.indices.filter { if case .shrinkable = slots[$0].width { return true }; return false }
+            let shrinkable = vis.indices.filter { if case .shrinkable = vis[$0].width { return true }; return false }
             let total = shrinkable.reduce(CGFloat(0)) { $0 + widths[$1] }
             if total > 0 {
                 for i in shrinkable {
-                    widths[i] = max(36, widths[i] - overflow * widths[i] / total)
+                    widths[i] = max(min(widths[i], 60), widths[i] - overflow * widths[i] / total)
                 }
             }
         }
         let remaining = max(0, available - gaps - widths.reduce(0, +))
-        let weights = slots.reduce(CGFloat(0)) {
+        let weights = vis.reduce(CGFloat(0)) {
             if case let .flex(w, _) = $1.width { return $0 + w }
             return $0
         }
-        for (i, slot) in slots.enumerated() {
+        for (i, slot) in vis.enumerated() {
             if case let .flex(w, _) = slot.width, weights > 0 {
                 widths[i] = remaining * w / weights
             }
         }
 
         var x = Palette.edge
-        for (slot, width) in zip(slots, widths) {
+        for (slot, width) in zip(vis, widths) {
             var h = Palette.height
             if slot.view === mascot { h = 28 }
             if slot.view === widgetButton {

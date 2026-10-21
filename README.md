@@ -72,7 +72,10 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **Buttons** for your own phrases, slash commands, key presses and links,
   with global shortcuts and a set per project. **Templates** with
   `{project}`, `{branch}`, `{clipboard}`, `{date}`.
-- **Dictation**: hold the right ⌥ key, or tap the mic.
+- **Dictation**: hold the right ⌥ key, or tap the mic. Pauses are fine:
+  the widget shows the words as you speak, growing with them, then lets you
+  check and edit them before you Send (or type them straight in, if you
+  prefer — Settings → General → Voice).
 - **Screenshot** an area of the screen straight into the chat.
 
 **Steer it**

@@ -14,6 +14,7 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     /// `fullWidth`: over the Control Strip too; else next to it (put up
     /// again when that changes).
     func show(_ model: BarModel, fullWidth: Bool) {
+        barView.narrow = !fullWidth
         barView.update(model)
         if presentedBar != nil && presentedFullWidth != fullWidth { hide() }
         guard presentedBar == nil else { return }

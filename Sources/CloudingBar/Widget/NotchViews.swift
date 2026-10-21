@@ -56,7 +56,7 @@ struct NotchView: View {
 
     /// What it's showing; a change springs it to its new size.
     private var phase: String {
-        "\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)"
+        "\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)|\(model.dictated != nil)"
     }
 
     var body: some View {
@@ -65,7 +65,7 @@ struct NotchView: View {
                 request(r)
             } else if state.pillTyping {
                 typing
-            } else if model.listening {
+            } else if model.voiceShown {
                 listening
             } else if let b = wideBudget, model.hasSession {
                 wide(b)
@@ -309,19 +309,13 @@ struct NotchView: View {
         }
     }
 
-    /// Dictating: the words as they come.
+    /// Dictating: the words as they come, the notch growing with them;
+    /// then the text to check and send.
     private var listening: some View {
-        grown("Listening…", nil, waiting: false) {
-            HStack(alignment: .top, spacing: 8) {
-                Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)
-                Text(model.heard.isEmpty ? "Speak — it stops by itself after a pause" : model.heard)
-                    .font(.system(size: 13))
-                    .foregroundColor(model.heard.isEmpty ? .cbSecondary : .white)
-                    .lineLimit(3)
-                    .truncationMode(.head)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        grown(model.listening ? "Listening… pauses are fine" : "Check it, then send", nil, waiting: false,
+              chat: model.listening ? nil : model.chatName.map { (name: $0, color: model.chatColor, elsewhere: false) }) {
+            DictationCard(model: model, width: inner, header: false)
+                .lineLimit(nil)
         }
     }
 }

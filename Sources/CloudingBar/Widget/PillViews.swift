@@ -565,9 +565,14 @@ struct PillView: View {
 
     var body: some View {
         let layout = PillLayout(model: model)
-        let special = model.listening || model.request != nil || !model.hasSession
+        let special = model.request != nil || !model.hasSession
         Group {
-            if special {
+            if model.voiceShown && model.request == nil {
+                // Dictating, or the words to check: grows with them.
+                DictationCard(model: model)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .allowsHitTesting(!model.listening) // listening: a click anywhere stops it
+            } else if special {
                 specialContent
                     .lineLimit(1)
                     .fixedSize()
