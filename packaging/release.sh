@@ -8,7 +8,10 @@
 #   - a "Developer ID Application" certificate in your keychain
 #     (Xcode → Settings → Accounts → Manage Certificates → + )
 #   - the notary's credentials, kept in your keychain as "clouding-bar":
-#     xcrun notarytool store-credentials clouding-bar --apple-id <you> --team-id <team>
+#     /Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials clouding-bar \
+#         --apple-id <you> --team-id <team>
+# With the Xcode license not accepted (after a macOS update), build with the
+# Command Line Tools: DEVELOPER_DIR=/Library/Developer/CommandLineTools
 #
 # DRY=1 skips Apple's notary (checks everything else); DEVELOPER_ID and
 # NOTARY_PROFILE pick another certificate or credentials.
@@ -20,6 +23,13 @@ OUT=build/release
 APP="$OUT/Clouding Bar.app"
 DMG="$OUT/Clouding-Bar-$VERSION.dmg"
 PROFILE=${NOTARY_PROFILE:-clouding-bar}
+# The notary and the stapler straight from Xcode: xcrun refuses to run them
+# until the Xcode license is accepted again after a macOS update.
+XCODE_DEV=/Applications/Xcode.app/Contents/Developer
+NOTARYTOOL="$XCODE_DEV/usr/bin/notarytool"
+STAPLER="$XCODE_DEV/usr/bin/stapler"
+[ -x "$NOTARYTOOL" ] || NOTARYTOOL="xcrun notarytool"
+[ -x "$STAPLER" ] || STAPLER="xcrun stapler"
 LOCAL_KEYCHAIN="$HOME/.cloudingbar/signing.keychain-db"
 # The Developer ID key, if it lives in its own keychain (made without Xcode:
 # a key and request with openssl, the certificate from developer.apple.com,
@@ -80,14 +90,14 @@ codesign --verify --strict --deep --verbose=1 "$APP"
 
 notarize() {
   if [ "${DRY:-}" = 1 ]; then echo "  (DRY: not sent to Apple)"; return; fi
-  xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait
+  $NOTARYTOOL submit "$1" --keychain-profile "$PROFILE" --wait
 }
 
 echo "Notarizing the app…"
 ditto -c -k --keepParent "$APP" "$OUT/app.zip"
 notarize "$OUT/app.zip"
 rm "$OUT/app.zip"
-[ "${DRY:-}" = 1 ] || xcrun stapler staple "$APP"
+[ "${DRY:-}" = 1 ] || $STAPLER staple "$APP"
 
 echo "Making the disk image…"
 STAGE="$OUT/dmg"
@@ -101,7 +111,7 @@ codesign --force $TIMESTAMP ${KEYCHAIN[@]+"${KEYCHAIN[@]}"} --sign "$IDENTITY" "
 echo "Notarizing the disk image…"
 notarize "$DMG"
 if [ "${DRY:-}" != 1 ]; then
-  xcrun stapler staple "$DMG"
+  $STAPLER staple "$DMG"
   spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
   spctl --assess --type execute --verbose=2 "$APP"
 fi
