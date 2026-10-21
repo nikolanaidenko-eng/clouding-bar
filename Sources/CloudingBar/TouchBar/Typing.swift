@@ -85,10 +85,11 @@ final class ChatBoxView: NSView {
     private let widths: [CGFloat]
     static let gap: CGFloat = 4
 
-    init(field: NSView, commands: [BarButton]) {
+    init(field: NSView, commands: [BarButton], compact: Bool = false) {
         self.field = field
         self.commands = commands
-        widths = commands.map { min(110, max(46, $0.fittingWidth(padding: 10))) }
+        widths = commands.map { compact ? min(86, max(44, $0.fittingWidth(padding: 7)))
+                                        : min(110, max(46, $0.fittingWidth(padding: 10))) }
         super.init(frame: .zero)
         addSubview(field)
         commands.forEach(addSubview)
