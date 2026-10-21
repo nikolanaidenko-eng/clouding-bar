@@ -264,8 +264,9 @@ final class BarView: NSView {
                 let field = ComposeFieldButton(placeholder: placeholder) {
                     [weak self] in self?.onAction?(.write)
                 }
-                let box = ChatBoxView(field: field, commands: short ? [] : commandButtons())
-                add(box, .flex(weight: 1.2, min: (short ? 110 : 150) + box.commandsWidth), droppable: true)
+                // Your commands inside it, one whole (short: three at most).
+                let box = ChatBoxView(field: field, commands: commandButtons(limit: short ? 3 : nil), compact: short)
+                add(box, .flex(weight: 1.2, min: (short ? 100 : 150) + box.commandsWidth), droppable: true)
             }
             if shows.contains("templates"), !model.templates.isEmpty {
                 let b = BarButton(short ? "" : "Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
@@ -273,8 +274,8 @@ final class BarView: NSView {
                 }
                 add(b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), droppable: true)
             }
-            // With the chat field, your buttons are inside it (short: beside).
-            if shows.contains("buttons") && (!shows.contains("chat") || short) {
+            // With the chat field, your buttons are inside it.
+            if shows.contains("buttons") && !shows.contains("chat") {
                 for (i, spec) in model.buttons.enumerated() {
                     let b = customButton(spec.label, compact: short) { [weak self] in self?.onAction?(.button(i)) }
                     add(b.button, .shrinkable(b.width), droppable: true)
@@ -451,8 +452,8 @@ final class BarView: NSView {
             let field = TypingFieldView()
             field.placeholder = model.typingPlaceholder
             self.field = field
-            if model.typingCommands && !model.short {
-                let box = ChatBoxView(field: field, commands: commandButtons())
+            if model.typingCommands {
+                let box = ChatBoxView(field: field, commands: commandButtons(limit: model.short ? 3 : nil), compact: model.short)
                 add(box, .flex(weight: 1, min: 120 + box.commandsWidth))
                 animate(box) { $0.slideIn(duration: 0.24) }
             } else {
@@ -478,9 +479,9 @@ final class BarView: NSView {
     }
 
     /// Your buttons, small, for inside the chat field (if the bar shows them).
-    private func commandButtons() -> [BarButton] {
+    private func commandButtons(limit: Int? = nil) -> [BarButton] {
         guard model.shows.contains("buttons") else { return [] }
-        return model.buttons.enumerated().map { i, spec in
+        return model.buttons.enumerated().prefix(limit ?? .max).map { i, spec in
             BarButton(spec.label, fontSize: 11) { [weak self] in self?.onAction?(.button(i)) }
         }
     }
