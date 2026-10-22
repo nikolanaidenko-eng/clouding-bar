@@ -2,6 +2,14 @@
 
 **Claude Code at a glance — on your Touch Bar, in a floating pill, or in the notch.**
 
+<p>
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/nikolanaidenko-eng/clouding-bar?label=release&color=5E5CE6"></a>
+  <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple">
+  <img alt="Signed and notarized by Apple" src="https://img.shields.io/badge/notarized-Apple-0A84FF">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-D97757">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-30D158"></a>
+</p>
+
 <p align="center">
   <img src="docs/demo.gif" width="640" alt="The notch growing for a question and answering it, the pill pulled wider, the Touch Bar">
 </p>
