@@ -940,9 +940,13 @@ struct WidgetTab: View {
                             }))
                     }
                     .tourAnchor("widget.notch")
-                    MoreRows("widget", count: 4) {
+                    MoreRows("widget", count: 5) {
                         SettingsRow(title: "Follow the chat at work", hint: "When the one shown is done, it says so, then shows the one still working") {
                             CBSwitch(title: "Follow the chat at work", on: binding("followWorking") { $0.followWorking })
+                        }
+                        SettingsRow(title: "Tell when another chat is done",
+                                    hint: "Cloud pops out and says which; click it to go there. On the Touch Bar too") {
+                            CBSwitch(title: "Tell when another chat is done", on: binding("doneAlerts") { $0.doneAlerts })
                         }
                         SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
                             CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })

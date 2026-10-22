@@ -54,6 +54,19 @@ let longChats = [BarModel.Chat(id: "1", name: "привет, давай небо
                  BarModel.Chat(id: "2", name: "Промо-видео Remotion для автосервиса", color: Session.colors[1], current: false, waiting: false)]
 add("normal-longchat") { $0.chats = longChats }
 add("chats-long") { $0.chats = longChats + chats; $0.mode = .chats }
+// Many chats, Cowork ones among them (long Russian names): each keeps a readable name.
+let manyChats = chats + [BarModel.Chat(id: "4", name: "Промо-видео для бота", color: Session.colors[4], current: false, waiting: false),
+                         BarModel.Chat(id: "5", name: "Threads: поиск лидов", color: Session.colors[5], current: false, waiting: false),
+                         BarModel.Chat(id: "6", name: "Письма клиентам Prague", color: Session.colors[6], current: false, waiting: false)]
+add("chats-many") { $0.chats = manyChats; $0.mode = .chats }
+add("chats-many-short", width: 628) { $0.short = true; $0.chats = manyChats; $0.mode = .chats }
+let crowd = manyChats + [BarModel.Chat(id: "7", name: "Промо-видео Remotion", color: Session.colors[7], current: false, waiting: false),
+                        BarModel.Chat(id: "8", name: "claudebar", color: Session.colors[0], current: false, waiting: false),
+                        BarModel.Chat(id: "9", name: "24H: сайт", color: Session.colors[1], current: false, waiting: false)]
+add("chats-crowd") { $0.chats = crowd; $0.mode = .chats }
+add("chats-crowd-short", width: 628) { $0.short = true; $0.chats = crowd; $0.mode = .chats }
+add("done") { $0.chats = chats; $0.mode = .done(BarModel.Chat(id: "4", name: "Cowork · Промо-видео для бота", color: Session.colors[4], current: false, waiting: false)) }
+add("done-short", width: 628) { $0.short = true; $0.chats = chats; $0.mode = .done(chats[1]) }
 add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
 add("normal-write-templates") { $0.shows = ["session", "reset", "context", "lines", "branch", "chat", "templates", "buttons", "mic"]
@@ -174,6 +187,15 @@ func widget(_ name: String, _ mode: WidgetMode, size: NSSize = NSSize(width: 400
     let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: state); Spacer() }
         .frame(width: size.width, height: size.height).padding(.top, 20))
     renderView(host, size: size, name: name)
+}
+
+do { // Cloud tells another chat is done
+    let anim = DoneBubbleAnimation()
+    anim.alert = DoneBubbleController.Alert(id: "c", name: "Промо-видео для бота", detail: "24H · Cowork", color: Session.colors[4])
+    anim.out = 1
+    anim.bubble = 1
+    renderView(NSHostingView(rootView: DoneBubbleView(anim: anim, open: {}, hover: { _ in })),
+               size: DoneBubbleController.size, name: "w-done-bubble")
 }
 
 widget("w-strip", .strip, size: NSSize(width: 200, height: 60))

@@ -54,6 +54,13 @@ final class WidgetController: NSObject {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
+    /// Where the widget is, for Cloud's "another chat is done": its frame on
+    /// screen and whether it's in the notch. Nil while hidden.
+    var place: (frame: NSRect, notch: Bool)? {
+        guard let panel, panel.isVisible else { return nil }
+        return (panel.frame, atNotch)
+    }
+
     init(model: AppModel) {
         self.model = model
         super.init()

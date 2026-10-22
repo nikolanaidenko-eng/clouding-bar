@@ -35,6 +35,10 @@ A first version for **Windows** is in [windows/](windows/README.md).
   working, it says so — a tick, "Done · your turn" — and a moment later
   shows the one at work. Going to another window or tab, or picking a
   chat, puts you back in charge.
+- **Another chat done.** When a chat other than the one shown finishes,
+  Cloud pops out from behind the pill (or down from the notch) and says
+  which — click it to go there — then ducks back; the Touch Bar says it
+  too, with Open and OK. Quiet in do not disturb (Settings → Widget → More).
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, lines changed, the git branch,
   subagents. Pull its outline to resize it — wider shows more, taller

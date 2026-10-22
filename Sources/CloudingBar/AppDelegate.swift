@@ -366,7 +366,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A window of ours has the keyboard (writing on the bar, the widget's
         // message box, Settings): beside Apple's buttons macOS would put that
         // window's own Touch Bar in Claude's place, so the whole bar it is.
-        barExpanded || NSApp.keyWindow != nil
+        // The chats list too: beside Apple's buttons several chats don't fit.
+        barExpanded || NSApp.keyWindow != nil || barPanel == .chats
             || (inClaudeApp ? config.hideControlStrip : config.touchBarOutside == "whole")
     }
 
@@ -416,6 +417,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         updateFollowing()
         let active = focusedSession
+        updateDoneAlerts(active: active)
         if active?.id != lastActiveId {
             lastActiveId = active?.id
             DebugLog.note("active session: \(active?.displayName ?? "none") (\(active?.id.prefix(8) ?? "-"))")
@@ -455,8 +457,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
         }
         bar.chats = model.sessions.map {
-            BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.short($0.name, 60), color: $0.color,
-                          current: $0.current, waiting: $0.waiting)
+            BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.barName($0.name, id: $0.id),
+                          color: $0.color, current: $0.current, waiting: $0.waiting)
         }
         bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
         if let active, active.linesAdded + active.linesRemoved > 0 {
@@ -469,7 +471,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.expanded = barExpanded
         bar.listening = voiceIntoBar && voice.isRunning
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
-            bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
+            bar.requestChat = BarModel.Chat(id: s.id, name: Self.barName(s.displayName, id: s.id),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
                                             current: s.id == active?.id, waiting: true)
         }
@@ -517,6 +519,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 closeBarPicker()
             }
+        }
+        // Another chat is done: Cloud says which for a few seconds — not over
+        // a request, your writing or an open list.
+        if let d = doneNow, bar.mode == .normal || bar.mode == .contextWarning, let s = store.sessions[d.id] {
+            bar.mode = .done(BarModel.Chat(id: s.id, name: Self.barName(s.displayName, id: s.id),
+                                           color: Session.colors[s.colorIndex % Session.colors.count],
+                                           current: false, waiting: false))
         }
         touchBar.show(bar, fullWidth: barFullWidth)
     }
@@ -727,7 +736,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case let .pickChat(id):
             closeBarPicker()
+            if doneNow?.id == id { endDone() }
             model.focusSession(id)
+
+        case .dismissDone:
+            DebugLog.tap("done elsewhere: OK")
+            endDone()
 
         case .closePanel:
             let backToDraft = templatesIntoDraft
@@ -1186,6 +1200,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return ([s.title != nil ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// A chat's name on the Touch Bar, Cowork's marked as such (its chats
+    /// sit beside Claude Code's under the same names).
+    static func barName(_ name: String, id: String) -> String {
+        (id.hasPrefix("cowork-") ? "Cowork · " : "") + short(name, 60)
+    }
+
     /// "Needs your OK", "Working · 3 min", "Done · your turn", "Idle · 12 min".
     private func status(of s: Session, waiting: Bool) -> String {
         waiting ? "Needs your OK"
@@ -1202,6 +1222,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)?.id ?? desktopShown?.chat
             : store.session(inWindow: frontTitle, tty: frontTTY)?.id
         return (frontApp?.bundleIdentifier ?? "") + "|" + (shown ?? "")
+    }
+
+    // MARK: - Another chat done
+
+    /// Chats that finished while another was shown, waiting their turn to be
+    /// told (one at a time).
+    private var doneQueue: [String] = []
+    /// Each chat's finish already noticed.
+    private var doneSeen: [String: Date] = [:]
+    /// The one being told now, until then.
+    private var doneNow: (id: String, until: Date)?
+    private lazy var doneBubble: DoneBubbleController = {
+        let bubble = DoneBubbleController()
+        bubble.onOpen = { [weak self] id in
+            DebugLog.tap("done elsewhere: open")
+            self?.endDone()
+            self?.model.focusSession(id)
+        }
+        return bubble
+    }()
+
+    /// A chat other than the one shown finished: Cloud says which, on the
+    /// widget and the Touch Bar. Not the chat shown or in front (you see
+    /// it), not in do-not-disturb, not over a request or your writing.
+    private func updateDoneAlerts(active: Session?) {
+        let front = frontSession?.id
+        for s in store.alive {
+            guard let at = s.finishedAt, doneSeen[s.id] != at else { continue }
+            doneSeen[s.id] = at
+            guard config.doneAlerts, !config.doNotDisturb, Date().timeIntervalSince(at) < 60,
+                  s.id != active?.id, s.id != front, handoff?.doneId != s.id, !doneQueue.contains(s.id) else { continue }
+            doneQueue.append(s.id)
+            DebugLog.note("done elsewhere: \(s.displayName)")
+        }
+        if let now = doneNow, Date() >= now.until, !doneBubble.hovering { endDone() }
+        guard doneNow == nil, requests.isEmpty, !composing, config.doneAlerts, !config.doNotDisturb else { return }
+        while let id = doneQueue.first {
+            doneQueue.removeFirst()
+            // Started again, gone, or in view by now: nothing to tell.
+            guard let s = store.sessions[id], s.isAlive(), s.activity == .sleep,
+                  s.id != active?.id, s.id != front else { continue }
+            beginDone(s)
+            break
+        }
+    }
+
+    private func beginDone(_ s: Session) {
+        doneNow = (s.id, Date().addingTimeInterval(5))
+        let alert = DoneBubbleController.Alert(id: s.id, name: s.displayName, detail: place(of: s),
+                                               color: Session.colors[s.colorIndex % Session.colors.count])
+        // On the widget (or, with neither widget nor Touch Bar, the screen's corner).
+        if config.widget || !barShouldShow {
+            doneBubble.show(alert, anchor: config.widget ? widget.place : nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.05) { [weak self] in self?.setNeedsRefresh() }
+    }
+
+    private func endDone() {
+        guard doneNow != nil else { return }
+        doneNow = nil
+        doneBubble.hide()
+        setNeedsRefresh()
     }
 
     /// The chat shown finished: "done" for a moment, then the one still at
