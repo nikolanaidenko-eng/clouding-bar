@@ -32,9 +32,12 @@ final class VoiceInput {
     }
 
     /// The new transcription isn't a revision of the last one: it began again.
+    /// Punctuation aside: a comma the recognizer adds on second thought
+    /// ("Ну вот" → "Ну, вот") doesn't make it a new one.
     private static func startedOver(_ new: String, after old: String) -> Bool {
-        guard !new.isEmpty, !old.isEmpty, new.count < old.count else { return false }
-        let a = Array(new.lowercased()), b = Array(old.lowercased())
+        let bare = { (s: String) in Array(s.lowercased().filter { !$0.isPunctuation }) }
+        let a = bare(new), b = bare(old)
+        guard !a.isEmpty, !b.isEmpty, a.count < b.count else { return false }
         var same = 0
         while same < min(a.count, b.count), a[same] == b[same] { same += 1 }
         return same < min(4, a.count)
@@ -129,6 +132,9 @@ final class VoiceInput {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.requiresOnDeviceRecognition = offline
+        // Commas, full stops and question marks, as macOS's own dictation
+        // puts them (macOS 13 and later; on 12 the words come bare).
+        if #available(macOS 13, *) { request.addsPunctuation = true }
         return request
     }
 
