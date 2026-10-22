@@ -10,9 +10,9 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-30D158"></a>
 </p>
 
-<p align="center">
-  <img src="docs/demo.gif" width="640" alt="The notch growing for a question and answering it, the pill pulled wider, the Touch Bar">
-</p>
+https://github.com/user-attachments/assets/3f0a6442-497e-434e-b389-f8c7f2931a65
+
+<sub>1½ minutes: the Touch Bar, the notch, the pill and the panel, answering Claude, Cowork, dictation, stats.</sub>
 
 Clouding Bar is a small macOS menu bar app for people who work with
 [Claude Code](https://code.claude.com). It shows what Claude is doing —
