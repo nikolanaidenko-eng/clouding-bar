@@ -760,15 +760,38 @@ struct GeneralTab: View {
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
-                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses", divider: false) {
+                if model.pluginActive {
+                    SettingsRow(title: "Open with Claude", hint: "The plugin opens Clouding Bar when a Claude session starts") {
+                        CBSwitch(title: "Open with Claude", on: binding("openWithClaude") { $0.openWithClaude })
+                    }
+                }
+                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses",
+                            divider: model.updatesPossible) {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
+                }
+                if model.updatesPossible {
+                    SettingsRow(title: "Updates",
+                                hint: model.updateText + " · GitHub, once a day; nothing about you is sent",
+                                divider: false) {
+                        HStack(spacing: 10) {
+                            if model.updateVersion != nil {
+                                Button("Install") { model.installUpdate() }
+                            } else {
+                                Button("Check Now") { model.checkForUpdates() }
+                            }
+                            CBSwitch(title: "Check for updates", on: binding("checkUpdates") { $0.checkUpdates })
+                        }
+                    }
                 }
             }
 
             SettingsSection(title: "Claude Code", icon: "sparkle", tint: 0xD97757) {
-                SettingsRow(title: "Hooks",
-                            hint: model.claudeConnected ? "Claude Code reports here"
-                                : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
+                SettingsRow(title: model.pluginActive ? "Plugin and status line" : "Hooks",
+                            hint: model.claudeConnected
+                                ? (model.pluginActive ? "Claude Code reports here, through Clouding Bar's plugin" : "Claude Code reports here")
+                                : model.pluginActive
+                                    ? "The plugin is in. Connect adds the status line, for the 5-hour limit (settings.json backed up first)."
+                                    : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
                             divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
                     if model.claudeConnected {
                         Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1573,8 +1596,12 @@ struct CoworkTab: View {
             if model.config.coworkMode != "off" {
                 SettingsGroup {
                     SettingsRow(title: "Plugin",
-                                hint: "Upload it in Claude Desktop → Settings → Plugins, in place of an older one.") {
-                        Button("Make plugin") { model.makeCoworkPlugin() }
+                                hint: model.oldCoworkPlugin
+                                    ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
+                                    : model.pluginSynced
+                                        ? "Clouding Bar's plugin is installed in Claude Desktop"
+                                        : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
+                        Button("Save zip") { model.makeCoworkPlugin() }
                     }
                     SettingsRow(title: "Folders",
                                 hint: (model.coworkFolders.isEmpty

@@ -41,6 +41,8 @@ bundle: build $(KEY) $(TAP) $(HOOK)
 	@# What the app puts in ~/.cloudingbar itself (Setup.swift), for a download.
 	cp -p $(TAP) $(HOOK) $(BUNDLE)/Contents/MacOS/
 	cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh $(BUNDLE)/Contents/Resources/hooks/
+	@# The plugin, for the zip Settings → Cowork saves (the marketplace serves the same folder).
+	cp -R plugin $(BUNDLE)/Contents/Resources/plugin
 	@packaging/sign.sh $(BUNDLE)
 	@echo "Built $(BUNDLE)"
 
@@ -91,9 +93,9 @@ icon:
 # Checks for the core: session picked by window title, hook output, config.
 test:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift tools/coretest/main.swift -o build/coretest
+	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home
-	CLOUDINGBAR_DIR=build/test-home ./build/coretest
+	CLOUDINGBAR_DIR=build/test-home CLOUDINGBAR_PLUGIN=plugin ./build/coretest
 
 # The Touch Bar in every mode as PNGs (build/snapshots), to compare with
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.

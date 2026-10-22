@@ -106,9 +106,12 @@ A first version for **Windows** is in [windows/](windows/README.md).
   half year as a square (point at one to see it); the projects the time
   went to — for Claude Code, Cowork or both. From local transcripts (and
   what the Cowork plugin reports), kept after Claude Code clears old ones.
-- **Cowork** chats show up too, through a small plugin that notes each
-  task's name and context in a folder you connected to it, where Clouding
-  Bar picks it up — two tasks in one folder are two chats.
+- **Cowork** chats show up too, through Clouding Bar's plugin installed in
+  Claude Desktop: it notes each task's name and context in a folder you
+  connected to it, where Clouding Bar picks it up — two tasks in one folder
+  are two chats.
+- **Keeps itself up to date**: once a day it looks on GitHub for a newer
+  release and offers it — one click, checked before it's installed.
 
 <p align="center">
   <img src="docs/images/notch-question.png" width="420" alt="The notch grown for a question">
@@ -120,6 +123,32 @@ A first version for **Windows** is in [windows/](windows/README.md).
 </p>
 
 ## Install
+
+### From Claude Code: the plugin
+
+In Claude Code — the terminal, VS Code or Claude Desktop's Code tab:
+
+```
+/plugin marketplace add nikolanaidenko-eng/clouding-bar
+/plugin install clouding-bar@clouding-bar
+/clouding-bar:install
+```
+
+The plugin links Claude Code to the app (its hooks). `/clouding-bar:install`
+gets the newest release from GitHub, checks it — signed with Clouding Bar's
+Developer ID, notarized by Apple — and puts it in Applications. When the app
+opens, say **Connect**: it adds its status line to `~/.claude/settings.json`
+(the 5-hour limit and the context come that way, and a plugin can't bring a
+status line). Then allow Accessibility. From then on a new Claude session
+opens Clouding Bar if it's closed (Settings → General → Open with Claude).
+
+**Cowork, if you use it:** in Claude Desktop → Customize → Plugins, add the
+same marketplace (`nikolanaidenko-eng/clouding-bar`) and install
+**clouding-bar** — the same plugin, in Cowork too. Clouding Bar turns its
+Cowork status on by itself (Settings → Cowork: off, thresholds, every reply).
+A plugin installed in Claude Desktop also comes to Claude Code with your
+claude.ai account, so there you only need the app: `/clouding-bar:install`,
+or the .dmg below.
 
 ### Download
 
@@ -138,9 +167,22 @@ xattr -dr com.apple.quarantine "/Applications/Clouding Bar.app"
 ```
 
 On first launch it asks to **connect to Claude Code**: it adds a small hook
-and a status line to `~/.claude/settings.json`. Your settings are merged,
-never replaced, and backed up to `~/.cloudingbar/backups` first. Then the
-tour opens.
+and a status line to `~/.claude/settings.json` (only the status line, with
+the plugin in). Your settings are merged, never replaced, and backed up to
+`~/.cloudingbar/backups` first. Then the tour opens.
+
+### Updates
+
+Once a day Clouding Bar asks GitHub whether a newer release is out and
+offers it: the menu bar icon → **Install Update**, or Settings → General →
+Updates. It's downloaded, checked like the first one (Clouding Bar's
+Developer ID, notarized by Apple), put in place of the old copy and opened;
+your settings and permissions stay. Turn the daily check off there. A build
+of your own (`make install`) isn't touched.
+
+The plugin updates through Claude Code: `/plugin marketplace update
+clouding-bar`, or `/plugin` → Marketplaces → clouding-bar → Enable
+auto-update.
 
 ### Build from source
 
@@ -187,7 +229,8 @@ Claude Code ──hooks──▶ cloudingbar-hook ──unix socket──▶ Clo
      └──── the answer ◀───────┘◀────── Allow / an option ─────┘
 ```
 
-- Claude Code's [hooks](https://code.claude.com/docs/en/hooks) tell the app
+- Claude Code's [hooks](https://code.claude.com/docs/en/hooks) — the
+  plugin's, or ours in `~/.claude/settings.json` (never both at once) — tell the app
   when a session starts and stops, when Claude works, which tools and
   subagents run, and when it needs a permission or an answer. For those,
   the hook waits for your choice and hands it back to Claude — or steps
@@ -208,8 +251,11 @@ The protocol is written down in [docs/protocol.md](docs/protocol.md).
 Clouding Bar talks only to Claude Code on your Mac. There is no account,
 no analytics, no server. It never reads Claude Code's credentials.
 
-The one exception is opt-in: **Settings → Cowork → Live limit via
-claude.ai** reads your account-wide limit (desktop and Cowork chats
+Two exceptions. The **update check**: once a day a plain request to
+GitHub's public list of this project's releases — nothing about you, no
+identifier — and the download, when you install one (Settings → General →
+Updates turns the check off). And, opt-in, **Settings → Cowork → Live limit via
+claude.ai**, which reads your account-wide limit (desktop and Cowork chats
 included) from claude.ai with your session key. The key stays in your
 Keychain, behind a helper that answers only Clouding Bar, and goes only to
 claude.ai, at most once a minute. That address isn't an official API and
@@ -222,8 +268,9 @@ Cloud keeps you company there: it sits in the corner, hops from row to row
 as you move the pointer, and walks along the tabs.
 
 - **General** — appearance (auto, light, dark), colourful or grey buttons,
-  open at login, do not disturb, the Claude Code connection (and Codex, in beta, and
-  the 5-hour limit in VS Code), the context warning, the dictation language.
+  open at login (and with Claude), do not disturb, updates, the Claude Code
+  connection (and Codex, in beta, and the 5-hour limit in VS Code), the
+  context warning, the dictation language.
 - **Widget** — show it, in the notch; behind More: follow the chat at
   work, keep the pill visible, open on hover, its position; what it shows
   (a chip for each thing).
@@ -232,7 +279,8 @@ as you move the pointer, and walks along the tabs.
   preview.
 - **Buttons** — your buttons and their shortcuts, a set per project;
   templates.
-- **Cowork** — the plugin and its folders; behind More, the claude.ai limit.
+- **Cowork** — how often it reports, the plugin (or its zip, to upload)
+  and its folders; behind More, the claude.ai limit.
 - **Stats** — see above.
 
 Everything is stored in `~/.cloudingbar/config.json`; every key is
@@ -249,12 +297,15 @@ optional.
 ## Uninstall
 
 1. Quit Clouding Bar (its menu bar icon → Quit) and delete it from Applications.
-2. Remove the entries pointing to `~/.cloudingbar/cloudingbar-hook` from
+2. The plugin: `/plugin uninstall clouding-bar@clouding-bar` in Claude Code,
+   and remove it in Claude Desktop → Customize → Plugins if it's there.
+3. Remove the entries pointing to `~/.cloudingbar/cloudingbar-hook` from
    the `hooks` section of `~/.claude/settings.json`, and its `statusLine`
    (your previous status line command is in
    `~/.cloudingbar/statusline-original`).
-3. In VS Code, remove `claudeCode.claudeProcessWrapper` if you set it up.
-4. `rm -rf ~/.cloudingbar`
+4. In VS Code, remove `claudeCode.claudeProcessWrapper` if you set it up.
+5. `rm -rf ~/.cloudingbar`, and in folders you connected to Cowork, their
+   `.clouding-bar` folder.
 
 ## Development
 

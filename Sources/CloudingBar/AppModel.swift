@@ -193,6 +193,19 @@ final class AppModel: ObservableObject {
     @Published var codexConnected = false
     var connectCodex: () -> Void = {}
     var wrapVSCode: () -> Void = {}
+    /// Clouding Bar's plugin: on in Claude Code; with your account (Claude
+    /// Desktop, so in Cowork too); the Cowork-only one of 1.0 still there.
+    @Published var pluginActive = false
+    @Published var pluginSynced = false
+    @Published var oldCoworkPlugin = false
+
+    // Settings → General → Updates (Updater.swift)
+    @Published var updatesPossible = false
+    @Published var updateText = ""
+    /// A newer release, ready to install.
+    @Published var updateVersion: String?
+    var checkForUpdates: () -> Void = {}
+    var installUpdate: () -> Void = {}
 
     /// The pill's height budget: what was set by pulling its top or bottom.
     var pillHeightBudget: CGFloat {

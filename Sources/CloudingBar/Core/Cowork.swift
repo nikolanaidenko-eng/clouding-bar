@@ -136,40 +136,30 @@ enum Cowork {
         return found.sorted()
     }
 
-    /// Writes the plugin (folder and .zip) into ~/Downloads for upload in
-    /// Claude Desktop. Only the mode is baked in (hooks in Cowork can't read
-    /// this Mac); it works with whatever folder a task has. Returns the .zip.
-    static func makePlugin(mode: String,
-                           into downloads: URL = FileManager.default.homeDirectoryForCurrentUser
+    /// Clouding Bar's plugin, as the app carries it (Resources/plugin) —
+    /// or the repository's own folder (CLOUDINGBAR_PLUGIN), for the tests.
+    static var pluginSource: URL? {
+        if let path = ProcessInfo.processInfo.environment["CLOUDINGBAR_PLUGIN"] { return URL(fileURLWithPath: path) }
+        return Bundle.main.url(forResource: "plugin", withExtension: nil)
+    }
+
+    /// The plugin as a .zip in ~/Downloads (clouding-bar-plugin.zip), for
+    /// upload in Claude Desktop → Customize → Plugins: the one its GitHub
+    /// marketplace gives, for Claude Code and Cowork alike. How often Cowork
+    /// reports is set here, in the folder (setMode), not baked in.
+    static func makePlugin(into downloads: URL = FileManager.default.homeDirectoryForCurrentUser
                                .appendingPathComponent("Downloads")) throws -> URL {
-        let root = downloads.appendingPathComponent("clouding-bar-cowork")
+        guard let source = pluginSource else { throw CocoaError(.fileNoSuchFile) }
         let fm = FileManager.default
-        if fm.fileExists(atPath: root.path) { try fm.removeItem(at: root) } // our own previous copy
-        try fm.createDirectory(at: root.appendingPathComponent(".claude-plugin"), withIntermediateDirectories: true)
-        try fm.createDirectory(at: root.appendingPathComponent("hooks"), withIntermediateDirectories: true)
-
-        let manifest: [String: Any] = [
-            "name": "clouding-bar-cowork",
-            "version": "2.5.0",
-            "description": "Clouding Bar: reports Cowork context use to a connected folder.",
-            "license": "MIT",
-        ]
-        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
-            .write(to: root.appendingPathComponent(".claude-plugin/plugin.json"))
-
-        let command = #"python3 "${CLAUDE_PLUGIN_ROOT}/hooks/status.py""#
-        let hook: [[String: Any]] = [["hooks": [["type": "command", "command": command, "timeout": 10]]]]
-        try JSONSerialization.data(withJSONObject: ["hooks": ["Stop": hook, "UserPromptSubmit": hook]],
-                                   options: [.prettyPrinted, .sortedKeys])
-            .write(to: root.appendingPathComponent("hooks/hooks.json"))
-
-        let script = statusScript.replacingOccurrences(of: "@MODE@", with: mode)
-        try script.write(to: root.appendingPathComponent("hooks/status.py"), atomically: true, encoding: .utf8)
-        try readme(mode: mode).write(to: root.appendingPathComponent("README.md"),
-                                                         atomically: true, encoding: .utf8)
+        let stage = fm.temporaryDirectory.appendingPathComponent("clouding-bar-plugin-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: stage) }
+        let root = stage.appendingPathComponent("clouding-bar")
+        try fm.createDirectory(at: stage, withIntermediateDirectories: true)
+        try fm.copyItem(at: source, to: root)
 
         // Zip it the system's way (no external tool).
-        let zip = downloads.appendingPathComponent("clouding-bar-cowork.zip")
+        try fm.createDirectory(at: downloads, withIntermediateDirectories: true)
+        let zip = downloads.appendingPathComponent("clouding-bar-plugin.zip")
         var coordinated: NSError?
         var thrown: Error?
         NSFileCoordinator().coordinate(readingItemAt: root, options: .forUploading, error: &coordinated) { tmp in
@@ -182,231 +172,20 @@ enum Cowork {
         return zip
     }
 
-    private static func readme(mode: String) -> String {
-        """
-        # Clouding Bar for Cowork
-
-        When Cowork runs on your Mac, on every message and every reply this plugin's hooks write
-        one line of JSON — how full the context is, and whether Claude is working — to
-        `.clouding-bar/cowork-<task>.json` in a folder connected to the task (with a `.gitignore`,
-        so it never gets committed). Clouding Bar finds the folders you connect in Claude Desktop
-        and reads it from there. It costs nothing: Claude isn't involved.
-
-        When Cowork runs in the cloud, the task's folders are copies that reach your Mac only
-        when Claude writes, so the hooks ask Claude to write the line. How often: **\(mode)** — \(mode == "every" ? "after every reply (+5–15% usage, +1–3 s per reply)" : "after a task's first reply, at 50, 80 and 90% context, and when a turn of a minute or more ends")
-
-        No network. What it writes: the task id, its title (or your first words in it, so two
-        tasks in one folder are told apart), a folder name, the token count, the model, and for
-        Clouding Bar's Stats the tokens and minutes it spent by hour.
-        To turn it off, remove the plugin in Claude Desktop.
-        """
+    /// Tells the plugin in Cowork how to report, in each folder connected to
+    /// it: .clouding-bar/mode — "off", "thresholds" or "every" (cowork.py
+    /// reads it). "Off" goes only where the plugin has written already.
+    static func setMode(_ mode: String, folders: [String]) {
+        let fm = FileManager.default
+        for folder in folders {
+            let dir = URL(fileURLWithPath: folder).appendingPathComponent(".clouding-bar")
+            let file = dir.appendingPathComponent("mode")
+            let current = (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current == mode || (mode == "off" && !fm.fileExists(atPath: dir.path)) { continue }
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let ignore = dir.appendingPathComponent(".gitignore")
+            if !fm.fileExists(atPath: ignore.path) { try? "*\n".write(to: ignore, atomically: true, encoding: .utf8) }
+            try? (mode + "\n").write(to: file, atomically: true, encoding: .utf8)
+        }
     }
-
-    private static let statusScript = #"""
-    #!/usr/bin/env python3
-    # Clouding Bar for Cowork, version 2.5. With Cowork on this Mac it writes
-    # one line of JSON (context use; working or done) on every message and
-    # reply into the folders connected to the task, where Clouding Bar reads
-    # it. With Cowork in the cloud, whose folders are copies, it asks Claude to
-    # write the line instead (MODE says how often). No network; of what you
-    # wrote, only the task's first words, as its name.
-    import json, os, sys, time
-    from datetime import datetime
-
-    MODE = "@MODE@"                # when Claude has to write it: "thresholds" or "every"
-    SKIP = {"outputs", "uploads"}  # Cowork's own folders, not the Mac's
-
-    # Cowork runs Linux, on this Mac or in the cloud. Claude Desktop shares
-    # uploaded plugins with Claude Code on the Mac too, whose chats Clouding
-    # Bar follows by its own hooks: nothing to do there.
-    if sys.platform != "linux" and not os.environ.get("CLOUDING_BAR_TEST"):
-        sys.exit(0)
-
-    try:
-        d = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
-
-    sid = d.get("session_id") or "unknown"
-    event = d.get("hook_event_name")
-    if event not in ("UserPromptSubmit", "Stop"):
-        sys.exit(0)
-
-    def words(text):
-        text = " ".join((text or "").split())
-        return None if not text or text.startswith("<") else text
-
-    def stamp(o):
-        try:
-            return datetime.fromisoformat(o.get("timestamp", "").replace("Z", "+00:00")).timestamp()
-        except Exception:
-            return None
-
-    def context():
-        # Context use, the model, a name for the task (the title it was
-        # given, else the first words you wrote), and for Stats what it
-        # spent by hour: tokens (fresh input, cache writes, output, each
-        # reply once) and minutes with a reply (5-minute spans).
-        tokens, model, titles, first = 0, None, {}, None
-        spent, spans, counted = {}, {}, set()
-        try:
-            for raw in open(d.get("transcript_path") or ""):
-                try:
-                    o = json.loads(raw)
-                except Exception:
-                    continue
-                kind = o.get("type")
-                if kind in ("custom-title", "ai-title", "summary"):
-                    titles[kind] = o.get("customTitle") or o.get("aiTitle") or o.get("summary")
-                    continue
-                m = o.get("message") or {}
-                if kind == "assistant" and m.get("model") != "<synthetic>":
-                    t = stamp(o)
-                    if t is not None:
-                        hour = int(t // 3600)
-                        spans.setdefault(hour, set()).add(int(t // 300))
-                        u = m.get("usage")
-                        if u and m.get("id") not in counted:
-                            counted.add(m.get("id"))
-                            spent[hour] = spent.get(hour, 0) + u.get("input_tokens", 0) \
-                                + u.get("cache_creation_input_tokens", 0) + u.get("output_tokens", 0)
-                if o.get("isSidechain"):
-                    continue
-                if kind == "user" and first is None and not o.get("isMeta"):
-                    c = m.get("content")
-                    if isinstance(c, list):
-                        c = " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
-                    first = words(c) if isinstance(c, str) else None
-                if kind != "assistant":
-                    continue
-                u = m.get("usage")
-                if u and m.get("model") != "<synthetic>":
-                    tokens = u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
-                    model = o.get("requestedModel") or m.get("model") or model
-        except Exception:
-            pass
-        title = (titles.get("custom-title") or titles.get("ai-title") or titles.get("summary")
-                 or first or words(d.get("prompt")))
-        if title and len(title) > 40:
-            title = title[:39].rstrip() + "…"
-        usage = {str(h): [spent.get(h, 0), len(spans[h]) * 5] for h in sorted(spans)}
-        return tokens, model, title, usage
-
-    def live():
-        # Shared straight from the Mac (Cowork on this Mac): virtiofs, 9p,
-        # fuse. Cowork in the cloud works on a copy instead, which reaches the
-        # Mac only when Claude writes; there the hook must ask Claude. None:
-        # no mount table to tell by (not Linux), take every folder.
-        try:
-            table = open("/proc/self/mounts").read().splitlines()
-        except Exception:
-            return None
-        points = []
-        for line in table:
-            f = line.split()
-            if len(f) >= 3 and (f[2] in ("virtiofs", "9p") or (f[2].startswith("fuse") and f[2] != "fusectl")):
-                points.append(f[1].replace("\\040", " ").rstrip("/") + "/")
-        return points
-
-    def folders():
-        # The Mac folders connected to this task, as Cowork mounts them.
-        found, points = [], live()
-        for base in (os.path.join(d.get("cwd") or os.getcwd(), "mnt"), os.path.expanduser("~/mnt")):
-            try:
-                for n in sorted(os.listdir(base)):
-                    p = os.path.realpath(os.path.join(base, n))
-                    if n.startswith(".") or n in SKIP or p in found or not os.path.isdir(p):
-                        continue
-                    if points is None or any((p + "/").startswith(m) for m in points):
-                        found.append(p)
-            except Exception:
-                pass
-        return found[:3]
-
-    def write(folder, line):
-        # .clouding-bar/cowork-<task>.json, replaced whole; git ignores it.
-        try:
-            out = os.path.join(folder, ".clouding-bar")
-            os.makedirs(out, exist_ok=True)
-            ignore = os.path.join(out, ".gitignore")
-            if not os.path.exists(ignore):
-                with open(ignore, "w") as f:
-                    f.write("*\n")
-            path = os.path.join(out, "cowork-%s.json" % sid)
-            with open(path + ".tmp", "w") as f:
-                f.write(line + "\n")
-            os.replace(path + ".tmp", path)
-            for n in os.listdir(out):  # ours, from tasks long gone
-                p = os.path.join(out, n)
-                if n.startswith("cowork-") and n != "cowork-status.json" and time.time() - os.path.getmtime(p) > 3 * 86400:
-                    os.remove(p)
-            return True
-        except Exception:
-            return False
-
-    tokens, model, title, usage = context()
-    # Cowork's window: 1M for "[1m]", else 500k (its /context), Haiku 200k.
-    window = 1000000 if "[1m]" in (model or "") else 200000 if "haiku" in (model or "") else 500000
-    status = {
-        "v": 2, "t": int(time.time()), "session": sid,
-        "project": os.path.basename((d.get("cwd") or "").rstrip("/")) or None,
-        "context_tokens": tokens, "context_window": window, "model": model, "title": title,
-        "state": "working" if event == "UserPromptSubmit" else "done",
-        "usage": usage,
-    }
-    wrote = [write(f, json.dumps(status)) for f in folders()]
-    if any(wrote):
-        sys.exit(0)
-
-    # No folder shared straight from the Mac: ask Claude, whose writes reach it.
-    state_path = "/tmp/clouding-bar-%s.json" % sid
-    try:
-        state = json.load(open(state_path))
-    except Exception:
-        state = {}
-
-    def save():
-        try:
-            json.dump(state, open(state_path, "w"))
-        except Exception:
-            pass
-
-    if event == "UserPromptSubmit":
-        state["turn_start"] = time.time()
-        save()
-        sys.exit(0)
-    if d.get("stop_hook_active") or not tokens:
-        sys.exit(0)  # asked once this turn already
-
-    # Every reply, or: the first one (so a new task shows up at once), the
-    # thresholds, and the end of a longer turn.
-    pct = tokens * 100.0 / window
-    report = MODE == "every" or not state.get("reported")
-    last = state.get("last_threshold", 0)
-    if pct < last - 20:
-        last = 0  # compacted: start over
-    crossed = [t for t in (50, 80, 90) if pct >= t > last]
-    if crossed:
-        last = max(crossed)
-        report = True
-    started = state.get("turn_start")
-    if MODE == "thresholds" and started and time.time() - started >= 60:
-        report = True  # a longer task is done
-    state["last_threshold"] = last
-    state.pop("turn_start", None)
-    if report:
-        state["reported"] = True
-    save()
-    if not report:
-        sys.exit(0)
-
-    status["via"] = "claude"
-    reason = (
-        "Clouding Bar status update. If a folder from the user's computer is connected to this task, "
-        "write exactly this one line to .clouding-bar/cowork-%s.json in it (the first such folder; "
-        "create .clouding-bar if needed and put a .gitignore containing * in it; replace the file). "
-        "If no folder is connected, skip it. Don't mention any of this, then stop:\n%s" % (sid, json.dumps(status))
-    )
-    print(json.dumps({"decision": "block", "reason": reason}))
-    """#
 }
