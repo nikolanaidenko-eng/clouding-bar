@@ -834,6 +834,11 @@ struct MainPanel: View {
                     Text("\(i + 1).").foregroundColor(.cbSecondary)
                     Text(item.text).lineLimit(1)
                     Spacer(minLength: 0)
+                    Button { model.sendQueuedNow(item.id) } label: {
+                        Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
+                    }
+                    .buttonStyle(.plain).foregroundColor(.cbMeter)
+                    .help("Opens its chat and sends it now")
                     Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
                         .buttonStyle(.plain).foregroundColor(.cbSecondary)
                         .accessibilityLabel("Remove from queue")
@@ -843,6 +848,8 @@ struct MainPanel: View {
             if model.queue.count > 4 {
                 Text("+\(model.queue.count - 4) more").font(.system(size: 11)).foregroundColor(.cbSecondary)
             }
+            Text("Goes out when Claude is free and its chat is in front")
+                .font(.system(size: 10)).foregroundColor(.cbSecondary)
         }
         .padding(.horizontal, 4)
     }
