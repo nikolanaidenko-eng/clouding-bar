@@ -2,35 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>Clouding Bar</string>
 	<key>CFBundleExecutable</key>
 	<string>CloudingBar</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.cloudingbar.app</string>
 	<key>CFBundleName</key>
 	<string>Clouding Bar</string>
-	<key>CFBundleDisplayName</key>
-	<string>Clouding Bar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0.1</string>
 	<key>CFBundleVersion</key>
-	<string>100</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
+	<string>101</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>12.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Hold the right Option key to dictate to Claude.</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Tells which Terminal or iTerm tab is in front, so the widget shows that chat, and brings a chat's tab forward when you pick it.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Turns what you dictate into text for Claude. On this Mac when the language allows it.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT License</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hold the right Option key to dictate to Claude.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turns what you dictate into text for Claude. On this Mac when the language allows it.</string>
 </dict>
 </plist>
