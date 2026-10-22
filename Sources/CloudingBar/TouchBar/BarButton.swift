@@ -114,6 +114,14 @@ final class BarButton: NSButton {
         if marquee { updateMarquee() }
     }
 
+    /// The name is drawn for the size the button has: a new size, a new
+    /// drawing (else one made before the bar set the size stays — empty).
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize != frame.size
+        super.setFrameSize(newSize)
+        if marquee && changed { needsLayout = true }
+    }
+
     /// The dot and the name, drawn here: centred when the name fits, else
     /// from the left edge, sliding along to its end and starting over.
     private func updateMarquee() {

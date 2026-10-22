@@ -17,6 +17,9 @@ struct BarModel: Equatable {
         /// Your templates, opened from the templates button: tap one to
         /// type it into the chat.
         case templates
+        /// Another chat than the one shown is done: Cloud says which, for
+        /// a few seconds (tap to go there).
+        case done(Chat)
     }
 
     /// A live chat, for the chat button and the chats panel.
@@ -98,6 +101,8 @@ enum BarAction {
     case templates, pickTemplate(Int)
     /// Beside Apple's buttons: the whole bar for Claude, and back.
     case expand, collapse
+    /// "OK" on another chat's "done": back to the chat shown.
+    case dismissDone
     /// Done: back from the picker or the subagents.
     case closePanel
 }
@@ -204,6 +209,7 @@ final class BarView: NSView {
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
         case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
         case .contextWarning: return "context"
+        case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)"
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
         case let .question(text, options, multi, picked):
             return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
@@ -300,6 +306,22 @@ final class BarView: NSView {
                     self?.onAction?(short ? .expand : .collapse)
                 }
                 add(b, .fixed(40))
+            }
+
+        case let .done(chat):
+            // Cloud jumps twice and says which chat finished.
+            let short = model.short
+            let name = BarButton("✓ " + chat.name + " — done", style: .outline, fontSize: short ? 12 : 13,
+                                 dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+            add(name, .flex(weight: 1, min: short ? 140 : 200))
+            let open = BarButton("Open", style: .primary) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+            let ok = BarButton("OK") { [weak self] in self?.onAction?(.dismissDone) }
+            add(open, .fixed(short ? 64 : 84))
+            add(ok, .fixed(short ? 50 : 64))
+            [name, open, ok].forEach { b in animate(b) { $0.slideIn() } }
+            if !Palette.reduceMotion {
+                mascot.poke()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.mascot.poke() }
             }
 
         case .contextWarning:
