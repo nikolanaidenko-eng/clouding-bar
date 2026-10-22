@@ -87,11 +87,11 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - A warning when the **context** fills up, with one tap to `/compact` (or
   let it compact by itself).
 
-**Codex too**
+**Codex too (beta)**
 - Clouding Bar can follow OpenAI's **Codex** as well: its sessions, its own
   5-hour and weekly limits, its context, and its permission requests
   (Settings → General → Codex → Connect, then trust the hooks once with
-  `/hooks` in Codex).
+  `/hooks` in Codex). It's little tested yet — tell us what doesn't work.
 
 **And**
 - A **tour** on first launch (and behind the ? in Settings): twelve stops
@@ -222,7 +222,7 @@ Cloud keeps you company there: it sits in the corner, hops from row to row
 as you move the pointer, and walks along the tabs.
 
 - **General** — appearance (auto, light, dark), colourful or grey buttons,
-  open at login, do not disturb, the Claude Code connection (and Codex, and
+  open at login, do not disturb, the Claude Code connection (and Codex, in beta, and
   the 5-hour limit in VS Code), the context warning, the dictation language.
 - **Widget** — show it, in the notch; behind More: follow the chat at
   work, keep the pill visible, open on hover, its position; what it shows

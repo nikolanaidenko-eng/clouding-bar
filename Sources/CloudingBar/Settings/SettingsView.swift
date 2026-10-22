@@ -778,10 +778,10 @@ struct GeneralTab: View {
                 }
                 .tourAnchor("hooks")
                 if model.hasCodex {
-                    SettingsRow(title: "Codex",
+                    SettingsRow(title: "Codex · beta",
                                 hint: model.codexConnected
-                                    ? "Trust the hooks once with /hooks in Codex"
-                                    : "Its own limits and permissions, here too",
+                                    ? "Beta, little tested · trust the hooks once with /hooks in Codex"
+                                    : "Beta, little tested · its own limits and permissions, here too",
                                 divider: model.hasVSCode || model.setupMessage != nil) {
                         if model.codexConnected {
                             Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
