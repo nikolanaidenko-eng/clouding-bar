@@ -451,6 +451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
         bar.activity = activity(of: active)
         bar.quiet = config.doNotDisturb
+        bar.awake = config.widget ? widget.panelOpen : drawer.shown
         bar.shows = Set(config.touchBarShows)
         bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
         bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
@@ -564,7 +565,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch action {
         case .widget:
             DebugLog.tap("widget button")
-            drawer.toggle()
+            if config.widget {
+                // Cloud wakes up and opens the widget's panel; tapped again,
+                // it folds the panel away and dozes off.
+                widget.togglePanel()
+                if widget.panelOpen { touchBar.barView.pokeCharacter() }
+                setNeedsRefresh()
+            } else {
+                drawer.toggle()
+            }
 
         case let .button(i):
             let buttons = currentButtons(active)

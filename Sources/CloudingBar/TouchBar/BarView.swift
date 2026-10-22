@@ -39,6 +39,8 @@ struct BarModel: Equatable {
     var buttons: [ButtonSpec] = []
     /// Do not disturb: nothing pulses.
     var quiet = false
+    /// The widget is open from Cloud's button: Cloud stays up (not asleep).
+    var awake = false
     /// What shows besides the character: "session", "reset", "context",
     /// "model", "buttons", "mic", "shot" (Settings → Touch Bar).
     var shows: Set<String> = ["session", "reset", "context", "buttons"]
@@ -564,8 +566,12 @@ final class BarView: NSView {
 
     // MARK: Values
 
+    /// Cloud jumps (tapped: it's woken up).
+    func pokeCharacter() { mascot.poke() }
+
     private func refreshValues() {
         mascot.activity = model.activity
+        mascot.awake = model.awake
         meters?.set(session: model.sessionPercent,
                     countdown: model.mode == .normal && !model.shows.contains("reset") ? nil : model.resetCountdown,
                     context: model.contextPercent)
