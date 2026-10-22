@@ -165,6 +165,10 @@ print("     (this week: \(week.headline); \(week.projects.map { "\($0.name) \(In
 
 // Cowork plugin: built into the test folder, its script run on a fake transcript.
 let pluginDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+// /usr/bin/python3 waits for the Xcode license after a macOS update; the
+// Command Line Tools' own runs regardless.
+let python3 = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/usr/bin/python3"]
+    .first { FileManager.default.isExecutableFile(atPath: $0) }!
 let zip = try? Cowork.makePlugin(mode: "thresholds", into: pluginDir)
 check(zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false, "cowork plugin zip is made")
 check(FileManager.default.fileExists(atPath: pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path),
@@ -179,7 +183,7 @@ do { // the hook writes into the connected folder itself: working, then done
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
     func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil) -> String {
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.executableURL = URL(fileURLWithPath: python3)
         p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
         p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"]
         let input = Pipe(), output = Pipe()
@@ -250,7 +254,7 @@ do { // the hook writes into the connected folder itself: working, then done
     try? FileManager.default.createDirectory(at: lonely, withIntermediateDirectories: true)
     do { // on the Mac (Claude Code, not Cowork) it does nothing
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        p.executableURL = URL(fileURLWithPath: python3)
         p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
