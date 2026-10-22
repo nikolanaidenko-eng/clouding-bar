@@ -829,7 +829,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Just answered: still on screen a moment, not to be offered again.
     private var desktopAnswered: (key: String, at: Date)?
 
+    private var desktopTrace = ""
+
     private func readDesktopPrompt() {
+        if desktopChat.trace == nil {
+            // Why nothing was found, in debug.log — once per change.
+            desktopChat.trace = { [weak self] why in
+                DispatchQueue.main.async {
+                    guard let self, why != self.desktopTrace else { return }
+                    self.desktopTrace = why
+                    DebugLog.note("desktop prompt: \(why.replacingOccurrences(of: #"\(\d+ elements"#, with: "(…", options: .regularExpression))")
+                }
+            }
+        }
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
             if desktopPrompt != nil { syncDesktopPrompt(nil) }
             return

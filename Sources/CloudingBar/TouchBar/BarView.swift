@@ -420,8 +420,9 @@ final class BarView: NSView {
             let word = sectionLabel("Chats")
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for chat in model.chats {
+                // Still, with "…" where a name is cut: a row of sliding names is too much.
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
-                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                                  fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
                 group.append(b)
             }
@@ -578,6 +579,22 @@ final class BarView: NSView {
     var onWidth: ((String) -> Void)?
     private var reportedWidth = ""
 
+    /// The width the widest have to come down to for all of `widths` to
+    /// add up to `total`, the narrower ones staying as they are.
+    static func commonWidth(_ widths: [CGFloat], total: CGFloat) -> CGFloat {
+        var rest = max(0, total)
+        var count = CGFloat(widths.count)
+        for w in widths.sorted() {
+            if w * count <= rest {
+                rest -= w
+                count -= 1
+            } else {
+                return rest / count
+            }
+        }
+        return widths.max() ?? 0
+    }
+
     override func layout() {
         super.layout()
         let report = "bounds \(Int(bounds.width)), superview \(Int(superview?.bounds.width ?? -1)), window \(Int(window?.frame.width ?? -1)), narrow \(narrow)"
@@ -619,14 +636,16 @@ final class BarView: NSView {
             layout()
             return
         }
-        // Not enough room: shrinkable slots give way first.
+        // Not enough room: shrinkable slots give way first — the widest ones,
+        // down to a common width, so the shorter keep all of their names.
         let overflow = fixed + gaps + flexMin - available
         if overflow > 0 {
             let shrinkable = vis.indices.filter { if case .shrinkable = vis[$0].width { return true }; return false }
             let total = shrinkable.reduce(CGFloat(0)) { $0 + widths[$1] }
             if total > 0 {
+                let cap = Self.commonWidth(shrinkable.map { widths[$0] }, total: total - overflow)
                 for i in shrinkable {
-                    widths[i] = max(min(widths[i], 60), widths[i] - overflow * widths[i] / total)
+                    widths[i] = max(min(widths[i], 60), min(widths[i], cap))
                 }
             }
         }
