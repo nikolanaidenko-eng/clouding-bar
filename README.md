@@ -69,6 +69,12 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - If Clouding Bar isn't there to answer, Claude asks in its own UI as
   always. It never keeps Claude waiting.
 
+**Answer Cowork too**
+- A question that Cowork (or any chat in Claude Desktop) asks in its window
+  shows up on the Touch Bar and in the widget, and your pick is pressed
+  there for you — read from the window, so the chat has to be open in
+  Claude Desktop on the screen you're on.
+
 **Talk to Claude**
 - **Chat line** in the pill and the panel: write now, it's sent when
   Claude has finished its reply and its chat is in front.
@@ -77,7 +83,10 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **Buttons** for your own phrases, slash commands, key presses and links,
   with global shortcuts and a set per project. **Templates** with
   `{project}`, `{branch}`, `{clipboard}`, `{date}`.
-- **Dictation**: hold the right ⌥ key, or tap the mic. Pauses are fine:
+- **Dictation**: hold the right ⌥ key, or tap the mic. On macOS 26 and later
+  it's the system's own dictation model, on this Mac: English gets its
+  commas and full stops by itself; in Russian (whose model doesn't add
+  them) say them — «запятая», «точка», «вопросительный знак». Pauses are fine:
   the widget shows the words as you speak, growing with them, then lets you
   check and edit them before you Send (or type them straight in, if you
   prefer — Settings → General → Voice).

@@ -2,9 +2,12 @@ import AppKit
 import AVFoundation
 import Speech
 
-/// Speech to text with Apple's recognizer. On this Mac's own model when the
-/// language has one (no audio leaves the Mac); on Apple's servers only if
-/// the settings allow it for a language without one.
+/// Speech to text with Apple's recognizer. On macOS 26 and later, the
+/// system's own dictation model (DictationTranscriber): on this Mac, with
+/// commas and full stops, through pauses. Before that, or for a language it
+/// lacks, SFSpeechRecognizer: on this Mac's own model when the language has
+/// one (no audio leaves the Mac); on Apple's servers only if the settings
+/// allow it for a language without one.
 final class VoiceInput {
     var onPartial: ((String) -> Void)?
     /// The final text, or nil if nothing was heard or it failed.
@@ -47,7 +50,11 @@ final class VoiceInput {
     /// Stop by itself after a pause (tap-to-talk); nil: only stop() stops it.
     var stopAfterPause: TimeInterval?
 
-    var isRunning: Bool { request != nil }
+    var isRunning: Bool { request != nil || dictation != nil || starting }
+    /// The macOS 26 dictation (a DictationSession), while it listens.
+    private var dictation: AnyObject?
+    /// Between start() and the first word: permissions, the model.
+    private var starting = false
 
     /// Can this language be recognized offline on this Mac?
     static func worksOffline(_ language: String) -> Bool {
@@ -62,7 +69,64 @@ final class VoiceInput {
     }
 
     func start(language: String, allowServer: Bool) {
-        guard request == nil else { return }
+        guard !isRunning else { return }
+        starting = true
+        authorize { [weak self] ok in
+            guard let self else { return }
+            guard ok else {
+                self.starting = false
+                self.onMessage?("Voice: allow Microphone and Speech Recognition for Clouding Bar in System Settings → Privacy")
+                self.onFinal?(nil)
+                return
+            }
+            if #available(macOS 26, *) {
+                Task { @MainActor in
+                    if let locale = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: language)) {
+                        self.beginDictation(locale)
+                    } else {
+                        self.startRecognizer(language: language, allowServer: allowServer)
+                    }
+                }
+            } else {
+                self.startRecognizer(language: language, allowServer: allowServer)
+            }
+        }
+    }
+
+    // MARK: macOS 26: the system's dictation
+
+    @available(macOS 26, *)
+    private func beginDictation(_ locale: Locale) {
+        let session = DictationSession(engine: engine)
+        dictation = session
+        finishing = false
+        session.onText = { [weak self] text in
+            guard let self, self.dictation === session else { return }
+            self.best = text
+            self.onPartial?(text)
+            self.armSilence(self.stopAfterPause)
+        }
+        session.onModel = { [weak self] in self?.onMessage?("Voice: getting the dictation model for \(locale.identifier)…") }
+        Task { @MainActor in
+            do {
+                try await session.start(locale: locale)
+                self.starting = false
+                self.onLog?("listening, \(locale.identifier), system dictation (punctuation)")
+                self.armSilence(self.stopAfterPause.map { _ in 8 })
+            } catch {
+                self.onLog?("dictation: \(error.localizedDescription)")
+                self.starting = false
+                self.dictation = nil
+                self.onMessage?("Voice: \(error.localizedDescription)")
+                self.onFinal?(nil)
+            }
+        }
+    }
+
+    // MARK: Before macOS 26: SFSpeechRecognizer
+
+    private func startRecognizer(language: String, allowServer: Bool) {
+        starting = false
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: language)) else {
             onMessage?("Voice: \(language) isn't supported")
             onFinal?(nil)
@@ -74,15 +138,7 @@ final class VoiceInput {
             onFinal?(nil)
             return
         }
-        authorize { [weak self] ok in
-            guard let self else { return }
-            guard ok else {
-                self.onMessage?("Voice: allow Microphone and Speech Recognition for Clouding Bar in System Settings → Privacy")
-                self.onFinal?(nil)
-                return
-            }
-            self.begin(recognizer, offline: offline)
-        }
+        begin(recognizer, offline: offline)
     }
 
     private func authorize(_ done: @escaping (Bool) -> Void) {
@@ -184,6 +240,24 @@ final class VoiceInput {
     /// Stops listening; the final text arrives through onFinal. Keeps the
     /// mic open a moment longer: the key often comes up with the last word.
     func stop() {
+        if #available(macOS 26, *), let session = dictation as? DictationSession {
+            guard !finishing else { return }
+            finishing = true
+            silence?.cancel()
+            // The key often comes up with the last word: a moment more.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                Task { @MainActor in
+                    let text = await session.finish()
+                    guard self.dictation === session else { return }
+                    self.dictation = nil
+                    self.finishing = false
+                    self.best = ""
+                    let heard = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.onFinal?(heard.isEmpty ? nil : heard)
+                }
+            }
+            return
+        }
         guard request != nil, !finishing else { return }
         finishing = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
@@ -273,5 +347,106 @@ final class RightOptionHold {
             holding = false
             onEnd?()
         }
+    }
+}
+
+/// One dictation with the system's model (macOS 26): the microphone's
+/// audio, converted to what the model takes, fed to a SpeechAnalyzer; its
+/// results — settled ones and the words still in flux — make the text.
+@available(macOS 26, *)
+private final class DictationSession {
+    var onText: ((String) -> Void)?
+    /// The model for the language has to be fetched first (once).
+    var onModel: (() -> Void)?
+
+    private let engine: AVAudioEngine
+    private var analyzer: SpeechAnalyzer?
+    private var input: AsyncStream<AnalyzerInput>.Continuation?
+    private var results: Task<Void, Never>?
+    private var settled = ""
+    private var inFlux = ""
+
+    init(engine: AVAudioEngine) { self.engine = engine }
+
+    private var text: String {
+        guard !settled.isEmpty, !inFlux.isEmpty else { return settled + inFlux }
+        let gap = settled.last!.isWhitespace || inFlux.first!.isWhitespace ? "" : " "
+        return settled + gap + inFlux
+    }
+
+    @MainActor
+    func start(locale: Locale) async throws {
+        let transcriber = DictationTranscriber(locale: locale, contentHints: [], transcriptionOptions: [.punctuation],
+                                               reportingOptions: [.volatileResults], attributeOptions: [])
+        if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            onModel?()
+            try await install.downloadAndInstall()
+        }
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw NSError(domain: "Voice", code: 1, userInfo: [NSLocalizedDescriptionKey: "no audio format for dictation"])
+        }
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        self.analyzer = analyzer
+        let (stream, input) = AsyncStream.makeStream(of: AnalyzerInput.self)
+        self.input = input
+        results = Task { @MainActor [weak self] in
+            do {
+                for try await result in transcriber.results {
+                    guard let self else { return }
+                    let words = String(result.text.characters)
+                    if result.isFinal {
+                        self.settled = self.join(self.settled, words)
+                        self.inFlux = ""
+                    } else {
+                        self.inFlux = words
+                    }
+                    self.onText?(self.text)
+                }
+            } catch {}
+        }
+        try await analyzer.start(inputSequence: stream)
+
+        let mic = engine.inputNode
+        let micFormat = mic.outputFormat(forBus: 0)
+        let converter = micFormat == format ? nil : AVAudioConverter(from: micFormat, to: format)
+        mic.removeTap(onBus: 0)
+        mic.installTap(onBus: 0, bufferSize: 2048, format: micFormat) { buffer, _ in
+            guard let converter else {
+                input.yield(AnalyzerInput(buffer: buffer))
+                return
+            }
+            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / micFormat.sampleRate) + 512
+            guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return }
+            var given = false
+            var error: NSError?
+            converter.convert(to: out, error: &error) { _, status in
+                if given {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                given = true
+                status.pointee = .haveData
+                return buffer
+            }
+            if error == nil, out.frameLength > 0 { input.yield(AnalyzerInput(buffer: out)) }
+        }
+        engine.prepare()
+        try engine.start()
+    }
+
+    private func join(_ a: String, _ b: String) -> String {
+        guard !a.isEmpty, !b.isEmpty else { return a + b }
+        return a.last!.isWhitespace || b.first!.isWhitespace ? a + b : a + " " + b
+    }
+
+    /// Stops the microphone and waits for the last words. All of it, then.
+    @MainActor
+    func finish() async -> String {
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        input?.finish()
+        try? await analyzer?.finalizeAndFinishThroughEndOfInput()
+        _ = await results?.value
+        return text
     }
 }

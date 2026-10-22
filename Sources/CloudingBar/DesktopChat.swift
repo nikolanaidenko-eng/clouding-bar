@@ -57,6 +57,183 @@ final class DesktopChat {
         }
     }
 
+    // MARK: What the chat asks
+
+    /// A question or a permission in the open chat, as Claude Desktop shows
+    /// it under the last message — Cowork's too, which no hook reaches.
+    struct Prompt: Equatable {
+        enum Kind: Equatable { case question, permission }
+        let kind: Kind
+        /// The question, or what it asks to be allowed.
+        let text: String
+        /// A question's options; a permission's buttons ("Allow", "Deny").
+        let options: [String]
+        let multiSelect: Bool
+        /// A field for an answer of your own ("Something else").
+        let other: Bool
+        var key: String { "\(kind)|\(text)|\(options.joined(separator: "\u{1}"))" }
+    }
+
+    private var promptBusy = false
+
+    /// Calls back on the main queue with what the open chat asks, or nil.
+    func readPrompt(of app: NSRunningApplication, completion: @escaping (Prompt?) -> Void) {
+        guard !promptBusy else { return }
+        promptBusy = true
+        let pid = app.processIdentifier
+        queue.async {
+            let prompt = self.findPrompt(pid: pid).map(\.prompt)
+            DispatchQueue.main.async {
+                self.promptBusy = false
+                completion(prompt)
+            }
+        }
+    }
+
+    /// Answers it there: presses the option (or each picked one, then the
+    /// button that sends them) or the permission's button. An answer of
+    /// your own goes into its field, typed with Claude in front. Calls back
+    /// on the main queue with whether it was done.
+    func answer(_ prompt: Prompt, choices: [String], own: String?, in app: NSRunningApplication,
+                completion: @escaping (Bool) -> Void) {
+        let pid = app.processIdentifier
+        queue.async {
+            guard let found = self.findPrompt(pid: pid), found.prompt.key == prompt.key else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            var done = true
+            for choice in choices {
+                guard let e = found.controls.first(where: { Self.label($0).map { Self.same($0, choice) } ?? false }) else {
+                    done = false
+                    continue
+                }
+                done = AXUIElementPerformAction(e, kAXPressAction as CFString) == .success && done
+            }
+            if prompt.multiSelect, own == nil, let send = found.send {
+                done = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success && done
+            }
+            if let own, let field = found.field {
+                _ = AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                DispatchQueue.main.async {
+                    app.activate(options: [])
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        KeySender.type(own, pressReturn: true)
+                        completion(true)
+                    }
+                }
+                return
+            }
+            DispatchQueue.main.async { completion(done) }
+        }
+    }
+
+    private struct Found {
+        let prompt: Prompt
+        /// The options or the permission's buttons, to press.
+        let controls: [AXUIElement]
+        let field: AXUIElement?
+        /// The button that sends picked options.
+        let send: AXUIElement?
+    }
+
+    private static let questionMark = "Asking a question"
+    private static let allowWords = ["allow", "approve", "always allow", "allow once", "allow always"]
+    private static let denyWords = ["deny", "don't allow", "do not allow", "decline", "reject"]
+    private static let sendWords = ["submit", "next", "continue", "send", "done"]
+    /// Every message's own toggles and names, not a question's.
+    private static let notOptions: Set<String> = ["good response", "bad response"]
+    private static func isMessageName(_ s: String) -> Bool {
+        s.hasPrefix("Message ") && s.contains(" of ") && s.split(separator: " ").count == 4
+    }
+
+    static func allows(_ label: String) -> Bool { allowWords.contains(label.lowercased()) }
+    static func denies(_ label: String) -> Bool { denyWords.contains(label.lowercased()) }
+
+    /// "Chrome Google Chrome" is the option "Chrome"; case and spaces aside.
+    private static func same(_ label: String, _ choice: String) -> Bool {
+        let a = label.lowercased(), b = choice.lowercased()
+        return a == b || a.hasPrefix(b + " ")
+    }
+
+    private func findPrompt(pid: pid_t) -> Found? {
+        if page == nil { _ = shown(pid: pid) }
+        guard let page else { return nil }
+        // From the end of the page, where the last message and its question
+        // are: "Asking a question", or a button that allows something.
+        var mark: AXUIElement?
+        var kind = Prompt.Kind.question
+        var seen = 0
+        var stack: [(AXUIElement, Int)] = [(page, 0)]
+        while let (e, depth) = stack.popLast(), seen < 1500 { // the end of the page is enough
+            seen += 1
+            let role = Self.string(e, kAXRoleAttribute) ?? ""
+            let label = Self.label(e) ?? ""
+            if label == Self.questionMark { mark = e; kind = .question; break }
+            if role == "AXButton", Self.allowWords.contains(label.lowercased()) { mark = e; kind = .permission; break }
+            guard depth < 45 else { continue }
+            stack.append(contentsOf: Self.children(e).map { ($0, depth + 1) }) // the last child comes up first
+        }
+        guard let mark else { return nil }
+        // Up to the part of the page that holds it all — not past its message.
+        // The latest one found first: an older, answered question there
+        // (no Skip, no field of its own) means none is waiting.
+        var box: AXUIElement? = mark
+        for _ in 0..<5 {
+            guard let up = box.flatMap({ Self.element($0, kAXParentAttribute) }) else { break }
+            box = up
+            if let found = read(up, kind: kind) { return found }
+            if Self.label(up).map(Self.isMessageName) ?? false { break }
+        }
+        return nil
+    }
+
+    /// The question (or permission) in `box`, if it's all there.
+    private func read(_ box: AXUIElement, kind: Prompt.Kind) -> Found? {
+        var texts: [String] = []
+        var options: [(String, AXUIElement)] = []
+        var buttons: [(String, AXUIElement)] = []
+        var field: AXUIElement?
+        walk(box, into: { _ in true }) { e in
+            let role = Self.string(e, kAXRoleAttribute) ?? ""
+            let label = CFEqual(e, box) ? "" : Self.label(e) ?? "" // the part's own name ("Message 42 of 42") isn't the question
+            switch role {
+            case "AXCheckBox", "AXRadioButton":
+                if !label.isEmpty, !Self.notOptions.contains(label.lowercased()) { options.append((label, e)) }
+            case "AXButton":
+                if !label.isEmpty { buttons.append((label, e)) }
+            case "AXTextField":
+                field = e
+            case "AXStaticText", "AXHeading", "AXGroup":
+                if !label.isEmpty, label != Self.questionMark, !Self.isMessageName(label), !texts.contains(label) {
+                    texts.append(label)
+                }
+            default:
+                break
+            }
+            return true
+        }
+        let buttonLabels = Set(buttons.map { $0.0 })
+        let words = texts.filter { !buttonLabels.contains($0) && !options.map(\.0).contains($0) }
+        switch kind {
+        case .question:
+            // Waiting for an answer: Skip, or a field for one of your own.
+            let waiting = field != nil || buttons.contains { $0.0.lowercased() == "skip" }
+            guard waiting, !options.isEmpty, let question = words.first else { return nil }
+            let send = buttons.first { Self.sendWords.contains($0.0.lowercased()) }?.1
+            let prompt = Prompt(kind: .question, text: question, options: options.map { $0.0 },
+                                multiSelect: send != nil, other: field != nil)
+            return Found(prompt: prompt, controls: options.map { $0.1 }, field: field, send: send)
+        case .permission:
+            let allow = buttons.filter { Self.allowWords.contains($0.0.lowercased()) }
+            let deny = buttons.filter { Self.denyWords.contains($0.0.lowercased()) }
+            guard !allow.isEmpty, !deny.isEmpty else { return nil }
+            let prompt = Prompt(kind: .permission, text: words.prefix(3).joined(separator: " · "),
+                                options: (allow + deny).map { $0.0 }, multiSelect: false, other: false)
+            return Found(prompt: prompt, controls: (allow + deny).map { $0.1 }, field: nil, send: nil)
+        }
+    }
+
     private func shown(pid: pid_t) -> Shown? {
         if let page, let shown = Self.read(page) { return shown }
         page = nil

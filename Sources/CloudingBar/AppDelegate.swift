@@ -258,6 +258,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ticks % 2 == 0 {
             store.pollTranscripts()
             readCowork()
+        } else {
+            readDesktopPrompt()
         }
         if ticks % 10 == 0 {
             refreshSetupStatus()
@@ -580,6 +582,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case .allow, .always, .deny:
             guard let request, request.kind == .permission else { return }
+            if request.desktopKey != nil {
+                // Asked in Claude Desktop's window: its button pressed there.
+                let labels = desktopPrompt?.options ?? []
+                let pick: String?
+                switch action {
+                case .allow: pick = labels.first { DesktopChat.allows($0) && !$0.lowercased().contains("always") }
+                    ?? labels.first(where: DesktopChat.allows)
+                case .always: pick = labels.first { $0.lowercased().contains("always") } ?? labels.first(where: DesktopChat.allows)
+                default: pick = labels.first(where: DesktopChat.denies)
+                }
+                DebugLog.tap("desktop permission: \(pick ?? "?")")
+                answerInDesktop(request, choices: pick.map { [$0] } ?? [], own: nil)
+                return
+            }
             let name: String
             let output: [String: Any]
             switch action {
@@ -784,10 +800,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func answer(_ request: PendingRequest, _ output: [String: Any]) {
         guard requests.contains(where: { $0 === request }) else { return }
+        if request.desktopKey != nil, let q = request.questions.first {
+            // Asked in Claude Desktop's window: the option pressed there, or
+            // your own words typed into its field.
+            let text = request.answers[q.text] ?? ""
+            let parts = text.components(separatedBy: ", ")
+            if q.options.contains(text) {
+                answerInDesktop(request, choices: [text], own: nil)
+            } else if parts.allSatisfy(q.options.contains) {
+                answerInDesktop(request, choices: parts, own: nil)
+            } else {
+                answerInDesktop(request, choices: [], own: text)
+            }
+            return
+        }
         requests.removeAll { $0 === request }
         request.responder.answer(output)
         if typingFor === request { stopTyping() }
         DebugLog.note("answered from the bar")
+        setNeedsRefresh()
+    }
+
+    // MARK: - Claude Desktop's own questions (Cowork)
+
+    /// What the chat open in Claude Desktop asks (a question, a permission),
+    /// read from its window: Cowork's never reach a hook.
+    private var desktopPrompt: DesktopChat.Prompt?
+    /// Just answered: still on screen a moment, not to be offered again.
+    private var desktopAnswered: (key: String, at: Date)?
+
+    private func readDesktopPrompt() {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
+            if desktopPrompt != nil { syncDesktopPrompt(nil) }
+            return
+        }
+        desktopChat.readPrompt(of: app) { [weak self] prompt in self?.syncDesktopPrompt(prompt) }
+    }
+
+    /// The window's question on the bar and in the widget, as long as it's there.
+    private func syncDesktopPrompt(_ prompt: DesktopChat.Prompt?) {
+        desktopPrompt = prompt
+        let current = requests.first { $0.desktopKey != nil }
+        if let current, current.desktopKey != prompt?.key {
+            finish(current, "desktop prompt: answered in Claude", reply: false)
+        }
+        guard let prompt, current?.desktopKey != prompt.key else { return }
+        if let a = desktopAnswered, a.key == prompt.key, Date().timeIntervalSince(a.at) < 6 { return }
+        // The chat open there: the one it asks in.
+        let session = desktopShown.flatMap { shown in store.alive.first { $0.desktopChat == shown.chat } }?.id
+        let request = prompt.kind == .question
+            ? PendingRequest(desktopQuestion: prompt.text, options: prompt.options, multiSelect: prompt.multiSelect,
+                             sessionId: session, key: prompt.key)
+            : PendingRequest(desktopPermission: prompt.text, sessionId: session, key: prompt.key)
+        requests.append(request)
+        DebugLog.note("desktop prompt: \(prompt.kind == .question ? "question" : "permission") on the bar (\(prompt.options.count) options)")
+        setNeedsRefresh()
+    }
+
+    /// Presses the answer in Claude Desktop's window.
+    private func answerInDesktop(_ request: PendingRequest, choices: [String], own: String?) {
+        requests.removeAll { $0 === request }
+        if typingFor === request { stopTyping() }
+        desktopAnswered = (request.desktopKey ?? "", Date())
+        guard let prompt = desktopPrompt, prompt.key == request.desktopKey,
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
+            DebugLog.note("desktop prompt: gone before the answer")
+            setNeedsRefresh()
+            return
+        }
+        desktopChat.answer(prompt, choices: choices, own: own, in: app) { [weak self] done in
+            DebugLog.note("desktop prompt: " + (done ? "answered in Claude's window" : "couldn't press the answer"))
+            if !done { NSSound.beep() }
+            self?.setNeedsRefresh()
+        }
         setNeedsRefresh()
     }
 
