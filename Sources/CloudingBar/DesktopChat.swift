@@ -171,23 +171,26 @@ final class DesktopChat {
             seen += 1
             let role = Self.string(e, kAXRoleAttribute) ?? ""
             let label = Self.label(e) ?? ""
-            if label == Self.questionMark { mark = e; kind = .question; break }
+            // The answer box itself — its Skip, its field for an answer of your
+            // own — not the "Asking a question" line in the message above it.
+            if (role == "AXButton" && label.lowercased() == "skip") || (role == "AXTextField" && label == "Something else") {
+                mark = e
+                kind = .question
+                break
+            }
             if role == "AXButton", Self.allowWords.contains(label.lowercased()) { mark = e; kind = .permission; break }
             guard depth < 45 else { continue }
             stack.append(contentsOf: Self.children(e).map { ($0, depth + 1) }) // the last child comes up first
         }
         guard let mark else { trace?("nothing asked (\(seen) elements looked at)"); return nil }
-        // Up to the part of the page that holds it all — not past its message.
-        // The latest one found first: an older, answered question there
-        // (no Skip, no field of its own) means none is waiting.
+        // Up to the part of the page that holds the options too.
         var box: AXUIElement? = mark
-        for _ in 0..<5 {
+        for _ in 0..<6 {
             guard let up = box.flatMap({ Self.element($0, kAXParentAttribute) }) else { break }
             box = up
             if let found = read(up, kind: kind) { return found }
-            if Self.label(up).map(Self.isMessageName) ?? false { break }
         }
-        trace?("\(kind == .question ? "\"Asking a question\"" : "an Allow button") found, but no options and Skip around it")
+        trace?("\(kind == .question ? "Skip or Something else" : "an Allow button") found, but no options around it")
         return nil
     }
 
