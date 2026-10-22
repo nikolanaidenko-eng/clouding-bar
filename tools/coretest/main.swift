@@ -346,6 +346,49 @@ do {
     check(run("PreToolUse").isEmpty, "plugin hook: steps aside for the hook in settings.json (no event twice)")
 }
 
+// MARK: Messages straight into Claude (VS Code, through the wrapper)
+
+do {
+    let fm = FileManager.default
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    func parse(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
+    let plain = parse(Inject.message("Fix the header"))
+    let content = (plain?["message"] as? [String: Any])?["content"] as? [[String: Any]]
+    check(plain?["type"] as? String == "user" && plain?["parent_tool_use_id"] is NSNull
+          && content?.first?["text"] as? String == "Fix the header", "inject: a message the way the extension sends them")
+    let png = dir.appendingPathComponent("shot test.png")
+    try? Data([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]).write(to: png)
+    let big = dir.appendingPathComponent("big.png")
+    try? Data(count: Inject.maxImageBytes + 1).write(to: big)
+    let withFiles = (parse(Inject.message("Look", files: [png.path, big.path]))?["message"] as? [String: Any])?["content"] as? [[String: Any]]
+    check(withFiles?.count == 2 && withFiles?[1]["type"] as? String == "image"
+          && (withFiles?[0]["text"] as? String)?.contains("big.png") == true,
+          "inject: a screenshot as a picture; a too big one by its path")
+    check(Inject.message("  ") == nil && !Inject.available(pid: nil) && !Inject.available(pid: getpid()),
+          "inject: nothing to send; no door, no sending that way")
+
+    // Through the real relay (cloudingbar-tap --input): the door named by its
+    // parent's id (here this test's), lines kept whole and in order.
+    let tap = Process()
+    tap.executableURL = URL(fileURLWithPath: "build/cloudingbar-tap")
+    tap.arguments = ["--input"]
+    let input = Pipe(), output = Pipe()
+    tap.standardInput = input
+    tap.standardOutput = output
+    try? tap.run()
+    let door = Inject.socketPath(pid: getpid())
+    for _ in 0..<50 where !fm.fileExists(atPath: door) { usleep(20_000) }
+    input.fileHandleForWriting.write(Data(#"{"type":"user","message":{"role":"user","content":"from the extension"}}"#.utf8 + [0x0A]))
+    usleep(100_000)
+    let sent = Inject.send(Inject.message("from Clouding Bar")!, pid: getpid())
+    let refused = Inject.send(Data(#"{"type":"control_request"}"#.utf8), pid: getpid())
+    try? input.fileHandleForWriting.close()
+    tap.waitUntilExit()
+    let lines = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.split(separator: "\n") ?? []
+    check(sent && !refused && lines.count == 2 && lines[0].contains("from the extension") && lines[1].contains("from Clouding Bar")
+          && !fm.fileExists(atPath: door), "inject: through the relay, between the extension's lines; only user messages; door gone after")
+}
+
 // MARK: Updates
 
 do {

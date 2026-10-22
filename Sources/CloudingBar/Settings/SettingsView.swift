@@ -814,8 +814,8 @@ struct GeneralTab: View {
                     }
                 }
                 if model.hasVSCode {
-                    SettingsRow(title: "5-hour limit in VS Code",
-                                hint: "Passed on by a small wrapper · new chats",
+                    SettingsRow(title: "VS Code: limit and sending",
+                                hint: "A small wrapper passes on the 5-hour limit, and takes the widget's messages straight into the chat — no window switched · new chats",
                                 divider: model.setupMessage != nil) {
                         if model.vscodeWrapped {
                             Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)

@@ -1727,17 +1727,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
             let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
             guard !full.isEmpty else { return }
-            let item = AppModel.QueueItem(text: full, sessionId: active?.id, project: active?.projectName)
-            self.queue.append(item)
-            DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
-            self.saveQueue()
-            self.refresh()
-            // Claude is free but its chat is behind another app (written from
-            // a browser): brought forward and sent now, not left waiting.
-            if let s = active, self.queue.count == 1, s.activity == .sleep,
-               !self.requests.contains(where: { $0.sessionId == s.id }), !self.chatInFront(s.id) {
-                self.sendQueuedNow(item.id)
+            // Straight into Claude where its chat takes that (VS Code, through
+            // the wrapper): no window, no keys, wherever you are. Else the
+            // queue, until its chat is in front — never a window switched.
+            if let s = active, Inject.available(pid: s.claudePid) {
+                DebugLog.tap("send straight to Claude" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
+                self.inject(text, files: files, into: s) { [weak self] in self?.enqueue(full, for: active) }
+                return
             }
+            self.enqueue(full, for: active)
+            DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
         }
         model.removeFromQueue = { [weak self] id in
             self?.queue.removeAll { $0.id == id }
@@ -1766,7 +1765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Sends the next queued request once its session has finished a
     /// reply and its window is in front (it's typed, like a button).
     private func dispatchQueue() {
-        guard config.taskQueue, let next = queue.first else { return }
+        guard let next = queue.first else { return }
         guard let session = next.sessionId.flatMap({ store.sessions[$0] }) else {
             queue.removeFirst() // its session is gone
             saveQueue()
@@ -1797,19 +1796,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
         guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
         DebugLog.tap("queue: send now → \(session.displayName)")
+        if Inject.available(pid: session.claudePid) {
+            inject(item.text, into: session) { [weak self] in
+                self?.queue.insert(item, at: 0)
+                self?.saveQueue()
+                self?.refresh()
+            }
+            return
+        }
+        // You asked for it: its chat brought forward, then typed into.
         if !chatInFront(session.id) { openSession(session.id) }
-        typeWhenInFront(item, session: session.id, tries: 14)
+        typeWhenInFront(item, session: session.id, tries: 16, since: Date())
     }
 
-    private func typeWhenInFront(_ item: AppModel.QueueItem, session id: String, tries: Int, requeue: Bool = true) {
+    /// A message into the queue for this chat.
+    private func enqueue(_ text: String, for session: Session?) {
+        queue.append(.init(text: text, sessionId: session?.id, project: session?.projectName))
+        saveQueue()
+        refresh()
+    }
+
+    /// Hands it to Claude's input (Inject): off the main thread, then the
+    /// chat's echo shows it. If Claude's side doesn't take it, `fallback`.
+    private func inject(_ text: String, files: [String] = [], into session: Session, fallback: @escaping () -> Void) {
+        guard let pid = session.claudePid, let data = Inject.message(text, files: files) else {
+            fallback()
+            return
+        }
+        let name = session.displayName
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = Inject.send(data, pid: pid)
+            DispatchQueue.main.async { [weak self] in
+                DebugLog.note(ok ? "sent straight to Claude (\(name))" : "Claude's input didn't take it (\(name)): kept")
+                if ok {
+                    self?.queueSentAt = Date()
+                    self?.setNeedsRefresh()
+                } else {
+                    fallback()
+                }
+            }
+        }
+    }
+
+    private func typeWhenInFront(_ item: AppModel.QueueItem, session id: String, tries: Int,
+                                 since started: Date, requeue: Bool = true) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
-            if self.chatInFront(id) {
+            // Its window just asked forward: the title read before may still be
+            // the old one. A second, and in front a moment, before any key.
+            if Date().timeIntervalSince(started) > 1, Date().timeIntervalSince(self.frontSince.at) > 0.5,
+               self.chatInFront(id) {
                 self.queueSentAt = Date()
                 self.typeAfterReleasingKey(item.text)
                 DebugLog.note("queue: sent now")
             } else if tries > 0 {
-                self.typeWhenInFront(item, session: id, tries: tries - 1, requeue: requeue)
+                self.typeWhenInFront(item, session: id, tries: tries - 1, since: started, requeue: requeue)
             } else {
                 // Its chat didn't come up: kept, not typed into another app.
                 if requeue || self.config.taskQueue {
@@ -1857,9 +1898,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             typeAfterReleasingKey(text)
             return
         }
-        if !chatInFront(session.id) { openSession(session.id) }
-        typeWhenInFront(.init(text: text, sessionId: session.id, project: session.projectName),
-                        session: session.id, tries: 14, requeue: false)
+        if Inject.available(pid: session.claudePid) {
+            inject(text, into: session) { [weak self] in self?.enqueue(text, for: session) }
+        } else if chatInFront(session.id) {
+            typeAfterReleasingKey(text)
+        } else {
+            enqueue(text, for: session) // goes once its chat is in front
+            DebugLog.note("send: its chat isn't in front — queued")
+        }
     }
 
     /// /model or /effort, typed into the chat in front like a button's

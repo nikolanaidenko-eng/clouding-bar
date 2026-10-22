@@ -1,7 +1,8 @@
 import Foundation
 
 // cloudingbar-tap — sits on Claude Code's stdout when the VS Code extension
-// starts Claude through hooks/cloudingbar-wrapper.sh.
+// starts Claude through hooks/cloudingbar-wrapper.sh (and, with --input, on
+// its stdin: Input.swift).
 //
 // The extension's panel never runs the status line command, but Claude Code
 // tells the extension about the 5-hour limit on stdout (a stream-json
@@ -14,6 +15,9 @@ import Foundation
 // process group: Claude may still be writing its last lines. A vanished
 // reader shows up as EPIPE instead of killing us.
 for sig in [SIGINT, SIGTERM, SIGHUP, SIGPIPE] { signal(sig, SIG_IGN) }
+
+// On Claude's input instead (Input.swift): messages from Clouding Bar join in.
+if CommandLine.arguments.dropFirst().first == "--input" { runInputRelay() }
 
 let prefix = Array(#"{"type":"rate_limit_event""#.utf8)
 let maxLine = 256 * 1024
