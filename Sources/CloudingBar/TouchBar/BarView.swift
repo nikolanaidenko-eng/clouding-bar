@@ -57,6 +57,8 @@ struct BarModel: Equatable {
     /// Writing to the chat (not answering): your buttons and templates
     /// stay at hand beside the field.
     var typingCommands = false
+    /// Dictating into the line: the mic lit, the words arriving as you speak.
+    var listening = false
     /// The chat the bar shows, for the chat field: "Status bar".
     var chatName: String?
     /// Beside Apple's buttons: everything smaller, the rest left out — and a
@@ -206,7 +208,7 @@ final class BarView: NSView {
         case let .question(text, options, multi, picked):
             return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
         case .typing:
-            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)"
+            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)|\(m.listening)"
         }
     }
 
@@ -450,7 +452,7 @@ final class BarView: NSView {
                 add(label, .fixed(ceil(label.intrinsicContentSize.width) + 4))
             }
             let field = TypingFieldView()
-            field.placeholder = model.typingPlaceholder
+            field.placeholder = model.listening ? "Listening… speak" : model.typingPlaceholder
             self.field = field
             if model.typingCommands {
                 let box = ChatBoxView(field: field, commands: commandButtons(limit: model.short ? 3 : nil), compact: model.short)
@@ -461,7 +463,9 @@ final class BarView: NSView {
                 animate(field) { $0.slideIn(duration: 0.24) }
             }
             let send = BarButton("Send", style: .primary) { [weak self] in self?.onAction?(.send) }
-            let mic = BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.mic) }
+            let mic = BarButton("Dictate", style: model.listening ? .primary : .normal, icon: Self.micImage()) {
+                [weak self] in self?.onAction?(.mic)
+            }
             add(send, .fixed(model.short ? 70 : 85))
             if model.typingCommands && !model.short {
                 // Your commands right by the field, if the bar shows them.

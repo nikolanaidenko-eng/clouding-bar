@@ -204,9 +204,21 @@ final class TypingInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     /// Adds dictated text at the end of the answer.
     func insert(_ text: String) {
         guard isActive else { return }
-        let current = field.stringValue
-        field.stringValue = current.isEmpty || current.hasSuffix(" ") ? current + text : current + " " + text
-        onChange?(field.stringValue)
+        let current = self.text
+        set(current.isEmpty || current.hasSuffix(" ") ? current + text : current + " " + text)
+    }
+
+    /// Puts this text in the field — in its editor too: setting the field
+    /// alone leaves the editor with the old text, which the next key you
+    /// press brings back (dictated words wiped by a space).
+    func set(_ text: String) {
+        guard isActive else { return }
+        field.stringValue = text
+        if let editor = field.currentEditor() as? NSTextView {
+            editor.string = text
+            editor.setSelectedRange(NSRange(location: (text as NSString).length, length: 0))
+        }
+        onChange?(text)
     }
 
     /// The system's dictation into the field (it asks to turn dictation on
