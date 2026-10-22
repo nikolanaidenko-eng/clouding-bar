@@ -267,18 +267,27 @@ final class WidgetController: NSObject {
         pinned = true
         set(.panel)
         guard model.config.taskQueue, model.request == nil else { return }
+        // The keyboard at once — the first letters typed right after a
+        // screenshot went to the app in front otherwise — and the field's
+        // focus again once the panel is drawn.
+        panel.allowsKey = true
+        panel.makeKey()
+        state.focusMessage += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, self.state.mode == .panel else { return }
-            self.panel.makeKey()
+            if !self.panel.isKeyWindow { self.panel.makeKey() }
             self.state.focusMessage += 1
         }
     }
 
     /// Hands the keyboard back to the app in front, if the widget has it.
-    func releaseKey() {
-        guard panel.isKeyWindow else { return }
+    /// True if it had it: the app in front needs a moment to take it back.
+    @discardableResult
+    func releaseKey() -> Bool {
+        guard panel.isKeyWindow else { return false }
         panel.orderOut(nil)
         panel.orderFrontRegardless()
+        return true
     }
 
     // MARK: Chat

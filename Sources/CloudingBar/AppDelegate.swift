@@ -411,6 +411,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         refreshQueued = false
+        let key = frontKey
+        if key != frontSince.key { frontSince = (key, Date()) }
         // Gone to another chat yourself: the pick is over.
         let shown = frontApp?.bundleIdentifier == Self.desktopBundle
             ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat) : store.session(inWindow: frontTitle, tty: frontTTY)
@@ -1770,14 +1772,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard session.activity == .sleep, !session.waitingNotice,
               !requests.contains(where: { $0.sessionId == session.id }),
               store.session(inWindow: frontTitle, tty: frontTTY)?.id == session.id,
+              // In front a moment already: just switched to, its field may not
+              // take the first letters yet.
+              Date().timeIntervalSince(frontSince.at) > 1.2,
               Date().timeIntervalSince(session.activitySince) > 1.5,
               Date().timeIntervalSince(queueSentAt ?? .distantPast) > 10 else { return }
         queue.removeFirst()
         saveQueue()
         queueSentAt = Date()
         DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
-        widget.releaseKey()
-        KeySender.type(next.text, pressReturn: true)
+        typeAfterReleasingKey(next.text)
     }
 
     /// Send now: its chat brought to the front, then the words typed in at
@@ -1799,8 +1803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             if self.chatInFront(id) {
                 self.queueSentAt = Date()
-                self.widget.releaseKey()
-                KeySender.type(item.text, pressReturn: true)
+                self.typeAfterReleasingKey(item.text)
                 DebugLog.note("queue: sent now")
             } else if tries > 0 {
                 self.typeWhenInFront(item, session: id, tries: tries - 1)
@@ -1813,6 +1816,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
     }
+
+    /// Types into the chat in front — after a moment if the widget had the
+    /// keyboard, so the first letters don't go missing on the way back.
+    private func typeAfterReleasingKey(_ text: String) {
+        let hadKey = widget.releaseKey()
+        DispatchQueue.main.asyncAfter(deadline: .now() + (hadKey ? 0.25 : 0)) {
+            KeySender.type(text, pressReturn: true)
+        }
+    }
+
+    /// The window or tab in front, and since when (the queue waits until
+    /// it has been there a moment).
+    private var frontSince: (key: String, at: Date) = ("", .distantPast)
 
     /// That chat is surely the one in front (its window or tab, or the page
     /// Claude Desktop shows) — never a guess, as words are typed into it.
