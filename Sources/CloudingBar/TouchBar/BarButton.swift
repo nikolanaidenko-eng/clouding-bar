@@ -132,7 +132,9 @@ final class BarButton: NSButton {
         let width = ceil(titleWidth)
         let room = bounds.width - 18 - dotRoom
         guard room > 10 else { return }
-        let slides = width > room + 1 && !Palette.reduceMotion
+        // A name that fits stands still (centred); only a longer one slides.
+        // A point or two over isn't worth sliding: the end gets "…".
+        let slides = width > room + 3 && !Palette.reduceMotion
         let shown = min(width, room)
         let x0 = slides ? 9 : (bounds.width - dotRoom - shown) / 2
 

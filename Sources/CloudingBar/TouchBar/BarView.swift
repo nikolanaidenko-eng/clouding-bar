@@ -235,7 +235,11 @@ final class BarView: NSView {
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
                 let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
-                add(b, .shrinkable(min(short ? 110 : 150, b.fittingWidth(padding: short ? 8 : 10))))
+                // A name that fits keeps its room (it stands still; what doesn't
+                // fit goes from the right instead); a longer one gives way and slides.
+                let cap: CGFloat = short ? 130 : 220
+                let fit = b.fittingWidth(padding: short ? 8 : 10)
+                add(b, fit <= cap ? .fixed(fit) : .shrinkable(cap))
             }
             // Short (beside Apple's buttons): everything, smaller; what
             // still doesn't fit is left out from the right (layout()).
