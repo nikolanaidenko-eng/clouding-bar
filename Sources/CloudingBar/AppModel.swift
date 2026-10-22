@@ -163,6 +163,8 @@ final class AppModel: ObservableObject {
     var voiceToggle: () -> Void = {}
     var addToQueue: (String) -> Void = { _ in }
     var removeFromQueue: (UUID) -> Void = { _ in }
+    /// Send it now: its chat brought to the front and the words typed in.
+    var sendQueuedNow: (UUID) -> Void = { _ in }
     var insertTemplate: (String) -> Void = { _ in }
     var takeScreenshot: () -> Void = {}
     /// Files dropped on the widget; false if there's no session to take them.

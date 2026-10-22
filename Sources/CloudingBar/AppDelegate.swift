@@ -1739,6 +1739,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.saveQueue()
             self?.refresh()
         }
+        model.sendQueuedNow = { [weak self] id in self?.sendQueuedNow(id) }
         model.insertTemplate = { [weak self] in self?.insertTemplate($0) }
         model.takeScreenshot = { [weak self] in self?.takeScreenshot() }
         model.dropFiles = { [weak self] urls in self?.attach(urls) ?? false }
@@ -1777,6 +1778,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
         widget.releaseKey()
         KeySender.type(next.text, pressReturn: true)
+    }
+
+    /// Send now: its chat brought to the front, then the words typed in at
+    /// once (while Claude works, Claude Code queues them itself). If the chat
+    /// doesn't come up, it goes back to the head of the queue.
+    private func sendQueuedNow(_ id: UUID) {
+        guard let i = queue.firstIndex(where: { $0.id == id }) else { return }
+        let item = queue.remove(at: i)
+        saveQueue()
+        refresh()
+        guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
+        DebugLog.tap("queue: send now → \(session.displayName)")
+        if !chatInFront(session.id) { openSession(session.id) }
+        typeWhenInFront(item, session: session.id, tries: 14)
+    }
+
+    private func typeWhenInFront(_ item: AppModel.QueueItem, session id: String, tries: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            if self.chatInFront(id) {
+                self.queueSentAt = Date()
+                self.widget.releaseKey()
+                KeySender.type(item.text, pressReturn: true)
+                DebugLog.note("queue: sent now")
+            } else if tries > 0 {
+                self.typeWhenInFront(item, session: id, tries: tries - 1)
+            } else {
+                self.queue.insert(item, at: 0)
+                self.saveQueue()
+                self.refresh()
+                NSSound.beep()
+                DebugLog.note("queue: send now — its chat didn't come to the front")
+            }
+        }
+    }
+
+    /// That chat is surely the one in front (its window or tab, or the page
+    /// Claude Desktop shows) — never a guess, as words are typed into it.
+    private func chatInFront(_ id: String) -> Bool {
+        if frontApp?.bundleIdentifier == Self.desktopBundle {
+            return store.session(inDesktop: frontTitle, chat: desktopShown?.chat)?.id == id
+        }
+        return store.session(inWindow: frontTitle, tty: frontTTY)?.id == id
     }
 
     /// /model or /effort, typed into the chat in front like a button's
