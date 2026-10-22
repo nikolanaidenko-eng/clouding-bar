@@ -243,6 +243,23 @@ final class WidgetController: NSObject {
         if !wants { releaseKey() }
     }
 
+    /// The panel is open.
+    var panelOpen: Bool { state.mode == .panel }
+
+    /// Cloud on the Touch Bar: opens the panel, which stays until Cloud is
+    /// tapped again (or the pointer has been in and out); or folds it away.
+    func togglePanel() {
+        closeWork?.cancel()
+        openWork?.cancel()
+        if state.mode == .panel {
+            pinned = false
+            set(rest)
+        } else {
+            pinned = true
+            set(.panel)
+        }
+    }
+
     /// Opens the panel at its message box (files just attached go with
     /// what you write there).
     func openMessage() {
