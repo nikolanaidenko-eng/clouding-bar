@@ -420,9 +420,9 @@ final class BarView: NSView {
             let word = sectionLabel("Chats")
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for chat in model.chats {
-                // Still, with "…" where a name is cut: a row of sliding names is too much.
+                // A whole name stands still; one that didn't get the room slides.
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
-                                  fontSize: 12, dot: chat.color) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
                 group.append(b)
             }
@@ -579,20 +579,27 @@ final class BarView: NSView {
     var onWidth: ((String) -> Void)?
     private var reportedWidth = ""
 
-    /// The width the widest have to come down to for all of `widths` to
-    /// add up to `total`, the narrower ones staying as they are.
-    static func commonWidth(_ widths: [CGFloat], total: CGFloat) -> CGFloat {
-        var rest = max(0, total)
-        var count = CGFloat(widths.count)
-        for w in widths.sorted() {
-            if w * count <= rest {
-                rest -= w
-                count -= 1
-            } else {
-                return rest / count
-            }
+    /// `widths` brought down to `total`: as many as possible keep theirs
+    /// (the narrowest first, while the others can still have `floor`), the
+    /// rest share what's left equally, none under `floor` (or its own width).
+    static func fitWidths(_ widths: [CGFloat], total: CGFloat, floor: CGFloat = 72) -> [CGFloat] {
+        guard widths.reduce(0, +) > total else { return widths }
+        let least = widths.map { min($0, floor) }
+        let order = widths.indices.sorted { widths[$0] < widths[$1] }
+        var kept = 0
+        var used: CGFloat = 0
+        for (n, i) in order.enumerated() {
+            let others = order[(n + 1)...].reduce(CGFloat(0)) { $0 + least[$1] }
+            guard used + widths[i] + others <= total else { break }
+            used += widths[i]
+            kept += 1
         }
-        return widths.max() ?? 0
+        var out = widths
+        let rest = order[kept...]
+        guard !rest.isEmpty else { return out }
+        let share = max(0, total - used) / CGFloat(rest.count)
+        for i in rest { out[i] = min(widths[i], max(least[i], share)) }
+        return out
     }
 
     override func layout() {
@@ -636,17 +643,16 @@ final class BarView: NSView {
             layout()
             return
         }
-        // Not enough room: shrinkable slots give way first — the widest ones,
-        // down to a common width, so the shorter keep all of their names.
+        // Not enough room: shrinkable slots give way first — as many as can
+        // keep their whole names do (the shortest first); the rest share
+        // what's left, and their names slide.
         let overflow = fixed + gaps + flexMin - available
         if overflow > 0 {
             let shrinkable = vis.indices.filter { if case .shrinkable = vis[$0].width { return true }; return false }
             let total = shrinkable.reduce(CGFloat(0)) { $0 + widths[$1] }
             if total > 0 {
-                let cap = Self.commonWidth(shrinkable.map { widths[$0] }, total: total - overflow)
-                for i in shrinkable {
-                    widths[i] = max(min(widths[i], 60), min(widths[i], cap))
-                }
+                let fitted = Self.fitWidths(shrinkable.map { widths[$0] }, total: total - overflow)
+                for (i, w) in zip(shrinkable, fitted) { widths[i] = w }
             }
         }
         // Flexible slots: each its minimum first, then the rest by weight.
