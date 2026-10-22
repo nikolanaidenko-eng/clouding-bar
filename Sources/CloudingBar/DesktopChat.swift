@@ -75,6 +75,8 @@ final class DesktopChat {
     }
 
     private var promptBusy = false
+    /// Why no question was found, for debug.log (called on `queue`).
+    var trace: ((String) -> Void)?
 
     /// Calls back on the main queue with what the open chat asks, or nil.
     func readPrompt(of app: NSRunningApplication, completion: @escaping (Prompt?) -> Void) {
@@ -158,7 +160,7 @@ final class DesktopChat {
 
     private func findPrompt(pid: pid_t) -> Found? {
         if page == nil { _ = shown(pid: pid) }
-        guard let page else { return nil }
+        guard let page else { trace?("no claude.ai page"); return nil }
         // From the end of the page, where the last message and its question
         // are: "Asking a question", or a button that allows something.
         var mark: AXUIElement?
@@ -174,7 +176,7 @@ final class DesktopChat {
             guard depth < 45 else { continue }
             stack.append(contentsOf: Self.children(e).map { ($0, depth + 1) }) // the last child comes up first
         }
-        guard let mark else { return nil }
+        guard let mark else { trace?("nothing asked (\(seen) elements looked at)"); return nil }
         // Up to the part of the page that holds it all — not past its message.
         // The latest one found first: an older, answered question there
         // (no Skip, no field of its own) means none is waiting.
@@ -185,6 +187,7 @@ final class DesktopChat {
             if let found = read(up, kind: kind) { return found }
             if Self.label(up).map(Self.isMessageName) ?? false { break }
         }
+        trace?("\(kind == .question ? "\"Asking a question\"" : "an Allow button") found, but no options and Skip around it")
         return nil
     }
 
