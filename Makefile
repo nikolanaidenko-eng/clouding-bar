@@ -91,7 +91,7 @@ icon:
 	iconutil -c icns build/AppIcon.iconset -o packaging/AppIcon.icns
 
 # Checks for the core: session picked by window title, hook output, config.
-test:
+test: $(TAP)
 	mkdir -p build
 	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home

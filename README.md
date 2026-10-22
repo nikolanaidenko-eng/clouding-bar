@@ -84,8 +84,11 @@ A first version for **Windows** is in [windows/](windows/README.md).
   Claude Desktop on the screen you're on.
 
 **Talk to Claude**
-- **Chat line** in the pill and the panel: write now, it's sent when
-  Claude has finished its reply and its chat is in front.
+- **Chat line** in the pill and the panel. In VS Code (with Settings →
+  General → VS Code → Set Up) the message goes straight into the chat's
+  Claude — wherever you are, no window switched — screenshots as pictures,
+  and the chat shows it as yours. Elsewhere it waits in the queue until
+  Claude has finished its reply and its chat is in front (or tap Send now).
 - **Drop files** on the widget: they go to that project's chat with your
   next message.
 - **Buttons** for your own phrases, slash commands, key presses and links,
@@ -238,9 +241,11 @@ folder you connected to Cowork there is read by the app, so macOS asks once.)
 
 Claude's panel in VS Code doesn't run the status line, so the 5-hour limit
 reaches Clouding Bar through a small wrapper instead: **Settings → General
-→ 5-hour limit in VS Code → Set Up** (it sets
+→ VS Code: limit and sending → Set Up** (it sets
 `claudeCode.claudeProcessWrapper`, keeping your settings file as it is).
-New chats report the limit from then on.
+New chats report the limit from then on — and take the widget's messages
+straight into Claude's input, beside the extension's own, so nothing is
+typed and no window comes forward.
 
 ## How it works
 

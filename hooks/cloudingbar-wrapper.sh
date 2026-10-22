@@ -11,8 +11,15 @@
 # signals and exit code are untouched. Without the tap it's a plain exec.
 # A terminal on stdout means interactive Claude (useTerminal): leave it be,
 # it runs the status line itself and needs a real TTY.
+#
+# With --input the tap sits on Claude's stdin too: the extension's lines go
+# through as they come, and between them messages from Clouding Bar's widget
+# (typed, dictated, a screenshot) reach Claude without its window.
 TAP="$HOME/.cloudingbar/cloudingbar-tap"
 if [ -x "$TAP" ] && [ ! -t 1 ]; then
   exec > >(exec "$TAP")
+  if [ ! -t 0 ]; then
+    exec < <(exec "$TAP" --input)
+  fi
 fi
 exec "$@"
