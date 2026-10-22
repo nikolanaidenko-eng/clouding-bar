@@ -691,10 +691,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if config.taskQueue {
                 model.addToQueue(text) // sent when Claude is free, like the widget's
             } else {
-                // Into the chat in front, once the keys are back with it.
+                // Into its chat, brought forward if another app is in front.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                    self?.widget.releaseKey()
-                    KeySender.type(text, pressReturn: true)
+                    self?.deliver(text, to: self?.focusedSession)
                 }
             }
 
@@ -1608,10 +1607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if config.taskQueue && focusedSession != nil {
             model.addToQueue(text)
         } else {
-            widget.releaseKey()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                KeySender.type(text, pressReturn: self.focusedSession != nil)
-            }
+            deliver(text, to: focusedSession)
         }
     }
 
@@ -1731,10 +1727,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
             let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
             guard !full.isEmpty else { return }
-            self.queue.append(.init(text: full, sessionId: active?.id, project: active?.projectName))
+            let item = AppModel.QueueItem(text: full, sessionId: active?.id, project: active?.projectName)
+            self.queue.append(item)
             DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
             self.saveQueue()
             self.refresh()
+            // Claude is free but its chat is behind another app (written from
+            // a browser): brought forward and sent now, not left waiting.
+            if let s = active, self.queue.count == 1, s.activity == .sleep,
+               !self.requests.contains(where: { $0.sessionId == s.id }), !self.chatInFront(s.id) {
+                self.sendQueuedNow(item.id)
+            }
         }
         model.removeFromQueue = { [weak self] id in
             self?.queue.removeAll { $0.id == id }
@@ -1771,7 +1774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard session.activity == .sleep, !session.waitingNotice,
               !requests.contains(where: { $0.sessionId == session.id }),
-              store.session(inWindow: frontTitle, tty: frontTTY)?.id == session.id,
+              chatInFront(session.id),
               // In front a moment already: just switched to, its field may not
               // take the first letters yet.
               Date().timeIntervalSince(frontSince.at) > 1.2,
@@ -1798,7 +1801,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         typeWhenInFront(item, session: session.id, tries: 14)
     }
 
-    private func typeWhenInFront(_ item: AppModel.QueueItem, session id: String, tries: Int) {
+    private func typeWhenInFront(_ item: AppModel.QueueItem, session id: String, tries: Int, requeue: Bool = true) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
             if self.chatInFront(id) {
@@ -1806,13 +1809,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.typeAfterReleasingKey(item.text)
                 DebugLog.note("queue: sent now")
             } else if tries > 0 {
-                self.typeWhenInFront(item, session: id, tries: tries - 1)
+                self.typeWhenInFront(item, session: id, tries: tries - 1, requeue: requeue)
             } else {
-                self.queue.insert(item, at: 0)
-                self.saveQueue()
-                self.refresh()
+                // Its chat didn't come up: kept, not typed into another app.
+                if requeue || self.config.taskQueue {
+                    self.queue.insert(item, at: 0)
+                    self.saveQueue()
+                    self.refresh()
+                }
                 NSSound.beep()
-                DebugLog.note("queue: send now — its chat didn't come to the front")
+                DebugLog.note("send: its chat didn't come to the front — " + (requeue || self.config.taskQueue ? "back in the queue" : "not sent"))
             }
         }
     }
@@ -1833,10 +1839,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// That chat is surely the one in front (its window or tab, or the page
     /// Claude Desktop shows) — never a guess, as words are typed into it.
     private func chatInFront(_ id: String) -> Bool {
-        if frontApp?.bundleIdentifier == Self.desktopBundle {
+        guard let app = frontApp else { return false }
+        if app.bundleIdentifier == Self.desktopBundle {
             return store.session(inDesktop: frontTitle, chat: desktopShown?.chat)?.id == id
         }
+        // Another app in front (a browser): the window title read last is
+        // its editor's from before, and keys would go to that other app.
+        guard isTerminal(app) else { return false }
         return store.session(inWindow: frontTitle, tty: frontTTY)?.id == id
+    }
+
+    /// A message for this chat (the widget's box, the bar, the voice card):
+    /// typed in once its chat is in front — brought there now if another
+    /// app is. No chat known: into the app in front, as before.
+    private func deliver(_ text: String, to session: Session?) {
+        guard let session else {
+            typeAfterReleasingKey(text)
+            return
+        }
+        if !chatInFront(session.id) { openSession(session.id) }
+        typeWhenInFront(.init(text: text, sessionId: session.id, project: session.projectName),
+                        session: session.id, tries: 14, requeue: false)
     }
 
     /// /model or /effort, typed into the chat in front like a button's
