@@ -463,6 +463,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.chatName = active.map { Self.short($0.displayName, 18) }
         bar.short = !barFullWidth // beside Apple's buttons: everything smaller
         bar.expanded = barExpanded
+        bar.listening = voiceIntoBar && voice.isRunning
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.short(s.displayName, 60),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -670,9 +671,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             advance(request, with: answer)
 
         case .mic:
+            // In the message line: our own recognizer, the words showing in
+            // the line as you speak (not the system's dictation up top).
             DebugLog.tap("dictate")
             if let request = typingFor { extendHold(request) }
-            typing.startDictation()
+            if voice.isRunning { voice.stop() } else { voiceBegin(stopAfterPause: 5) }
 
         case .dictate:
             DebugLog.tap("dictate (bar)")
@@ -1031,7 +1034,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.voiceToggle = { [weak self] in
             guard let self else { return }
-            if self.model.listening {
+            if self.model.listening || self.voice.isRunning {
                 self.voice.stop()
             } else {
                 // Tap-to-talk: ends by itself after a 5 s pause (shorter
@@ -1322,7 +1325,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rightOption.onStart = { [weak self] in self?.voiceBegin() }
         rightOption.onEnd = { [weak self] in self?.voice.stop() }
         rightOption.start()
-        voice.onPartial = { [weak self] text in self?.model.heard = text }
+        voice.onPartial = { [weak self] text in
+            guard let self else { return }
+            if self.voiceIntoBar {
+                // The words as they come, right in the bar's message line.
+                self.typing.set(Self.join(self.voiceBarBase, text))
+            } else {
+                self.model.heard = text
+            }
+        }
         voice.onLog = { DebugLog.note("voice: \($0)") }
         voice.onMessage = { [weak self] message in
             guard let self else { return }
@@ -1332,6 +1343,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voice.onFinal = { [weak self] text in
             guard let self else { return }
+            if self.voiceIntoBar {
+                // Stays in the line, to edit and send from the bar.
+                if let text { self.typing.set(Self.join(self.voiceBarBase, text)) }
+                self.voiceIntoBar = false
+                self.model.listening = false
+                self.model.heard = ""
+                self.setNeedsRefresh()
+                return
+            }
             if let text {
                 self.deliverVoice(text)
             } else if !self.voiceMessageShown {
@@ -1372,13 +1392,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Dictating into the Touch Bar's message line (it was open, or the
+    /// Touch Bar is all there is): the words show there as they come.
+    private var voiceIntoBar = false
+    /// What the line held before you spoke.
+    private var voiceBarBase = ""
+
+    private static func join(_ a: String, _ b: String) -> String {
+        [a, b].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
     private func voiceBegin(stopAfterPause: TimeInterval? = nil) {
         guard !voice.isRunning, !model.listening else { return }
         DebugLog.tap(stopAfterPause == nil ? "voice (hold ⌥)" : "voice (mic)")
         voice.stopAfterPause = stopAfterPause
-        model.listening = true
+        // Only the Touch Bar (no widget): its message line opens for the words.
+        if !typing.isActive, !config.widget, barShouldShow, currentRequest(active: focusedSession) == nil {
+            composing = true
+            typingText = composeDraft
+            typing.begin(with: composeDraft)
+        }
+        voiceIntoBar = typing.isActive
+        voiceBarBase = typing.isActive ? typing.text : ""
+        model.listening = !voiceIntoBar // the widget shows it only when it's the widget's
         model.heard = ""
         widget.update()
+        setNeedsRefresh()
         if let request = typingFor ?? currentRequest(active: nil), request.kind == .question { extendHold(request) }
         voice.start(language: config.voiceLanguage, allowServer: config.voiceAllowServer)
     }
