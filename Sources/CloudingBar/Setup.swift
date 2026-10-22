@@ -75,14 +75,57 @@ enum Setup {
 
     // MARK: Claude Code settings
 
-    /// Our hook is in for every event Clouding Bar listens to.
+    /// Claude Code reaches Clouding Bar — through the plugin, or our hook
+    /// in settings.json for every event — and its status line is ours.
     static var isConnected: Bool {
+        guard hooksInSettings || pluginActive else { return false }
+        return ((readSettings()?["statusLine"] as? [String: Any])?["command"] as? String) == statusLine
+    }
+
+    /// Our hook is in settings.json for every event Clouding Bar listens to.
+    static var hooksInSettings: Bool {
         guard let hooks = (readSettings()?["hooks"]) as? [String: Any] else { return false }
         return events.allSatisfy { event in
             ((hooks[event] as? [[String: Any]]) ?? []).contains { entry in
                 ((entry["hooks"] as? [[String: Any]]) ?? []).contains { ($0["command"] as? String) == hook }
             }
         }
+    }
+
+    // MARK: The plugin
+
+    /// Clouding Bar's plugin is on in Claude Code: installed from its
+    /// marketplace (/plugin install clouding-bar@clouding-bar), or with your
+    /// account from Claude Desktop (synced). Its hooks are the link then.
+    static var pluginActive: Bool {
+        if let enabled = readSettings()?["enabledPlugins"] as? [String: Any],
+           enabled.contains(where: { $0.key.hasPrefix("clouding-bar@") && ($0.value as? Bool) == true }) {
+            return true
+        }
+        return pluginSynced
+    }
+
+    /// The plugin comes with your account (installed in Claude Desktop):
+    /// in Cowork too, then.
+    static var pluginSynced: Bool { syncedPlugins.contains("clouding-bar") }
+
+    /// The Cowork-only plugin of version 1.0 is still installed in Claude
+    /// Desktop: two plugins would report each Cowork reply twice.
+    static var oldCoworkPlugin: Bool { syncedPlugins.contains("clouding-bar-cowork") }
+
+    /// The plugins your account brings to Claude Code: what each
+    /// ~/.claude/plugins/synced/<account>/manifest.json lists.
+    private static var syncedPlugins: Set<String> {
+        let root = settingsURL.deletingLastPathComponent().appendingPathComponent("plugins/synced")
+        var names = Set<String>()
+        for account in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
+            guard let data = try? Data(contentsOf: account.appendingPathComponent("manifest.json")),
+                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
+            for plugin in o["plugins"] as? [[String: Any]] ?? [] {
+                if let name = plugin["name"] as? String { names.insert(name) }
+            }
+        }
+        return names
     }
 
     private static func readSettings() -> [String: Any]? {
@@ -98,7 +141,8 @@ enum Setup {
         }
     }
 
-    /// Adds our hooks and status line to ~/.claude/settings.json.
+    /// Adds our status line to ~/.claude/settings.json, and our hooks too
+    /// unless the plugin brings them (a plugin can't bring a status line).
     static func connect() throws {
         updateHelpers()
         let fm = FileManager.default
@@ -114,7 +158,9 @@ enum Setup {
         let ours: Set<String> = [hook, dir.appendingPathComponent("cloudingbar-relay.sh").path,
                                  oldDir + "/claudebar-relay.sh", oldDir + "/claudebar-hook"]
         var hooks = settings["hooks"] as? [String: Any] ?? [:]
-        for event in events {
+        // Hooks already in settings.json stay (the plugin then steps aside).
+        let withPlugin = pluginActive && !hooksInSettings
+        for event in events where !withPlugin {
             var entries = hooks[event] as? [[String: Any]] ?? []
             var found = false
             for i in entries.indices {
@@ -133,7 +179,7 @@ enum Setup {
             }
             hooks[event] = entries
         }
-        settings["hooks"] = hooks
+        if !hooks.isEmpty { settings["hooks"] = hooks }
 
         // The status line: a custom one stays, called through ours.
         var line = settings["statusLine"] as? [String: Any] ?? [:]
@@ -158,7 +204,8 @@ enum Setup {
             try before.write(to: backups.appendingPathComponent("settings-\(stamp.string(from: Date())).json"))
         }
         try (after + Data("\n".utf8)).write(to: settingsURL, options: .atomic)
-        DebugLog.note("setup: Claude Code hooks and status line registered")
+        DebugLog.note(withPlugin ? "setup: status line registered (the plugin brings the hooks)"
+                                 : "setup: Claude Code hooks and status line registered")
     }
 
     // MARK: Codex

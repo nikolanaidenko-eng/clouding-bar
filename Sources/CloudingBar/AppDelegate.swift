@@ -19,6 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let frontWindow = FrontWindow()
     private var statusItem: NSStatusItem?
     private let touchBarStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
+    private let updater = Updater()
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
     private let templatesItem = NSMenuItem(title: "Templates", action: nil, keyEquivalent: "")
 
@@ -134,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.showTour = { [weak self] in self?.showTour() }
 
         setUpClaudeCode()
+        setUpUpdates()
         // The first time: connecting to Claude Code if it isn't yet, then
         // the tour, once everything is up.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -257,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             readCowork()
         }
         if ticks % 10 == 0 {
+            refreshSetupStatus()
             let gone = Set(store.prune())
             for r in requests where r.sessionId.map(gone.contains) ?? false { finish(r, "session gone → dropped") }
         }
@@ -823,6 +827,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let tourItem = NSMenuItem(title: "Take the Tour…", action: #selector(showTour), keyEquivalent: "")
         tourItem.target = self
         menu.addItem(tourItem)
+        updateItem.target = self
+        updateItem.action = #selector(updateFromMenu)
+        menu.addItem(updateItem)
         let resetItem = NSMenuItem(title: "Reset Widget Position", action: #selector(resetWidgetPosition), keyEquivalent: "")
         resetItem.target = self
         menu.addItem(resetItem)
@@ -874,6 +881,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        if case .available(let v) = updater.state {
+            updateItem.title = "Install Update \(v)…"
+        } else {
+            updateItem.title = "Check for Updates…"
+        }
+        updateItem.isHidden = !Updater.isRelease
         touchBarPresent = TouchBarDetector.hasTouchBar
         touchBarStatusItem.title = touchBarPresent ? "Touch Bar: found" : "Touch Bar: not found"
         touchBarToggleItem.state = touchBarEnabled ? .on : .off
@@ -951,19 +964,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Also every 10 seconds (a plugin installed meanwhile): only what
+    /// changed is assigned, so the settings window doesn't redraw for nothing.
     private func refreshSetupStatus() {
-        model.claudeConnected = Setup.isConnected
-        model.hasCodex = Setup.hasCodex
-        model.codexConnected = Setup.codexConnected
-        model.hasVSCode = Setup.hasVSCode
-        model.vscodeWrapped = Setup.vscodeWrapped
+        let m = model
+        func set(_ key: ReferenceWritableKeyPath<AppModel, Bool>, _ value: Bool) {
+            if m[keyPath: key] != value { m[keyPath: key] = value }
+        }
+        let synced = Setup.pluginSynced
+        set(\.pluginActive, Setup.pluginActive)
+        set(\.pluginSynced, synced)
+        set(\.oldCoworkPlugin, Setup.oldCoworkPlugin)
+        set(\.claudeConnected, Setup.isConnected)
+        set(\.hasCodex, Setup.hasCodex)
+        set(\.codexConnected, Setup.codexConnected)
+        set(\.hasVSCode, Setup.hasVSCode)
+        set(\.vscodeWrapped, Setup.vscodeWrapped)
+        // The plugin installed in Claude Desktop is there for Cowork: Cowork
+        // on, unless you set it yourself.
+        if synced && config.coworkMode == "off" && !config.coworkModeSet {
+            setConfig("coworkMode", "thresholds")
+        }
     }
 
     /// The first launch of a download: ask before touching Claude Code's settings.
     private func offerSetup() {
         let alert = NSAlert()
         alert.messageText = "Connect Clouding Bar to Claude Code?"
-        alert.informativeText = "Clouding Bar adds a small hook and a status line to ~/.claude/settings.json, so Claude Code can tell it what it's doing and ask you through it. Your settings are merged, never replaced, and backed up first. Nothing leaves this Mac."
+        alert.informativeText = Setup.pluginActive
+            ? "Clouding Bar's plugin already links it to Claude Code. For the 5-hour limit and the context it adds its status line to ~/.claude/settings.json (a plugin can't): your settings are merged, never replaced, and backed up first."
+            : "Clouding Bar adds a small hook and a status line to ~/.claude/settings.json, so Claude Code can tell it what it's doing and ask you through it. Your settings are merged, never replaced, and backed up first. Nothing leaves this Mac."
         alert.addButton(withTitle: "Connect")
         alert.addButton(withTitle: "Not Now")
         NSApp.activate(ignoringOtherApps: true)
@@ -1049,6 +1079,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setConfig(_ key: String, _ value: Any) {
         Config.save(key, value)
         config = Config.load()
+        if key == "coworkMode", let mode = value as? String {
+            Cowork.setMode(mode, folders: watchedCoworkFolders)
+        }
         DebugLog.note("setting \(key) changed")
         refresh()
     }
@@ -1636,6 +1669,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: - Updates
+
+    private func setUpUpdates() {
+        model.updatesPossible = Updater.isRelease
+        model.checkForUpdates = { [weak self] in self?.updater.check() }
+        model.installUpdate = { [weak self] in self?.updater.install() }
+        updater.onChange = { [weak self] state in self?.showUpdate(state) }
+        updater.start { [weak self] in self?.config.checkUpdates ?? false }
+        showUpdate(updater.state)
+    }
+
+    private func showUpdate(_ state: Updater.State) {
+        let have = Updater.version
+        switch state {
+        case .idle: model.updateText = "Version \(have)"
+        case .checking: model.updateText = "Checking…"
+        case .upToDate: model.updateText = "Up to date · \(have)"
+        case .available(let v): model.updateText = "\(v) is out · you have \(have)"
+        case .installing: model.updateText = "Installing… it reopens by itself"
+        case .failed(let why): model.updateText = why
+        }
+        if case .available(let v) = state { model.updateVersion = v } else if state != .installing { model.updateVersion = nil }
+    }
+
+    @objc private func updateFromMenu() {
+        DebugLog.tap("menu: updates")
+        if case .available = updater.state {
+            updater.install()
+        } else {
+            updater.check()
+            openSettings()
+        }
+    }
+
     // MARK: - Cowork and the claude.ai limit
 
     private func setUpCowork() {
@@ -1653,15 +1720,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.makeCoworkPlugin = { [weak self] in
             guard let self else { return }
-            guard self.config.coworkMode != "off" else {
-                self.model.coworkMessage = "Pick Thresholds or Every reply first."
-                return
-            }
             do {
-                let zip = try Cowork.makePlugin(mode: self.config.coworkMode)
+                let zip = try Cowork.makePlugin()
                 NSWorkspace.shared.activateFileViewerSelecting([zip])
-                self.model.coworkMessage = "Saved to Downloads. Upload clouding-bar-cowork.zip in Claude Desktop → Settings → Plugins."
-                DebugLog.note("cowork plugin made (\(self.config.coworkMode))")
+                self.model.coworkMessage = "Saved to Downloads. Upload clouding-bar-plugin.zip in Claude Desktop → Customize → Plugins."
+                DebugLog.note("plugin zip made")
             } catch {
                 self.model.coworkMessage = "Couldn't make it: \(error.localizedDescription)"
             }
@@ -1715,6 +1778,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func readCowork() {
         guard config.coworkMode != "off" else { return }
         let folders = watchedCoworkFolders
+        if ticks % 30 == 0 { Cowork.setMode(config.coworkMode, folders: folders) }
         model.coworkFolders = folders.map { URL(fileURLWithPath: $0).lastPathComponent }
         var newest: Cowork.Status?
         var reported: [Cowork.Status] = []

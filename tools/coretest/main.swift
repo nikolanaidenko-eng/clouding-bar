@@ -169,10 +169,11 @@ let pluginDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDI
 // Command Line Tools' own runs regardless.
 let python3 = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/usr/bin/python3"]
     .first { FileManager.default.isExecutableFile(atPath: $0) }!
-let zip = try? Cowork.makePlugin(mode: "thresholds", into: pluginDir)
-check(zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false, "cowork plugin zip is made")
-check(FileManager.default.fileExists(atPath: pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path),
-      "cowork plugin has its hook script")
+let zip = try? Cowork.makePlugin(into: pluginDir)
+check(zip?.lastPathComponent == "clouding-bar-plugin.zip" && zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+      "the plugin's zip is made, for upload in Claude Desktop")
+let coworkScript = Cowork.pluginSource!.appendingPathComponent("hooks/cowork.py").path
+check(FileManager.default.fileExists(atPath: coworkScript), "the plugin has its Cowork script")
 do { // the hook writes into the connected folder itself: working, then done
     let task = pluginDir.appendingPathComponent("cowork-task")
     let mac = task.appendingPathComponent("mnt/24H")
@@ -184,7 +185,7 @@ do { // the hook writes into the connected folder itself: working, then done
     func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: python3)
-        p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
+        p.arguments = ["-I", coworkScript]
         p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"]
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
@@ -250,12 +251,29 @@ do { // the hook writes into the connected folder itself: working, then done
 
     check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/.gitignore").path),
           "cowork hook: git ignores it")
+    // Off in Clouding Bar (Settings → Cowork): the folder says so, the plugin is quiet.
+    Cowork.setMode("off", folders: [mac.path])
+    _ = hook("UserPromptSubmit", cwd: task, session: "s-off")
+    check(!FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/cowork-s-off.json").path),
+          "cowork hook: quiet when Cowork is off in Clouding Bar")
+    Cowork.setMode("thresholds", folders: [mac.path])
+    _ = hook("UserPromptSubmit", cwd: task, session: "s-on")
+    check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/cowork-s-on.json").path),
+          "…and reports again when it's on")
+    let untouched = pluginDir.appendingPathComponent("cowork-untouched")
+    try? FileManager.default.createDirectory(at: untouched, withIntermediateDirectories: true)
+    Cowork.setMode("off", folders: [untouched.path])
+    check(!FileManager.default.fileExists(atPath: untouched.appendingPathComponent(".clouding-bar").path),
+          "Cowork off: nothing written where the plugin never was")
+    let server = pluginDir.appendingPathComponent("linux-server")
+    try? FileManager.default.createDirectory(at: server, withIntermediateDirectories: true)
+    check(hook("Stop", cwd: server, session: UUID().uuidString).isEmpty, "cowork hook: quiet on a Linux that isn't Cowork")
     let lonely = pluginDir.appendingPathComponent("cowork-nofolder")
-    try? FileManager.default.createDirectory(at: lonely, withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(at: lonely.appendingPathComponent("mnt/outputs"), withIntermediateDirectories: true)
     do { // on the Mac (Claude Code, not Cowork) it does nothing
         let p = Process()
         p.executableURL = URL(fileURLWithPath: python3)
-        p.arguments = ["-I", pluginDir.appendingPathComponent("clouding-bar-cowork/hooks/status.py").path]
+        p.arguments = ["-I", coworkScript]
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
         try? p.run()
@@ -265,6 +283,96 @@ do { // the hook writes into the connected folder itself: working, then done
         check(output.fileHandleForReading.readDataToEndOfFile().isEmpty, "cowork hook: quiet in Claude Code on the Mac")
     }
     check(hook("Stop", cwd: lonely, session: UUID().uuidString).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
+}
+
+// MARK: The plugin and Claude Code's settings
+
+do {
+    let fm = FileManager.default
+    let home = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("claude-home")
+    try? fm.removeItem(at: home)
+    try? fm.createDirectory(at: home, withIntermediateDirectories: true)
+    let settings = home.appendingPathComponent("settings.json")
+    setenv("CLOUDINGBAR_CLAUDE_SETTINGS", settings.path, 1)
+    try? "{}".write(to: settings, atomically: true, encoding: .utf8)
+    check(!Setup.pluginActive && !Setup.isConnected, "settings: nothing of ours yet")
+    try? Setup.connect()
+    check(Setup.hooksInSettings && Setup.isConnected, "Connect without the plugin: hooks and status line")
+
+    try? #"{"enabledPlugins": {"clouding-bar@clouding-bar": true}}"#.write(to: settings, atomically: true, encoding: .utf8)
+    check(Setup.pluginActive && !Setup.isConnected, "the plugin is on, the status line not yet")
+    try? Setup.connect()
+    check(!Setup.hooksInSettings && Setup.isConnected, "Connect with the plugin: the status line only, the plugin brings the hooks")
+
+    try? "{}".write(to: settings, atomically: true, encoding: .utf8)
+    let account = home.appendingPathComponent("plugins/synced/account")
+    try? fm.createDirectory(at: account, withIntermediateDirectories: true)
+    try? #"{"plugins": [{"name": "clouding-bar"}, {"name": "clouding-bar-cowork"}]}"#
+        .write(to: account.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+    check(Setup.pluginActive && Setup.pluginSynced && Setup.oldCoworkPlugin,
+          "the plugin from Claude Desktop (synced) counts; the old Cowork one is noticed")
+    unsetenv("CLOUDINGBAR_CLAUDE_SETTINGS")
+
+    // The plugin's hook script on the Mac: to the app's hook program, or aside.
+    let runSh = Cowork.pluginSource!.appendingPathComponent("hooks/run.sh").path
+    let fakeHome = home.appendingPathComponent("user")
+    let ours = fakeHome.appendingPathComponent(".cloudingbar")
+    try? fm.createDirectory(at: ours, withIntermediateDirectories: true)
+    try? fm.createDirectory(at: fakeHome.appendingPathComponent(".claude"), withIntermediateDirectories: true)
+    func run(_ event: String, root: String = "/x/.claude/plugins/cache/clouding-bar/clouding-bar/1.1.0") -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = [runSh, event]
+        p.environment = ["HOME": fakeHome.path, "PATH": "/usr/bin:/bin", "CLAUDE_PLUGIN_ROOT": root]
+        let input = Pipe(), output = Pipe()
+        p.standardInput = input; p.standardOutput = output
+        try? p.run()
+        input.fileHandleForWriting.write(Data(#"{"hook_event_name":"\#(event)"}"#.utf8))
+        try? input.fileHandleForWriting.close()
+        p.waitUntilExit()
+        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    }
+    check(run("PreToolUse").isEmpty, "plugin hook: no app yet, nothing in the way")
+    let program = ours.appendingPathComponent("cloudingbar-hook")
+    try? "#!/bin/sh\necho forwarded; cat\n".write(to: program, atomically: true, encoding: .utf8)
+    try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: program.path)
+    check(run("PreToolUse") == "forwarded\n{\"hook_event_name\":\"PreToolUse\"}", "plugin hook: the event goes to the app's hook program")
+    let userSettings = fakeHome.appendingPathComponent(".claude/settings.json")
+    try? #"{"enabledPlugins": {"clouding-bar@clouding-bar": true}}"#.write(to: userSettings, atomically: true, encoding: .utf8)
+    check(run("PreToolUse", root: "/x/.claude/plugins/synced/acc/clouding-bar").isEmpty,
+          "plugin hook: the copy from Claude Desktop steps aside for the one installed in Claude Code")
+    try? #"{"hooks": {"PreToolUse": [{"hooks": [{"command": "/u/.cloudingbar/cloudingbar-hook"}]}]}}"#
+        .write(to: userSettings, atomically: true, encoding: .utf8)
+    check(run("PreToolUse").isEmpty, "plugin hook: steps aside for the hook in settings.json (no event twice)")
+}
+
+// MARK: Updates
+
+do {
+    func release(_ tag: String, _ assets: [String], draft: Bool = false, pre: Bool = false) -> [String: Any] {
+        ["tag_name": tag, "draft": draft, "prerelease": pre, "html_url": "https://github.com/r/releases/tag/\(tag)",
+         "assets": assets.map { ["name": $0, "browser_download_url": "https://github.com/r/releases/download/\(tag)/\($0)"] }]
+    }
+    let list: [[String: Any]] = [
+        release("windows-beta-3", ["Clouding-Bar-Windows-beta-3.zip"]),
+        release("v2.0.0", ["Clouding-Bar-2.0.0.dmg"], draft: true),
+        release("v1.9.9", ["Clouding-Bar-1.9.9.dmg"], pre: true),
+        release("v1.0.1", ["Clouding-Bar-1.0.1.dmg"]),
+        release("v1.10.0", ["Clouding-Bar-1.10.0.dmg"]),
+        release("mac-beta-2", ["Clouding-Bar-1.0.0-beta.dmg"]),
+    ]
+    let newest = UpdateCheck.newest(in: try! JSONSerialization.data(withJSONObject: list))
+    check(newest?.version == "1.10.0" && newest?.dmg.lastPathComponent == "Clouding-Bar-1.10.0.dmg"
+          && newest?.page?.lastPathComponent == "v1.10.0",
+          "updates: the newest Mac release — no drafts, pre-releases, betas or Windows")
+    check(UpdateCheck.isNewer("1.10.0", than: "1.9.3") && !UpdateCheck.isNewer("1.0.1", than: "1.0.1")
+          && !UpdateCheck.isNewer("1.0.0", than: "1.0.1") && UpdateCheck.isNewer("1.1", than: "1.0.9"),
+          "updates: versions compared number by number")
+    check(UpdateCheck.version(ofDMG: "Clouding-Bar-1.2.3.dmg") == "1.2.3" && UpdateCheck.version(ofDMG: "Clouding-Bar-1.2.dmg") == nil
+          && UpdateCheck.version(ofDMG: "Clouding-Bar-1.0.0-beta.dmg") == nil, "updates: a release's disk image by its name")
+    check(UpdateCheck.due(lastCheck: nil) && !UpdateCheck.due(lastCheck: Date().addingTimeInterval(-3600))
+          && UpdateCheck.due(lastCheck: Date().addingTimeInterval(-21 * 3600)), "updates: once a day")
+    check(UpdateCheck.newest(in: Data("{\"message\": \"Not Found\"}".utf8)) == nil, "updates: GitHub's \"not found\" is no release")
 }
 
 // MARK: Model and effort

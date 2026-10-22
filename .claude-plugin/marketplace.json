@@ -1,0 +1,18 @@
+{
+  "name": "clouding-bar",
+  "owner": {
+    "name": "Clouding Bar contributors",
+    "url": "https://github.com/nikolanaidenko-eng/clouding-bar"
+  },
+  "metadata": {
+    "description": "Clouding Bar: Claude Code at a glance on your Mac — Touch Bar, a floating pill, the notch."
+  },
+  "plugins": [
+    {
+      "name": "clouding-bar",
+      "source": "./plugin",
+      "description": "The Clouding Bar app's link to Claude Code and Cowork; /clouding-bar:install gets the app.",
+      "category": "productivity"
+    }
+  ]
+}

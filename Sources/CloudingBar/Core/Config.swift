@@ -187,8 +187,18 @@ struct Config: Equatable {
 
     /// Cowork status through the plugin: "off", "thresholds", "every".
     var coworkMode = "off"
+    /// You picked the Cowork mode yourself (else the plugin installed in
+    /// Claude Desktop turns it on, at "thresholds").
+    var coworkModeSet = false
     /// The Mac folder connected in Cowork, where the status file lands.
     var coworkFolder: String?
+
+    /// Once a day, ask GitHub whether a newer release is out (a release
+    /// build only; nothing about you is sent).
+    var checkUpdates = true
+    /// The plugin opens the app when a Claude session starts (its
+    /// hooks/run.sh reads this key from the file).
+    var openWithClaude = true
 
     // Voice: hold the right Option key alone, or the widget's mic.
     var voiceLanguage = Config.defaultVoiceLanguage
@@ -277,7 +287,9 @@ struct Config: Equatable {
         if let v = obj["templates"] as? [String] { config.templates = v }
         if let v = obj["screenshot"] as? Bool { config.screenshot = v }
         if let v = obj["metrics"] as? [String] { config.metrics = v }
-        if let v = obj["coworkMode"] as? String { config.coworkMode = v }
+        if let v = obj["coworkMode"] as? String { config.coworkMode = v; config.coworkModeSet = true }
+        if let v = obj["checkUpdates"] as? Bool { config.checkUpdates = v }
+        if let v = obj["openWithClaude"] as? Bool { config.openWithClaude = v }
         if let v = obj["coworkFolder"] as? String { config.coworkFolder = v }
         if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
         if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }
