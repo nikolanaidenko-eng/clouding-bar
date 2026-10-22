@@ -31,6 +31,10 @@ final class PendingRequest {
     let questions: [QuestionItem]
     let responder: Responder
     let created = Date()
+    /// Asked in Claude Desktop's own window (Cowork, its chats), which no
+    /// hook reaches: answered by pressing the choice there (DesktopChat).
+    /// What it was, to know it again.
+    let desktopKey: String?
 
     /// When the app stops holding it and lets Claude's own UI take over.
     var holdUntil: Date?
@@ -41,6 +45,7 @@ final class PendingRequest {
 
     init?(_ m: Inbound, responder: Responder) {
         self.responder = responder
+        desktopKey = nil
         sessionId = m.sessionId
         entrypoint = m.entrypoint
         toolName = m.toolName ?? "tool"
@@ -65,13 +70,41 @@ final class PendingRequest {
         }
     }
 
+    /// A question in Claude Desktop's window: one at a time, as it shows them.
+    init(desktopQuestion text: String, options: [String], multiSelect: Bool, sessionId: String?, key: String) {
+        responder = Responder()
+        desktopKey = key
+        kind = .question
+        viaPermission = false
+        self.sessionId = sessionId
+        entrypoint = "claude-desktop"
+        toolName = "AskUserQuestion"
+        toolInput = [:]
+        suggestions = nil
+        questions = [QuestionItem(text: text, options: options, descriptions: options.map { _ in "" }, multiSelect: multiSelect)]
+    }
+
+    /// A permission in Claude Desktop's window: what it asks, in its words.
+    init(desktopPermission text: String, sessionId: String?, key: String) {
+        responder = Responder()
+        desktopKey = key
+        kind = .permission
+        viaPermission = true
+        self.sessionId = sessionId
+        entrypoint = "claude-desktop"
+        toolName = "Allow"
+        toolInput = ["detail": text]
+        suggestions = nil
+        questions = []
+    }
+
     var current: QuestionItem? { index < questions.count ? questions[index] : nil }
 
     /// VS Code and the desktop app show their own dialog alongside the hook
     /// and take whichever answer comes first, so holding there costs
     /// nothing. Elsewhere (terminal, scripts) Claude may wait on the hook.
     var hostAnswersInParallel: Bool {
-        entrypoint == "claude-vscode" || entrypoint == "claude-desktop"
+        entrypoint == "claude-vscode" || entrypoint == "claude-desktop" || desktopKey != nil
     }
 
     /// Records an answer to the current question. True when all are done.
