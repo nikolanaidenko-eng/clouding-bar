@@ -31,7 +31,35 @@ import AppKit
 ///
 /// A `lively` Cloud (the settings window's) watches the pointer, dozes off
 /// when nothing happens for a while and wakes as soon as something does.
+/// Cloud's colours — classic, and the ones a wave from Claude unlocks
+/// (Settings → Widget → Cloud, once it's happened).
+enum CloudColor: String, CaseIterable, Identifiable {
+    case classic, peach, mint, lavender, sky
+    var id: String { rawValue }
+    var label: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    /// Its body, awake; and dimmed, asleep.
+    var skin: NSColor {
+        switch self {
+        case .classic: return NSColor(hex: 0xECEAE5)
+        case .peach: return NSColor(hex: 0xFFD9C4)
+        case .mint: return NSColor(hex: 0xC9F2DE)
+        case .lavender: return NSColor(hex: 0xDCD5FF)
+        case .sky: return NSColor(hex: 0xC8E6FF)
+        }
+    }
+    var asleep: NSColor { skin.blended(withFraction: 0.27, of: .black) ?? skin }
+}
+
+extension Notification.Name {
+    static let cloudColorChanged = Notification.Name("CloudingBar.cloudColorChanged")
+}
+
 final class MascotView: NSView {
+    /// Every Cloud's colour; set, they all redraw.
+    static var color = CloudColor.classic {
+        didSet { if color != oldValue { NotificationCenter.default.post(name: .cloudColorChanged, object: nil) } }
+    }
+
     var activity: Activity = .sleep {
         didSet { if activity != oldValue { refresh() } }
     }
@@ -82,6 +110,9 @@ final class MascotView: NSView {
         stage.bounds = CGRect(x: 0, y: 0, width: 40, height: 40)
         layer?.addSublayer(stage)
         refresh()
+        NotificationCenter.default.addObserver(forName: .cloudColorChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.refresh(force: true)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -125,6 +156,19 @@ final class MascotView: NSView {
             body.add(once("transform.scale.x", [1, 1.1, 0.94, 1.03, 1], 0.55), forKey: "spread")
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.15) { [weak self] in self?.refresh() }
+    }
+
+    /// Waving (Claude said ☁️): a hop, then swaying side to side from its
+    /// feet, smiling all the while.
+    func wave() {
+        stir()
+        happyUntil = Date().addingTimeInterval(2.3)
+        refresh(force: true)
+        if !Palette.reduceMotion {
+            body.add(once("transform.translation.y", [0, -5, 0, 0, 0, 0, 0], 1.6), forKey: "jump")
+            body.add(once("transform.rotation.z", [0, 0, 0.28, -0.22, 0.28, -0.22, 0.12, 0], 1.6), forKey: "wave")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.35) { [weak self] in self?.refresh() }
     }
 
     /// Something changed nearby: a small hop, no face.
@@ -209,7 +253,7 @@ final class MascotView: NSView {
             let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
             stage.addSublayer(shadow)
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xB8B6B1)))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.asleep))
             body.addSublayer(arcEye(x: 13.6))
             body.addSublayer(arcEye(x: 21.6))
             stage.addSublayer(body)
@@ -250,7 +294,7 @@ final class MascotView: NSView {
             setAccessibilityLabel(pose == .happy ? "Happy" : "Awake")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
             stage.addSublayer(body)
             if pose == .happy {
                 body.addSublayer(arcEye(x: 13.6, y: 21.8, bend: -2.2, color: ink))
@@ -283,7 +327,7 @@ final class MascotView: NSView {
             setAccessibilityLabel("Dizzy")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
             for cx in [16.0, 24.0] {
                 let ring = ellipse(cx: cx, cy: 21, rx: 2.4, ry: 2.4, color: .clear)
                 ring.fillColor = nil
@@ -306,7 +350,7 @@ final class MascotView: NSView {
             // Eyes shut tight, a blush, turned a little away (in a group of
             // its own, so breathing doesn't undo the turn).
             let turned = group(anchorX: 20, anchorY: 34)
-            turned.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            turned.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
             turned.addSublayer(squint(tipX: 15.6, backX: 12.4, y: 21.2, color: ink)) // >
             turned.addSublayer(squint(tipX: 24.4, backX: 27.6, y: 21.2, color: ink)) // <
             turned.addSublayer(ellipse(cx: 12.6, cy: 26, rx: 2.2, ry: 1.2, color: NSColor(hex: 0xFF8A95), opacity: 0.55))
@@ -323,7 +367,7 @@ final class MascotView: NSView {
             let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
             stage.addSublayer(shadow)
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 10, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            body.addSublayer(rect(x: 7, y: 10, w: 26, h: 23, r: 11.5, color: Self.color.skin))
             let eyes = [ellipse(cx: 16, cy: 20.5, rx: 2, ry: 2.8, color: ink),
                         ellipse(cx: 24, cy: 20.5, rx: 2, ry: 2.8, color: ink)]
             eyes.forEach(body.addSublayer)
@@ -352,7 +396,7 @@ final class MascotView: NSView {
             setAccessibilityLabel("Waiting for you")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: NSColor(hex: 0xECEAE5)))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
             body.addSublayer(ellipse(cx: 16, cy: 20.5, rx: 2.2, ry: 3, color: ink))
             body.addSublayer(ellipse(cx: 24, cy: 20.5, rx: 2.2, ry: 3, color: ink))
             body.addSublayer(ellipse(cx: 20, cy: 27, rx: 1.6, ry: 1.2, color: ink))

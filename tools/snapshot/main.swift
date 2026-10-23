@@ -189,6 +189,26 @@ func widget(_ name: String, _ mode: WidgetMode, size: NSSize = NSSize(width: 400
     renderView(host, size: size, name: name)
 }
 
+for (name, kind, title, detail, color) in [
+    ("w-achievement", DoneBubbleController.Alert.Kind.achievement, "Achievement: A wave from Claude",
+     "Thanks for using Clouding Bar! Cloud's colours are unlocked — click to pick one.", UInt32(0xFFD60A)),
+    ("w-wave", .wave, "Claude waved ☁️", "Cloud waves back", 0x64A8FF),
+] {
+    let anim = DoneBubbleAnimation()
+    anim.alert = DoneBubbleController.Alert(kind: kind, id: name, name: title, detail: detail, color: color)
+    anim.out = 1
+    anim.bubble = 1
+    renderView(NSHostingView(rootView: DoneBubbleView(anim: anim, open: {}, hover: { _ in })),
+               size: DoneBubbleController.size(for: kind), name: name)
+}
+for c in CloudColor.allCases { // Cloud in each colour the wave unlocks (one colour at a time, as in the app)
+    MascotView.color = c
+    let v = MascotView(size: 44)
+    v.activity = .sleep
+    v.awake = true
+    renderView(v, size: NSSize(width: 60, height: 60), name: "w-cloud-\(c.rawValue)")
+}
+MascotView.color = .classic
 do { // Cloud tells another chat is done
     let anim = DoneBubbleAnimation()
     anim.alert = DoneBubbleController.Alert(id: "c", name: "Промо-видео для бота", detail: "24H · Cowork", color: Session.colors[4])

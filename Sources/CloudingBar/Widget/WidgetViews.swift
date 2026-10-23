@@ -100,12 +100,15 @@ struct MascotIcon: NSViewRepresentable {
     var awake = false
     /// Goes up by one per poke; each one makes it jump and smile.
     var pokes = 0
+    /// Goes up by one per wave (Claude's ☁️): it sways and smiles.
+    var waves = 0
 
-    final class Coordinator { var pokes = 0 }
+    final class Coordinator { var pokes = 0; var waves = 0 }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> MascotView {
         context.coordinator.pokes = pokes
+        context.coordinator.waves = waves
         return MascotView(size: size)
     }
     func updateNSView(_ view: MascotView, context: Context) {
@@ -114,6 +117,10 @@ struct MascotIcon: NSViewRepresentable {
         if pokes != context.coordinator.pokes {
             context.coordinator.pokes = pokes
             view.poke()
+        }
+        if waves != context.coordinator.waves {
+            context.coordinator.waves = waves
+            view.wave()
         }
     }
 }
@@ -668,7 +675,7 @@ struct MainPanel: View {
         let character: CGFloat = state.hidesHeaderCharacter ? 0 : 28 + 10
         return HStack(alignment: .top, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, pokes: model.cloudPokes).frame(width: 28, height: 28)
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
                 if several {
