@@ -568,6 +568,8 @@ final class BarView: NSView {
 
     /// Cloud jumps (tapped: it's woken up).
     func pokeCharacter() { mascot.poke() }
+    /// Cloud waves (Claude said ☁️).
+    func waveCharacter() { mascot.wave() }
 
     private func refreshValues() {
         mascot.activity = model.activity

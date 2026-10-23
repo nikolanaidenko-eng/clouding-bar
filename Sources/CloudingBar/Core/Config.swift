@@ -142,6 +142,10 @@ struct Config: Equatable {
     /// Another chat than the one shown is done: Cloud pops out and says
     /// which (the widget and the Touch Bar).
     var doneAlerts = true
+    /// Achievements unlocked: "claude-wave" (Claude said ☁️ — Cloud's colours).
+    var achievements: [String] = []
+    /// Cloud's colour (CloudColor), once the wave has unlocked them.
+    var cloudColor = "classic"
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
@@ -271,6 +275,8 @@ struct Config: Equatable {
         if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
         if let v = obj["followWorking"] as? Bool { config.followWorking = v }
         if let v = obj["doneAlerts"] as? Bool { config.doneAlerts = v }
+        if let v = obj["achievements"] as? [String] { config.achievements = v }
+        if let v = obj["cloudColor"] as? String { config.cloudColor = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)

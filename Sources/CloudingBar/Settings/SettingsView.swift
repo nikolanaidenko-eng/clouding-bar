@@ -71,6 +71,16 @@ struct SettingsView: View {
         .onAppear {
             cloud.start()
             if let step = model.tourStep { tab = SettingsTour.stops[step].tab }
+            if let request = model.settingsTabRequest {
+                tab = request
+                model.settingsTabRequest = nil
+            }
+        }
+        // Asked to show a tab (an achievement's bubble: Widget).
+        .onChange(of: model.settingsTabRequest) { request in
+            guard let request else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = request }
+            model.settingsTabRequest = nil
         }
         // The tour takes you from tab to tab.
         .onChange(of: model.tourStep) { step in
@@ -922,6 +932,30 @@ struct WidgetTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            if model.config.achievements.contains("claude-wave") {
+                // Unlocked when Claude first waved at Cloud with a ☁️.
+                SettingsSection(title: "Cloud", icon: "trophy.fill", tint: 0xFFD60A) {
+                    SettingsRow(title: "Cloud's colour", hint: "Unlocked by a wave from Claude ☁️ · in the widget and on the Touch Bar",
+                                divider: false) {
+                        HStack(spacing: 8) {
+                            ForEach(CloudColor.allCases) { c in
+                                let picked = model.config.cloudColor == c.rawValue
+                                Button { model.setConfig("cloudColor", c.rawValue) } label: {
+                                    Circle()
+                                        .fill(Color(c.skin))
+                                        .frame(width: 20, height: 20)
+                                        .overlay(Circle().stroke(Color.accentColor, lineWidth: picked ? 2.5 : 0).padding(-3))
+                                        .overlay(Circle().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
+                                }
+                                .buttonStyle(.plain)
+                                .help(c.label)
+                                .accessibilityLabel(c.label + (picked ? ", picked" : ""))
+                            }
+                        }
+                        .padding(.trailing, 4)
+                    }
+                }
+            }
             SettingsSection(title: "Floating widget", icon: "capsule.fill", tint: 0x0A84FF) {
                 SettingsRow(title: "Show the widget", hint: "A pill over your windows; the panel opens from it",
                             divider: model.config.widget) {
