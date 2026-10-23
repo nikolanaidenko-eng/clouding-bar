@@ -118,7 +118,7 @@ struct NotchView: View {
 
     private var left: some View {
         HStack(spacing: 8) {
-            MascotIcon(activity: model.request != nil ? .wait : model.activity, size: 20)
+            MascotIcon(activity: model.request != nil ? .wait : model.activity, size: 20, pokes: model.cloudPokes)
                 .frame(width: 20, height: 20)
                 .overlay(FileBadge(text: state.dropHover ? "+" : model.attachments.isEmpty ? nil : "\(model.attachments.count)")
                     .offset(x: 5, y: -3), alignment: .topTrailing)
@@ -201,7 +201,7 @@ struct NotchView: View {
                                       @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                MascotIcon(activity: waiting ? .wait : model.activity, size: 22).frame(width: 22, height: 22)
+                MascotIcon(activity: waiting ? .wait : model.activity, size: 22, pokes: model.cloudPokes).frame(width: 22, height: 22)
                 Text(title).font(.system(size: 13, weight: .semibold))
                 if let chat { ChatTag(name: chat.name, color: chat.color, elsewhere: chat.elsewhere, maxWidth: 150) }
                 if let subtitle, !subtitle.isEmpty {

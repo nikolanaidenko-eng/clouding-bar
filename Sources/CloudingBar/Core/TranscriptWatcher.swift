@@ -27,6 +27,9 @@ final class TranscriptWatcher {
         var contextWindow: Int?
         var codexFiveHour: (percent: Double, resetsAt: Double?)?
         var codexWeek: (percent: Double, resetsAt: Double?)?
+        /// A reply of the last minute with ☁️ in its words: Claude waving
+        /// at Cloud (see the note in MascotView.swift).
+        var waved = false
     }
 
     private struct State {
@@ -59,6 +62,12 @@ final class TranscriptWatcher {
     private static let chunk = 8 << 20
 
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
+    private static let cloudMark = Data("☁".utf8)
+    private static let stamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
     private static let interruptMark = Data("[Request interrupted by user".utf8)
     private static let editMark = Data(#""toolUseResult""#.utf8)
     /// What "/model" and "/effort" print: "Set model to …", "Set effort level to …".
@@ -213,6 +222,16 @@ final class TranscriptWatcher {
             if isInterrupt, obj["type"] as? String == "user" {
                 update.interrupted = true
                 continue
+            }
+            // ☁️ in what Claude says (not in code it writes), just now.
+            if isAssistant, line.range(of: Self.cloudMark) != nil,
+               let blocks = (obj["message"] as? [String: Any])?["content"] as? [[String: Any]],
+               // ☁ itself, with or without the emoji selector after it
+               blocks.contains(where: { $0["type"] as? String == "text"
+                   && ($0["text"] as? String)?.unicodeScalars.contains("\u{2601}") == true }),
+               let when = (obj["timestamp"] as? String).flatMap(Self.stamp.date(from:)),
+               Date().timeIntervalSince(when) < 60 {
+                update.waved = true
             }
             guard obj["type"] as? String == "assistant",
                   let message = obj["message"] as? [String: Any],

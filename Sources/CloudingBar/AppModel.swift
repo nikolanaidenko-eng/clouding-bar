@@ -48,6 +48,8 @@ final class AppModel: ObservableObject {
     @Published var openAtLogin = false
 
     @Published var hasSession = false
+    /// Each one makes the widget's Cloud hop and smile (Claude's ☁️).
+    @Published var cloudPokes = 0
     @Published var activity: Activity = .sleep
     @Published var project: String?
     /// The chat the widget shows: its title (or project), colour, and
