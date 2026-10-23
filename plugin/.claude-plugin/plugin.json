@@ -3,11 +3,11 @@
   "version": "1.1.0",
   "description": "Claude Code at a glance on your Mac: the Clouding Bar app's link to Claude Code and Cowork, and /clouding-bar:install to get the app.",
   "author": {
-    "name": "Clouding Bar contributors",
+    "name": "Mykola Naidenko",
     "url": "https://github.com/nikolanaidenko-eng/clouding-bar"
   },
   "homepage": "https://github.com/nikolanaidenko-eng/clouding-bar",
   "repository": "https://github.com/nikolanaidenko-eng/clouding-bar",
-  "license": "MIT",
+  "license": "PolyForm-Shield-1.0.0",
   "keywords": ["macos", "menu-bar", "touch-bar", "status", "cowork"]
 }

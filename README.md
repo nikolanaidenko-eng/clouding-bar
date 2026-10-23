@@ -7,7 +7,7 @@
   <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple">
   <img alt="Signed and notarized by Apple" src="https://img.shields.io/badge/notarized-Apple-0A84FF">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-D97757">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-30D158"></a>
+  <a href="LICENSE"><img alt="PolyForm Shield license" src="https://img.shields.io/badge/license-PolyForm%20Shield-30D158"></a>
 </p>
 
 https://github.com/user-attachments/assets/3f0a6442-497e-434e-b389-f8c7f2931a65
@@ -370,7 +370,10 @@ What changed since:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Shield 1.0.0](LICENSE): use it, change it and share it for any
+purpose — at home or at work — except to provide a product that competes
+with Clouding Bar. The parts that come from TouchMyBar/claudebar stay under
+the MIT License ([its notice](LICENSES/MIT-TouchMyBar.txt)).
 
 Clouding Bar is not affiliated with or endorsed by Anthropic. Claude is a
 trademark of Anthropic, PBC.
