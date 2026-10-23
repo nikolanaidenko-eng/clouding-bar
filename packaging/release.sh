@@ -88,7 +88,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/hooks"
 cp packaging/Info.plist "$APP/Contents/"
 cp packaging/AppIcon.icns "$APP/Contents/Resources/"
 mv "$OUT/CloudingBar" "$OUT/cloudingbar-hook" "$OUT/cloudingbar-tap" "$OUT/cloudingbar-key" "$APP/Contents/MacOS/"
-cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh "$APP/Contents/Resources/hooks/"
+cp hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh "$APP/Contents/Resources/hooks/"
 cp -R plugin "$APP/Contents/Resources/plugin"
 
 echo "Signing…"

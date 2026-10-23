@@ -1,5 +1,8 @@
-.build/
+# What make and swift build leave behind.
 build/
+.build/
+
+# Finder's and Claude Code's own files.
 .DS_Store
 **/CLAUDE.md
 

@@ -39,7 +39,7 @@ enum Setup {
         for name in ["cloudingbar-hook", "cloudingbar-tap"] {
             if let url = Bundle.main.url(forAuxiliaryExecutable: name) { list.append((name, url)) }
         }
-        for name in ["cloudingbar-relay.sh", "cloudingbar-statusline.sh", "cloudingbar-wrapper.sh"] {
+        for name in ["cloudingbar-statusline.sh", "cloudingbar-wrapper.sh"] {
             if let url = Bundle.main.url(forResource: name, withExtension: nil, subdirectory: "hooks") { list.append((name, url)) }
         }
         return list

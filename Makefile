@@ -1,6 +1,8 @@
+# The app, its helpers (hook, tap, key keeper), checks and pictures — all
+# with plain swiftc. `make` builds, `make install` puts it in place.
 APP = CloudingBar
-BUNDLE = build/$(APP).app
 BINARY = build/$(APP)
+BUNDLE = $(BINARY).app
 SOURCES = $(wildcard Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift)
 TAP = build/cloudingbar-tap
 TAP_SOURCES = $(wildcard Sources/CloudingBarTap/*.swift)
@@ -21,26 +23,24 @@ TARGET = $(shell uname -m)-apple-macosx12.0
 
 all: bundle $(TAP) $(HOOK)
 
-# Plain swiftc keeps the build working even on minimal Command Line Tools
-# installs (some are missing SwiftPM's manifest module). `swift build`
-# works too if your toolchain is happy — see Package.swift.
+# swiftc straight, not SwiftPM: some Command Line Tools installs lack the
+# manifest module `swift build` needs (Package.swift is there for editors).
 build: $(SOURCES)
-	mkdir -p build
+	@mkdir -p build
 	swiftc -O -target $(TARGET) $(SOURCES) -o $(BINARY)
 
-# Wrap the binary in a minimal .app bundle. macOS ties the Accessibility
-# permission to the bundle, so this beats a bare binary.
+# The .app: macOS grants Accessibility to an app bundle (and keeps it across
+# rebuilds while the signature's identity stays the same), not a bare binary.
 bundle: build $(KEY) $(TAP) $(HOOK)
-	rm -rf $(BUNDLE)
-	mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/hooks
+	@rm -rf $(BUNDLE) && mkdir -p $(BUNDLE)/Contents/MacOS $(BUNDLE)/Contents/Resources/hooks
+	cp $(BINARY) $(BUNDLE)/Contents/MacOS/
 	cp packaging/Info.plist $(BUNDLE)/Contents/
 	cp packaging/AppIcon.icns $(BUNDLE)/Contents/Resources/
-	cp $(BINARY) $(BUNDLE)/Contents/MacOS/
 	@# Already signed, and copied as is: its Keychain permission survives.
 	cp -p $(KEY) $(BUNDLE)/Contents/MacOS/
 	@# What the app puts in ~/.cloudingbar itself (Setup.swift), for a download.
 	cp -p $(TAP) $(HOOK) $(BUNDLE)/Contents/MacOS/
-	cp hooks/cloudingbar-relay.sh hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh $(BUNDLE)/Contents/Resources/hooks/
+	cp hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh $(BUNDLE)/Contents/Resources/hooks/
 	@# The plugin, for the zip Settings → Cowork saves (the marketplace serves the same folder).
 	cp -R plugin $(BUNDLE)/Contents/Resources/plugin
 	@packaging/sign.sh $(BUNDLE)
@@ -68,8 +68,9 @@ $(HOOK): $(HOOK_SOURCES)
 	swiftc -O -target $(TARGET) $(HOOK_SOURCES) -o $(HOOK)
 	@packaging/sign.sh $(HOOK) dev.cloudingbar.hook
 
-install: bundle $(TAP) $(HOOK)
-	./install.sh
+# In place, connected to Claude Code, opened (install.sh says how).
+install: bundle
+	@./install.sh
 
 # A universal, Developer ID-signed, notarized .dmg (packaging/release.sh
 # says what it needs once). DRY=1 make release: everything but the notary.
@@ -108,4 +109,4 @@ signing-identity:
 	./packaging/make-signing-identity.sh "$(HOME)/.cloudingbar/signing.keychain-db" "ClaudeBar Local Signing"
 
 clean:
-	rm -rf .build build
+	rm -rf build .build

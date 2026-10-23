@@ -1,6 +1,6 @@
 import AppKit
 
-/// Wires everything together:
+/// Where it all meets:
 ///  - messages from hooks, the status line and cloudingbar-tap arrive on the
 ///    socket and update the session model (SessionStore)
 ///  - permissions and questions wait here for an answer from the bar, and
@@ -9,7 +9,7 @@ import AppKit
 ///    front and a Claude Code session is alive
 ///  - the floating widget and the settings window read AppModel, which
 ///    refresh() fills from the same state
-///  - a menu bar item for status and quitting
+///  - Cloud in the menu bar: settings, the tour, updates, quitting
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var config = Config.load()
     private let store = SessionStore()
@@ -17,7 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let touchBar = TouchBarController()
     private let typing = TypingInput()
     private let frontWindow = FrontWindow()
-    private var statusItem: NSStatusItem?
+    /// Cloud in the menu bar.
+    private var menuBarCloud: NSStatusItem?
     private let touchBarStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let updater = Updater()
@@ -91,26 +92,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? FileManager.default.createDirectory(at: Config.directory, withIntermediateDirectories: true)
-        setUpMenuBarItem()
         setUpMainMenu()
-        KeySender.ensureTrusted()
+        setUpMenuBarItem()
+        _ = KeySender.ensureTrusted() // macOS's Accessibility prompt, the first time
         DebugLog.tap("launch")
 
         store.load()
         store.onChange = { [weak self] in self?.setNeedsRefresh() }
 
-        let server = SocketServer(path: Config.socketPath) { [weak self] message, responder in
+        // Hooks, the status line and the tap talk to the app here.
+        let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in
             self?.handle(message, responder: responder)
         }
-        do {
-            try server.start()
-            self.server = server
+        if (try? socket.start()) != nil {
+            server = socket
             // The pre-rename socket name, for taps and hooks started before.
             let old = Config.directory.appendingPathComponent("claudebar.sock").path
             unlink(old)
             symlink("cloudingbar.sock", old)
-        } catch {
-            NSLog("Clouding Bar: could not open the socket — \(error.localizedDescription)")
+        } else {
+            DebugLog.note("the socket couldn't be opened: hooks can't reach the app")
         }
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -925,47 +926,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Menu bar
 
+    /// Cloud in the menu bar, and its menu, entry by entry (nil: a line).
     private func setUpMenuBarItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = MascotView.menuBarImage()
-        item.button?.setAccessibilityLabel("Clouding Bar")
-
-        let menu = NSMenu()
-        menu.delegate = self
-        menu.addItem(NSMenuItem(title: "Clouding Bar", action: nil, keyEquivalent: ""))
-        menu.addItem(touchBarStatusItem)
         touchBarToggleItem.target = self
         touchBarToggleItem.action = #selector(toggleTouchBar)
-        menu.addItem(touchBarToggleItem)
-        menu.addItem(templatesItem)
-        menu.addItem(.separator())
-        let islandItem = NSMenuItem(title: "Show or Hide the Island", action: #selector(toggleIsland), keyEquivalent: "")
-        islandItem.target = self
-        menu.addItem(islandItem)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        let tourItem = NSMenuItem(title: "Take the Tour…", action: #selector(showTour), keyEquivalent: "")
-        tourItem.target = self
-        menu.addItem(tourItem)
         updateItem.target = self
         updateItem.action = #selector(updateFromMenu)
-        menu.addItem(updateItem)
-        let resetItem = NSMenuItem(title: "Reset Widget Position", action: #selector(resetWidgetPosition), keyEquivalent: "")
-        resetItem.target = self
-        menu.addItem(resetItem)
-        menu.addItem(.separator())
-        let reload = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "")
-        reload.target = self
-        menu.addItem(reload)
-        let folder = NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: "")
-        folder.target = self
-        menu.addItem(folder)
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit Clouding Bar",
-                                action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        item.menu = menu
-        statusItem = item
+        let entries: [NSMenuItem?] = [
+            NSMenuItem(title: "Clouding Bar", action: nil, keyEquivalent: ""),
+            touchBarStatusItem, touchBarToggleItem, templatesItem,
+            nil,
+            menuEntry("Show or Hide the Island", #selector(toggleIsland)),
+            menuEntry("Settings…", #selector(openSettings), key: ","),
+            menuEntry("Take the Tour…", #selector(showTour)),
+            updateItem,
+            menuEntry("Reset Widget Position", #selector(resetWidgetPosition)),
+            nil,
+            menuEntry("Reload Config", #selector(reloadConfig)),
+            menuEntry("Open Config Folder", #selector(openConfigFolder)),
+            nil,
+            NSMenuItem(title: "Quit Clouding Bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"),
+        ]
+        let menu = NSMenu()
+        menu.delegate = self
+        entries.forEach { menu.addItem($0 ?? .separator()) }
+
+        let cloud = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        cloud.button?.image = MascotView.menuBarImage()
+        cloud.button?.setAccessibilityLabel("Clouding Bar")
+        cloud.menu = menu
+        menuBarCloud = cloud
+    }
+
+    /// A menu entry that calls back here.
+    private func menuEntry(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
+        let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        entry.target = self
+        return entry
     }
 
     /// The app has no menu bar of its own, but text fields (the settings
@@ -1148,8 +1145,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    /// ~/.cloudingbar in Finder.
     @objc private func openConfigFolder() {
-        NSWorkspace.shared.open(Config.directory)
+        let config = Config.directory.appendingPathComponent("config.json")
+        if FileManager.default.fileExists(atPath: config.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([config])
+        } else {
+            NSWorkspace.shared.open(Config.directory)
+        }
     }
 
     // MARK: - Widget and settings

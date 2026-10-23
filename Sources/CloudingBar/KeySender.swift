@@ -1,27 +1,29 @@
 import AppKit
 import ApplicationServices
 
-/// Sends keystrokes to whatever app is frontmost (your terminal).
-/// This is how Touch Bar buttons answer Claude's prompts — macOS requires
-/// the one-time Accessibility permission for it.
+/// Keys for the app in front: how buttons, templates and shortcuts reach a
+/// chat (and a message, where its chat has no way in of its own). Claude's
+/// requests are answered through its hooks instead. macOS asks once for
+/// Accessibility before any key goes anywhere.
 enum KeySender {
-    static let escape: CGKeyCode = 53
     static let returnKey: CGKeyCode = 36
+    static let escape: CGKeyCode = 53
 
-    /// Ask macOS for Accessibility access, showing the system prompt the
-    /// first time. Returns whether we currently have it.
+    /// May Clouding Bar send keys? The first time, macOS puts up its prompt.
     @discardableResult
     static func ensureTrusted() -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
+        let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString
+        return AXIsProcessTrustedWithOptions([prompt: true] as NSDictionary as CFDictionary)
     }
 
-    static func tap(_ keyCode: CGKeyCode) {
+    /// One key down and up, with exactly these modifiers — none by default:
+    /// a plain Return or Esc even while a shortcut's own keys are still held.
+    static func tap(_ key: CGKeyCode, flags: CGEventFlags = []) {
         let source = CGEventSource(stateID: .hidSystemState)
         for down in [true, false] {
-            let e = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: down)
-            e?.flags = [] // a plain Return/Esc even while a shortcut's keys are held
-            e?.post(tap: .cghidEventTap)
+            guard let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { continue }
+            event.flags = flags
+            event.post(tap: .cghidEventTap)
         }
     }
 
@@ -36,31 +38,29 @@ enum KeySender {
         }
     }
 
-    /// Type arbitrary text using unicode key events, optionally pressing
-    /// Return afterwards. Works regardless of keyboard layout.
+    /// Text as text, whatever the keyboard layout: carried in key events'
+    /// unicode strings, 16 UTF-16 units at a time (an event takes no more),
+    /// never splitting a character made of two (an emoji). Then Return, if
+    /// asked — a moment later: Claude Code takes a fast burst of keys for a
+    /// paste, and a Return inside one makes a new line instead of sending.
     static func type(_ text: String, pressReturn: Bool = false) {
         let source = CGEventSource(stateID: .hidSystemState)
-        // CGEvent caps the unicode payload, so send in small chunks.
-        for chunk in text.chunked(into: 16) {
-            let chars = Array(chunk.utf16)
-            // No modifiers, whatever keys are held: text, not ⌘-shortcuts.
-            let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
-            down?.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
-            down?.flags = []
-            down?.post(tap: .cghidEventTap)
-            let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-            up?.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
-            up?.flags = []
-            up?.post(tap: .cghidEventTap)
-        }
-        if pressReturn {
-            // Claude Code treats a fast burst of keys as a paste, and a
-            // Return inside a paste becomes a newline instead of "send".
-            // A short pause makes the Return a separate keypress.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                KeySender.tap(KeySender.returnKey)
+        let units = Array(text.utf16)
+        var from = 0
+        while from < units.count {
+            var to = min(from + 16, units.count)
+            if to < units.count, UTF16.isLeadSurrogate(units[to - 1]) { to -= 1 }
+            let piece = Array(units[from..<to])
+            for down in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down) else { continue }
+                event.keyboardSetUnicodeString(stringLength: piece.count, unicodeString: piece)
+                event.flags = []
+                event.post(tap: .cghidEventTap)
             }
+            from = to
         }
+        guard pressReturn else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { tap(returnKey) }
     }
 }
 
@@ -81,12 +81,7 @@ extension KeySender {
             }
         }
         guard let key else { return false }
-        let source = CGEventSource(stateID: .hidSystemState)
-        for down in [true, false] {
-            let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down)
-            event?.flags = flags
-            event?.post(tap: .cghidEventTap)
-        }
+        tap(key, flags: flags)
         return true
     }
 
@@ -117,17 +112,4 @@ extension KeySender {
         for (k, v) in ansi { map[k] = v }
         return map
     }()
-}
-
-private extension String {
-    func chunked(into size: Int) -> [String] {
-        var result: [String] = []
-        var index = startIndex
-        while index < endIndex {
-            let end = self.index(index, offsetBy: size, limitedBy: endIndex) ?? endIndex
-            result.append(String(self[index..<end]))
-            index = end
-        }
-        return result
-    }
 }
