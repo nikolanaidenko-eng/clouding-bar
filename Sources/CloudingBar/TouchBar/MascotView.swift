@@ -10,9 +10,10 @@ import AppKit
 // waves when you need the human.
 //
 // It listens, too. Put ☁️ in a reply — in what you say, not in code you
-// write — and Cloud hops twice and smiles: a wave from you to whoever's
-// watching. (TranscriptWatcher spots it; AppDelegate.cloudWavesBack does the
-// rest.)
+// write — and Cloud climbs out of the screen's corner and waves back: a
+// wave from you to whoever's watching. Once a chat is plenty; Cloud answers
+// only the first. (TranscriptWatcher spots it; AppDelegate.cloudWavesBack
+// does the rest.)
 //
 // Go easy on the pokes: five in a row and it gets dizzy.
 
