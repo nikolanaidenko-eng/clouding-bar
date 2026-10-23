@@ -348,32 +348,11 @@ Plain `swiftc`, no Xcode project. Sources: `Sources/CloudingBar` (the app),
 `Sources/CloudingBarHook` (the hook), `Sources/CloudingBarTap` (the VS Code
 wrapper's tap), `Sources/CloudingBarKey` (the Keychain helper).
 
-## Credits
-
-Clouding Bar began as a fork of
-[TouchMyBar/claudebar](https://github.com/TouchMyBar/claudebar) (MIT) — a
-Touch Bar for Claude Code permission prompts. Thank you!
-
-What changed since:
-
-- Permissions and questions are answered through hooks, not keystrokes,
-  and Claude never waits on the app.
-- The floating widget: the pill, the notch, the panel, the island.
-- The 5-hour limit, context, model, effort, subagents, lines, branch, cost.
-- Questions with options and typed or dictated answers.
-- Buttons with types, shortcuts and per-project sets; templates; the chat
-  queue; file drop; screenshots; dictation.
-- Model and effort switching; the subagents list; chats told apart by
-  title and colour, followed by the window or tab in front.
-- Cowork, Stats, the settings window (light and dark) and the tour.
-- The "skip permissions" button is gone.
-
 ## License
 
 [PolyForm Shield 1.0.0](LICENSE): use it, change it and share it for any
 purpose — at home or at work — except to provide a product that competes
-with Clouding Bar. The parts that come from TouchMyBar/claudebar stay under
-the MIT License ([its notice](LICENSES/MIT-TouchMyBar.txt)).
+with Clouding Bar.
 
 Clouding Bar is not affiliated with or endorsed by Anthropic. Claude is a
 trademark of Anthropic, PBC.

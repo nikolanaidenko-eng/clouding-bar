@@ -1,46 +1,38 @@
 import AppKit
 
-/// Presents an NSTouchBar on top of whatever app is frontmost.
+/// Shows one of our Touch Bars over whatever app is in front.
 ///
-/// Honesty corner: the NSTouchBar API itself is official AppKit, but Apple
-/// never shipped a public way for a *background* app to put content on the
-/// Touch Bar. Every Touch Bar customizer (Pock, MTMR, …) uses these same
-/// AppKit class methods, stable since macOS 10.14. We look them up at
-/// runtime and quietly do nothing if a future macOS removes them.
+/// NSTouchBar is public AppKit; putting one on screen for an app in the
+/// background isn't. AppKit has class methods for that — macOS's own
+/// system-wide bars use them, and so does every Touch Bar tool — found here
+/// by name at run time. Should a future macOS drop them, nothing shows and
+/// nothing breaks.
 ///
-/// The placement variant (placement 1) takes the full width of the Touch
-/// Bar, hiding the Control Strip (volume, brightness, Siri) while Clouding Bar
-/// is up. If it's missing we fall back to the classic call, which keeps the
-/// Control Strip on the right.
+/// Placement 1 is the whole width, Apple's Control Strip (brightness,
+/// volume, Siri) put away meanwhile. Without it, the bar sits beside the
+/// strip.
 enum SystemModalTouchBar {
-    private static let presentWithPlacementSelector =
-        NSSelectorFromString("presentSystemModalTouchBar:placement:systemTrayItemIdentifier:")
-    private static let presentSelector =
-        NSSelectorFromString("presentSystemModalTouchBar:systemTrayItemIdentifier:")
-    private static let dismissSelector =
-        NSSelectorFromString("dismissSystemModalTouchBar:")
+    private typealias ShowPlaced = @convention(c) (AnyObject, Selector, NSTouchBar, Int64, NSString?) -> Void
 
-    private typealias PresentWithPlacement =
-        @convention(c) (AnyObject, Selector, NSTouchBar, Int64, NSString?) -> Void
+    private static let showPlaced = NSSelectorFromString("presentSystemModalTouchBar:placement:systemTrayItemIdentifier:")
+    private static let show = NSSelectorFromString("presentSystemModalTouchBar:systemTrayItemIdentifier:")
+    private static let hide = NSSelectorFromString("dismissSystemModalTouchBar:")
+    private static var touchBarClass: AnyObject { NSTouchBar.self }
 
     static var isSupported: Bool {
-        let cls = NSTouchBar.self as AnyObject
-        return cls.responds(to: presentWithPlacementSelector) || cls.responds(to: presentSelector)
+        touchBarClass.responds(to: showPlaced) || touchBarClass.responds(to: show)
     }
 
     static func present(_ bar: NSTouchBar, fullWidth: Bool = true) {
-        let cls: AnyObject = NSTouchBar.self
-        if fullWidth, let method = class_getClassMethod(NSTouchBar.self, presentWithPlacementSelector) {
-            let fn = unsafeBitCast(method_getImplementation(method), to: PresentWithPlacement.self)
-            fn(cls, presentWithPlacementSelector, bar, 1, nil)
-            return
+        if fullWidth, let method = class_getClassMethod(NSTouchBar.self, showPlaced) {
+            let call = unsafeBitCast(method_getImplementation(method), to: ShowPlaced.self)
+            call(touchBarClass, showPlaced, bar, 1, nil)
+        } else if touchBarClass.responds(to: show) {
+            _ = touchBarClass.perform(show, with: bar, with: nil)
         }
-        guard cls.responds(to: presentSelector) else { return }
-        _ = cls.perform(presentSelector, with: bar, with: nil)
     }
 
     static func dismiss(_ bar: NSTouchBar) {
-        guard (NSTouchBar.self as AnyObject).responds(to: dismissSelector) else { return }
-        _ = (NSTouchBar.self as AnyObject).perform(dismissSelector, with: bar)
+        if touchBarClass.responds(to: hide) { _ = touchBarClass.perform(hide, with: bar) }
     }
 }
