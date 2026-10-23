@@ -822,7 +822,7 @@ struct MainPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black.opacity(0.25)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(typing ? Color(hex: model.chatColor).opacity(0.7) : Color.white.opacity(0.12),
+            .strokeBorder(Color.white.opacity(typing ? 0.28 : 0.12),
                           lineWidth: typing ? 1 : 0.5))
     }
 
@@ -1068,8 +1068,9 @@ struct ChatTabs: View {
             .foregroundColor(r.current ? .cbText : .cbSecondary)
             .background {
                 if r.current {
-                    Capsule().fill(Color(hex: r.color).opacity(0.22))
-                        .overlay(Capsule().strokeBorder(Color(hex: r.color).opacity(0.75), lineWidth: 1))
+                    // A lighter pill, no coloured ring (owner, 24.10: the neon
+                    // outline cheapened the panel); the dot keeps the chat's colour.
+                    Capsule().fill(Color.white.opacity(0.16))
                         .matchedGeometryEffect(id: "lit", in: lit)
                 } else {
                     Capsule().fill(Color.white.opacity(0.06))
