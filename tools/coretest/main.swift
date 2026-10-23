@@ -448,25 +448,36 @@ do { // the watcher picks both up from a transcript
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
 }
-do { // ☁️ in Claude's words just now: Cloud waves back; old replies and code don't count
+do { // ☁️ in Claude's words just now: Cloud waves back, once a chat; old replies and code don't count
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
     let f = ISO8601DateFormatter()
     f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    func waved(_ blocks: String, at date: Date) -> Bool {
+    func reply(_ blocks: String, at date: Date = Date()) -> String {
+        #"{"type":"assistant","timestamp":"\#(f.string(from: date))","message":{"id":"\#(UUID().uuidString)","model":"claude-opus-5-5","content":\#(blocks),"usage":{"input_tokens":1,"output_tokens":1}}}"#
+    }
+    /// One chat's transcript, growing by each batch of replies: whether each look waved.
+    func waves(_ batches: [String]...) -> [Bool] {
         let file = dir.appendingPathComponent("wave-\(UUID().uuidString).jsonl")
-        let line = #"{"type":"assistant","timestamp":"\#(f.string(from: date))","message":{"id":"w1","model":"claude-opus-5-5","content":\#(blocks),"usage":{"input_tokens":1,"output_tokens":1}}}"#
-        try? (line + "\n").write(to: file, atomically: true, encoding: .utf8)
         let watcher = TranscriptWatcher()
-        var got: [TranscriptWatcher.Update] = []
-        let done = DispatchSemaphore(value: 0)
-        watcher.poll([(id: "w", path: file.path)]) { got = $0; done.signal() }
-        while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
-        return got.first?.waved == true
+        var text = ""
+        return batches.map { replies in
+            text += replies.map { $0 + "\n" }.joined()
+            try? text.write(to: file, atomically: true, encoding: .utf8)
+            var got: [TranscriptWatcher.Update] = []
+            let done = DispatchSemaphore(value: 0)
+            watcher.poll([(id: "w", path: file.path)]) { got = $0; done.signal() }
+            while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+            return got.first?.waved == true
+        }
     }
     let words = #"[{"type":"text","text":"Done ☁️"}]"#
     let code = #"[{"type":"tool_use","name":"Write","input":{"content":"// ☁️ hello"}}]"#
-    check(waved(words, at: Date()) && !waved(words, at: Date().addingTimeInterval(-600)) && !waved(code, at: Date()),
+    let old = Date().addingTimeInterval(-600)
+    check(waves([reply(words)]) == [true] && waves([reply(words, at: old)]) == [false] && waves([reply(code)]) == [false],
           "☁️ in a fresh reply's words waves; an old reply or code doesn't")
+    check(waves([reply(words)], [reply(words)]) == [true, false] && waves([reply(words, at: old), reply(words)]) == [false]
+          && waves([reply(code)], [reply(words)]) == [false, true],
+          "Cloud waves back once a chat: not again, nor after an earlier ☁️ (an app restart reads it)")
 }
 do { // a reply counts once, even written again much later; the title is read
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)

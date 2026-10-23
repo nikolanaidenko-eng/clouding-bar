@@ -27,8 +27,8 @@ final class TranscriptWatcher {
         var contextWindow: Int?
         var codexFiveHour: (percent: Double, resetsAt: Double?)?
         var codexWeek: (percent: Double, resetsAt: Double?)?
-        /// A reply of the last minute with ☁️ in its words: Claude waving
-        /// at Cloud (see the note in MascotView.swift).
+        /// A reply of the last minute with ☁️ in its words, the chat's first:
+        /// Claude waving at Cloud (see the note in MascotView.swift).
         var waved = false
     }
 
@@ -52,6 +52,10 @@ final class TranscriptWatcher {
         var edits = Set<String>()
         var aiTitle: String?
         var customTitle: String?
+        /// Claude has put ☁️ in this chat before (read from the whole file,
+        /// so it holds after a restart): Cloud waves back once a chat — a
+        /// fork worked on with Claude would get it every reply (owner, 24.10).
+        var waved = false
     }
 
     private let queue = DispatchQueue(label: "cloudingbar.transcripts", qos: .utility)
@@ -223,15 +227,18 @@ final class TranscriptWatcher {
                 update.interrupted = true
                 continue
             }
-            // ☁️ in what Claude says (not in code it writes), just now.
-            if isAssistant, line.range(of: Self.cloudMark) != nil,
+            // ☁️ in what Claude says (not in code it writes): the chat's
+            // first, and just now.
+            if isAssistant, !state.waved, line.range(of: Self.cloudMark) != nil,
                let blocks = (obj["message"] as? [String: Any])?["content"] as? [[String: Any]],
                // ☁ itself, with or without the emoji selector after it
                blocks.contains(where: { $0["type"] as? String == "text"
-                   && ($0["text"] as? String)?.unicodeScalars.contains("\u{2601}") == true }),
-               let when = (obj["timestamp"] as? String).flatMap(Self.stamp.date(from:)),
-               Date().timeIntervalSince(when) < 60 {
-                update.waved = true
+                   && ($0["text"] as? String)?.unicodeScalars.contains("\u{2601}") == true }) {
+                state.waved = true
+                if let when = (obj["timestamp"] as? String).flatMap(Self.stamp.date(from:)),
+                   Date().timeIntervalSince(when) < 60 {
+                    update.waved = true
+                }
             }
             guard obj["type"] as? String == "assistant",
                   let message = obj["message"] as? [String: Any],

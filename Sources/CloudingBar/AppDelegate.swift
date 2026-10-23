@@ -1340,10 +1340,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - ☁️
 
-    /// Claude put ☁️ in a reply (the note in MascotView.swift says why):
-    /// Cloud waves back in the widget and on the Touch Bar, and climbs out
-    /// of the screen's corner to say so. The first time, that's an
-    /// achievement: Cloud's colours, in Settings → Widget.
+    /// Claude put ☁️ in a reply, the first in its chat (the note in
+    /// MascotView.swift says why): Cloud waves back in the widget and on the
+    /// Touch Bar, and climbs out of the screen's corner to say so. The very
+    /// first time, that's an achievement: Cloud's colours, in Settings → Widget.
     private func cloudWavesBack() {
         model.cloudWaves += 1
         touchBar.barView.waveCharacter()
