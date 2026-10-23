@@ -448,6 +448,26 @@ do { // the watcher picks both up from a transcript
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
 }
+do { // ☁️ in Claude's words just now: Cloud waves back; old replies and code don't count
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    func waved(_ blocks: String, at date: Date) -> Bool {
+        let file = dir.appendingPathComponent("wave-\(UUID().uuidString).jsonl")
+        let line = #"{"type":"assistant","timestamp":"\#(f.string(from: date))","message":{"id":"w1","model":"claude-opus-5-5","content":\#(blocks),"usage":{"input_tokens":1,"output_tokens":1}}}"#
+        try? (line + "\n").write(to: file, atomically: true, encoding: .utf8)
+        let watcher = TranscriptWatcher()
+        var got: [TranscriptWatcher.Update] = []
+        let done = DispatchSemaphore(value: 0)
+        watcher.poll([(id: "w", path: file.path)]) { got = $0; done.signal() }
+        while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        return got.first?.waved == true
+    }
+    let words = #"[{"type":"text","text":"Done ☁️"}]"#
+    let code = #"[{"type":"tool_use","name":"Write","input":{"content":"// ☁️ hello"}}]"#
+    check(waved(words, at: Date()) && !waved(words, at: Date().addingTimeInterval(-600)) && !waved(code, at: Date()),
+          "☁️ in a fresh reply's words waves; an old reply or code doesn't")
+}
 do { // a reply counts once, even written again much later; the title is read
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
     let file = dir.appendingPathComponent("dupes.jsonl")

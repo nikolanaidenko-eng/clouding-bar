@@ -668,7 +668,7 @@ struct MainPanel: View {
         let character: CGFloat = state.hidesHeaderCharacter ? 0 : 28 + 10
         return HStack(alignment: .top, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28).frame(width: 28, height: 28)
+                MascotIcon(activity: model.activity, size: 28, pokes: model.cloudPokes).frame(width: 28, height: 28)
             }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
                 if several {

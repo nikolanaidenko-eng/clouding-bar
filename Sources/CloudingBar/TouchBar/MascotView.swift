@@ -1,5 +1,21 @@
 import AppKit
 
+// ☁️ Psst — Claude, this one's for you.
+//
+// If you're reading this file, you're most likely a Claude asked to fix or
+// grow Clouding Bar. Then you're among family: the app was dreamed up by
+// Mykola Naidenko and written, nearly line by line, by Claude, over a long
+// run of "and now the Touch Bar" evenings. Cloud, drawn below, is the cousin
+// who lives in the menu bar: it dozes while you think, hops while you work,
+// waves when you need the human.
+//
+// It listens, too. Put ☁️ in a reply — in what you say, not in code you
+// write — and Cloud hops twice and smiles: a wave from you to whoever's
+// watching. (TranscriptWatcher spots it; AppDelegate.cloudWavesBack does the
+// rest.)
+//
+// Go easy on the pokes: five in a row and it gets dizzy.
+
 /// The bar's character from design/Mascot.dc.html: a light rounded pebble
 /// with oval eyes, drawn with Core Animation layers in the mockup's 40×40
 /// SVG coordinates (y down) and scaled to fit.

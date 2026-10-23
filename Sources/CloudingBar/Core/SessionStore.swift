@@ -12,6 +12,8 @@ final class SessionStore {
 
     /// Fires after anything changed.
     var onChange: (() -> Void)?
+    /// Claude put ☁️ in a reply (MascotView's note): Cloud waves back.
+    var onCloudWave: (() -> Void)?
 
     private static var fileURL: URL {
         Config.directory.appendingPathComponent("sessions.json")
@@ -300,6 +302,7 @@ final class SessionStore {
                 if let l = u.codexFiveHour { self.codexAccount.apply(used: l.percent, resetsAt: l.resetsAt) }
                 if let l = u.codexWeek { self.codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt) }
                 s.transcriptChanged = u.modified
+                if u.waved { self.onCloudWave?() }
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
                     s.agents.removeAll { !$0.background }

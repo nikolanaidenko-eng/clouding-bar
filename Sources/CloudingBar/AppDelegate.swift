@@ -99,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         store.load()
         store.onChange = { [weak self] in self?.setNeedsRefresh() }
+        store.onCloudWave = { [weak self] in self?.cloudWavesBack() }
 
         // Hooks, the status line and the tap talk to the app here.
         let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in
@@ -1332,6 +1333,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)?.id ?? desktopShown?.chat
             : store.session(inWindow: frontTitle, tty: frontTTY)?.id
         return (frontApp?.bundleIdentifier ?? "") + "|" + (shown ?? "")
+    }
+
+    // MARK: - ☁️
+
+    /// Claude put ☁️ in a reply: Cloud hops twice and smiles, in the widget
+    /// and on the Touch Bar (the note in MascotView.swift says why).
+    private func cloudWavesBack() {
+        DebugLog.note("☁️ Claude waved, Cloud waves back")
+        for delay in [0, 0.45] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.model.cloudPokes += 1
+                self?.touchBar.barView.pokeCharacter()
+            }
+        }
     }
 
     // MARK: - Another chat done
