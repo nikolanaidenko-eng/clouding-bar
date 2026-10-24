@@ -78,6 +78,25 @@ final class DrawerController: NSObject {
         shown ? hide() : show()
     }
 
+    /// Up, at the message box: a screenshot just attached goes with what
+    /// you write there.
+    func openMessage() {
+        let wasShown = shown
+        show()
+        guard shown, model.config.taskQueue, model.request == nil else { return }
+        // The keyboard at once — the first letters typed right after a
+        // screenshot would go to the app in front otherwise — and the
+        // field's focus again once the panel is out.
+        panel.allowsKey = true
+        panel.makeKey()
+        state.focusMessage += 1
+        after(wasShown ? 0.15 : 2.4) {
+            guard self.shown, !self.busy else { return }
+            if !self.panel.isKeyWindow { self.panel.makeKey() }
+            self.state.focusMessage += 1
+        }
+    }
+
     // MARK: In
 
     func show() {
