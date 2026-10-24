@@ -9,6 +9,10 @@ let expanded = false;
 let openTimer = null, closeTimer = null;
 let otherText = "";
 let lastSize = "";
+// A new card takes Esc and the digits only after a moment, so a key meant
+// for the window behind can't answer it.
+const ARM_MS = 1200;
+let armedId = null, armedAt = 0;
 
 const root = document.getElementById("root");
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -137,6 +141,7 @@ function request(s) {
 
 function render() {
   if (!snap) return;
+  if (snap.request && snap.request.id !== armedId) { armedId = snap.request.id; armedAt = Date.now(); }
   const typing = document.activeElement && document.activeElement.id === "other";
   const caret = typing ? document.activeElement.selectionStart : null;
   root.innerHTML = snap.request ? request(snap) : expanded ? panel(snap) : pill(snap);
@@ -205,15 +210,16 @@ root.addEventListener("input", (e) => {
 document.addEventListener("keydown", (e) => {
   const r = snap && snap.request;
   if (!r) { if (e.key === "Escape") setExpanded(false); return; }
+  const armed = Date.now() - armedAt >= ARM_MS;
   if (e.key === "Enter" && document.activeElement && document.activeElement.id === "other") {
     if (otherText.trim() || r.picked.length) {
       const text = otherText;
       otherText = "";
       invoke("answer", { id: r.id, action: "other", index: null, text });
     }
-  } else if (r.kind === "permission" && e.key === "Escape") {
+  } else if (armed && r.kind === "permission" && e.key === "Escape") {
     invoke("answer", { id: r.id, action: "deny", index: null, text: null });
-  } else if (r.kind === "question" && /^[1-9]$/.test(e.key) && document.activeElement?.id !== "other") {
+  } else if (armed && r.kind === "question" && /^[1-9]$/.test(e.key) && document.activeElement?.id !== "other") {
     const i = Number(e.key) - 1;
     if (i < r.options.length) invoke("answer", { id: r.id, action: "option", index: i, text: null });
   }

@@ -48,17 +48,33 @@ fn settings_path() -> PathBuf {
     if cfg!(windows) { home().join(".claude").join("settings.json") } else { data_dir().join("claude-settings.json") }
 }
 
+/// The bundled hook, next to the app.
+fn bundled_hook() -> Option<PathBuf> {
+    std::env::current_exe().ok().map(|e| e.with_file_name(hook_exe().file_name().unwrap()))
+}
+
+/// Puts the bundled hook at its stable path (atomically: a temp file next to
+/// it, then a rename). With `force` off, only an already installed hook that
+/// differs from the bundled one is replaced, so an update of the app brings
+/// its hook along (an old hook talks to an old pipe name). A hook in use
+/// can't be replaced on Windows: that's retried at the next start.
+fn install_hook(force: bool) -> Result<(), String> {
+    let Some(bundled) = bundled_hook().filter(|b| b.exists()) else { return Ok(()) };
+    let target = hook_exe();
+    if !force {
+        let (Ok(new), Ok(old)) = (std::fs::read(&bundled), std::fs::read(&target)) else { return Ok(()) };
+        if new == old { return Ok(()); }
+    }
+    let tmp = target.with_extension("new");
+    std::fs::copy(&bundled, &tmp).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &target).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })
+}
+
 /// Puts the hook next to the data (a stable path that survives updates of
 /// the app) and registers it, and the status line, with Claude Code.
 fn connect(shared: &Shared) -> Result<(), String> {
-    let bundled = std::env::current_exe().map_err(|e| e.to_string())?
-        .with_file_name(hook_exe().file_name().unwrap());
     std::fs::create_dir_all(data_dir()).map_err(|e| e.to_string())?;
-    if bundled.exists() {
-        let tmp = hook_exe().with_extension("new");
-        std::fs::copy(&bundled, &tmp).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, hook_exe()).map_err(|e| e.to_string())?;
-    }
+    install_hook(true)?;
     setup::connect(&settings_path(), &hook_command(), &format!("{} --statusline", hook_command()),
                    &data_dir().join("statusline-original"), &data_dir().join("backups"))
         .map_err(|e| match e {
@@ -180,6 +196,7 @@ fn tray(app: &tauri::App, shared: Shared) -> tauri::Result<()> {
 
 fn main() {
     let shared = Shared::default();
+    let _ = install_hook(false);
     shared.lock().hooks_connected = setup::is_connected(&settings_path(), &hook_command());
     let ticking = shared.clone();
     tauri::Builder::default()

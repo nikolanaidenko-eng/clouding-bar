@@ -1357,7 +1357,7 @@ struct RequestCardView: View {
         cards
             .task(id: model.request?.id) {
                 armed = nil
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                do { try await Task.sleep(nanoseconds: 1_200_000_000) } catch { return } // another card came
                 armed = model.request?.id
             }
     }
@@ -1388,15 +1388,21 @@ struct RequestCardView: View {
             Spacer(minLength: 0)
             PulseDot(still: model.config.doNotDisturb)
         }
-        Text(r.detail)
-            .font(.system(size: 12, design: .monospaced))
-            .lineSpacing(2)
-            .lineLimit(3)
-            .foregroundColor(.cbText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 8).padding(.horizontal, 10)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black.opacity(0.3)))
-            .textSelection(.enabled)
+        // All of it, scrolling past a few lines: Allow shouldn't be pressed
+        // on the first three lines of a longer command.
+        ScrollView(.vertical) {
+            Text(r.detail)
+                .font(.system(size: 12, design: .monospaced))
+                .lineSpacing(2)
+                .foregroundColor(.cbText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .frame(maxHeight: 132)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, 8).padding(.horizontal, 10)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black.opacity(0.3)))
         HStack(spacing: 6) {
             Button("Allow") { model.perform(.allow) }
                 .buttonStyle(WidgetButtonStyle(background: .cbAction, foreground: .white, weight: .semibold,

@@ -362,12 +362,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Keys into the chat in front, unless Claude is asking for permission
     /// there in its own menu: Return would pick "Yes", a digit an option.
-    private func safeToType() -> Bool {
+    private func safeToType(quiet: Bool = false) -> Bool {
         let front = frontApp?.bundleIdentifier == Self.desktopBundle
             ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)
             : store.session(inWindow: frontTitle, tty: frontTTY)
         guard let s = front ?? focusedSession, s.waitingNotice else { return true }
-        NSSound.beep()
+        if !quiet { NSSound.beep() }
         DebugLog.note("typing held back: \(s.displayName) is asking for permission")
         return false
     }
@@ -662,8 +662,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 case .always: pick = labels.first { $0.lowercased().contains("always") } ?? labels.first(where: DesktopChat.allows)
                 default: pick = labels.first(where: DesktopChat.denies)
                 }
-                DebugLog.tap("desktop permission: \(pick ?? "?")")
-                answerInDesktop(request, choices: pick.map { [$0] } ?? [], own: nil)
+                guard let pick else {
+                    NSSound.beep()
+                    DebugLog.tap("desktop permission: no such button there")
+                    return
+                }
+                DebugLog.tap("desktop permission: \(pick)")
+                answerInDesktop(request, choices: [pick], own: nil)
                 return
             }
             let name: String
@@ -768,7 +773,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .compact:
             DebugLog.tap("compact (context warning)")
             active?.contextSnoozedUntil = 101 // until it drops below the threshold
-            guard claudeAppInFront, safeToType() else { return }
+            guard claudeAppInFront, safeToType() else { NSSound.beep(); setNeedsRefresh(); return }
             KeySender.type(config.compactCommand, pressReturn: true)
             setNeedsRefresh()
 
@@ -841,12 +846,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .screenshot:
             takeScreenshot()
         case .phrase, .command:
-            if claudeAppInFront {
-                guard safeToType() else { return }
+            if claudeAppInFront && safeToType(quiet: true) {
                 KeySender.type(spec.value, pressReturn: true)
             } else if let session = focusedSession {
-                // Another app in front (the bar shows everywhere): not typed
-                // there — to the chat, like the widget's message.
+                // Another app in front (the bar shows everywhere), or Claude's
+                // permission menu open there: not typed — to the chat, like the
+                // widget's message (straight in, or queued until it's safe).
                 deliver(spec.value, to: session)
             } else {
                 NSSound.beep()
@@ -1524,8 +1529,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if r.kind == .permission {
             let s = r.summary
             card.verb = s.verb
-            // The widget has room for the whole command.
-            card.detail = r.toolName == "Bash" ? (r.toolInput["command"] as? String ?? s.detail) : s.detail
+            // The widget has room for all of it: the command, the change, the arguments.
+            card.detail = r.fullDetail
         } else if let q = r.current {
             card.question = q.text
             card.options = q.options
@@ -1942,8 +1947,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if Date().timeIntervalSince(started) > 1, Date().timeIntervalSince(self.frontSince.at) > 0.5,
                self.chatInFront(id) {
                 self.queueSentAt = Date()
-                self.typeAfterReleasingKey(item.text)
-                DebugLog.note("queue: sent now")
+                if self.typeAfterReleasingKey(item.text) { DebugLog.note("queue: sent now") }
             } else if tries > 0 {
                 self.typeWhenInFront(item, session: id, tries: tries - 1, since: started, requeue: requeue)
             } else {
@@ -1961,12 +1965,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Types into the chat in front — after a moment if the widget had the
     /// keyboard, so the first letters don't go missing on the way back.
-    private func typeAfterReleasingKey(_ text: String) {
-        guard safeToType() else { return }
+    @discardableResult
+    private func typeAfterReleasingKey(_ text: String) -> Bool {
+        guard safeToType() else {
+            // Claude's own permission menu may be open there: kept in the
+            // queue, out once Claude has moved on — not lost.
+            let front = store.session(inWindow: frontTitle, tty: frontTTY) ?? focusedSession
+            queue.insert(.init(text: text, sessionId: front?.id, project: front?.projectName), at: 0)
+            saveQueue()
+            refresh()
+            DebugLog.note("send: held in the queue while Claude asks for permission")
+            return false
+        }
         let hadKey = widget.releaseKey()
         DispatchQueue.main.asyncAfter(deadline: .now() + (hadKey ? 0.25 : 0)) {
             KeySender.type(text, pressReturn: true)
         }
+        return true
     }
 
     /// The window or tab in front, and since when (the queue waits until
@@ -2011,7 +2026,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// command. Claude Code switches at once and notes it in the transcript.
     private func switchModel(_ command: String) {
         DebugLog.tap(command)
-        guard claudeAppInFront, safeToType() else { return }
+        guard claudeAppInFront, safeToType() else {
+            NSSound.beep()
+            barPendingModel = nil
+            barPendingEffort = nil
+            setNeedsRefresh()
+            return
+        }
         widget.releaseKey()
         KeySender.type(command, pressReturn: true)
         setNeedsRefresh()

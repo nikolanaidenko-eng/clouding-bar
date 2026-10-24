@@ -303,6 +303,8 @@ final class SessionStore {
                 if let l = u.codexWeek { self.codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt) }
                 s.transcriptChanged = u.modified
                 if u.waved { self.onCloudWave?() }
+                // Interrupted: Claude's permission menu, if any, is gone.
+                if u.interrupted == true { s.waitingNotice = false }
                 if u.interrupted == true && s.activity == .work {
                     s.activity = .sleep
                     s.agents.removeAll { !$0.background }

@@ -147,6 +147,10 @@ final class Updater {
         let fm = FileManager.default
         let mount = work.appendingPathComponent("mnt")
         try fm.createDirectory(at: mount, withIntermediateDirectories: true)
+        // The disk image itself signed by us before it's even opened: the
+        // system doesn't parse a stranger's image.
+        guard run("/usr/bin/codesign", ["--verify", "-R=anchor apple generic and certificate leaf[subject.OU] = \"\(team)\"",
+                                        dmg.path]) else { throw Failure("the disk image isn't signed with Clouding Bar's Developer ID") }
         guard run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-quiet",
                                        "-mountpoint", mount.path, dmg.path]) else { throw Failure("the disk image didn't open") }
         defer { _ = run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mount.path]) }
@@ -178,6 +182,7 @@ final class Updater {
         var code: SecStaticCode?
         var requirement: SecRequirement?
         let text = "anchor apple generic and certificate leaf[subject.OU] = \"\(team)\""
+            + " and identifier \"\(Bundle.main.bundleIdentifier ?? "dev.cloudingbar.app")\""
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
               SecRequirementCreateWithString(text as CFString, [], &requirement) == errSecSuccess,
               SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate

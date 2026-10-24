@@ -16,7 +16,9 @@ if [ "$(uname -s)" != Darwin ]; then
 fi
 
 tmp=$(mktemp -d)
+stage=""
 cleanup() {
+  [ -n "$stage" ] && rm -rf "$stage"
   [ -d "$tmp/mnt" ] && hdiutil detach -quiet "$tmp/mnt" 2>/dev/null
   rm -rf "$tmp"
 }
@@ -103,10 +105,8 @@ else
   [ -w /Applications ] || dest="$HOME/Applications/$APP"
 fi
 
-mkdir -p "$(dirname "$dest")"
-osascript -e "quit app id \"$BUNDLE_ID\"" >/dev/null 2>&1 || true
-i=0
-while pgrep -qx CloudingBar && [ $i -lt 25 ]; do sleep 0.2; i=$((i + 1)); done
+dir=$(dirname "$dest")
+mkdir -p "$dir"
 ditto "$new" "$tmp/$APP"
 # The copy that will be installed is the one checked, not the mounted one.
 if ! codesign --verify --deep --strict -R="$REQ" "$tmp/$APP" 2>/dev/null; then
@@ -114,19 +114,27 @@ if ! codesign --verify --deep --strict -R="$REQ" "$tmp/$APP" 2>/dev/null; then
   exit 1
 fi
 # Same volume as the target, so the swap is a rename and can be undone.
-dir=$(dirname "$dest")
 stage="$dir/.Clouding Bar.new.$$"
 old="$dir/.Clouding Bar.old.$$"
 ditto "$tmp/$APP" "$stage"
-if [ -d "$dest" ]; then
-  mv "$dest" "$old"
+
+# Everything that can fail is done: only now close the app and swap.
+was_open=0
+pgrep -qx CloudingBar && was_open=1
+osascript -e "quit app id \"$BUNDLE_ID\"" >/dev/null 2>&1 || true
+i=0
+while pgrep -qx CloudingBar && [ $i -lt 25 ]; do sleep 0.2; i=$((i + 1)); done
+if [ -d "$dest" ] && ! mv "$dest" "$old"; then
+  echo "Could not move the old Clouding Bar aside: left as it is."
+  [ $was_open = 1 ] && open "$dest"
+  exit 1
 fi
 if ! mv "$stage" "$dest"; then
-  [ -d "$old" ] && mv "$old" "$dest"
-  rm -rf "$stage"
+  if [ -d "$old" ]; then mv "$old" "$dest" && [ $was_open = 1 ] && open "$dest"; fi
   echo "Could not put Clouding Bar $version in place: the old one is back."
   exit 1
 fi
+stage=""
 rm -rf "$old"
 open "$dest"
 echo "Clouding Bar $version is installed in $dir and open."
