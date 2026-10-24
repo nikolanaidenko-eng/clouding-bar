@@ -48,24 +48,32 @@ A first version for **Windows** is in [windows/](windows/README.md).
   which — click it to go there — then ducks back; the Touch Bar says it
   too, with Open and OK. Quiet in do not disturb (Settings → Widget → More).
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
-  context, when the limit resets, the model, lines changed, the git branch,
-  subagents. Pull its outline to resize it — wider shows more, taller
-  stands it up as a column, pulled thinnest it keeps just the bars — and
-  drag items onto each other to reorder.
+  context, when the limit resets, the model, how long the chat has been at
+  it, lines changed, the git branch, subagents. Pull its outline to resize
+  it — wider shows more, taller stands it up as a column, pulled thinnest it
+  keeps just the bars — drag items onto each other to swap them, and an
+  item's right edge to make it wider or narrower.
 - **The notch.** Drag the pill to the top of the screen and it docks in the
   notch, the numbers on either side of the camera. Macs without a notch get
   a drawn one. When Claude asks something, the notch grows so you can
   answer right there; drag it out to put it anywhere again.
 - **The panel** opens from the pill (hover for 2 seconds, or click): your
-  chats as tabs, the one shown lit in its colour; the 5-hour limit and the
-  context as two lines (the context as "312k of 1M"); the model, lines,
-  branch and subagents; and a message box that says which chat it writes to.
+  chats as tabs; the 5-hour limit and the context as two lines (the context
+  as "312k of 1M"); the model, the time, lines, branch and subagents; and a
+  message box that says which chat it writes to. Its blocks move up or down
+  by their ≡ grips; its buttons, the mic, the screenshot and Send swap places
+  like the pill's items.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
   is in front — or in every app, if you like (there short, beside Apple's
-  brightness and volume, with a button that opens the whole bar and one
-  that folds it back): which chat (tap it for the others), meters, the model,
+  brightness and volume: the limits, your first three buttons, the chat as
+  one letter if there's room, and a button that opens the whole bar): which
+  chat (tap it for the others; a long name slides), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
-  or dictated), **Templates**, your buttons, the mic — each one optional.
+  or dictated, your buttons inside it), **Templates**, the mic — each one
+  optional.
+- **Arrange them your way.** Settings shows the widget and the Touch Bar
+  themselves, live — the whole bar and the short one each its own way: drag
+  a block to move it, its right edge to make it wider or narrower.
 - Limits are blue, orange from 70%, red from 90% — everywhere.
 
 **Answer Claude**
@@ -297,14 +305,16 @@ as you move the pointer, and walks along the tabs.
   open at login (and with Claude), do not disturb, updates, the Claude Code
   connection (and Codex, in beta, and the 5-hour limit in VS Code), the
   context warning, the dictation language.
-- **Widget** — show it, in the notch; behind More: follow the chat at
-  work, keep the pill visible, open on hover, its position; what it shows
-  (a chip for each thing).
-- **Touch Bar** — on or off, in every app or only Claude's, what it shows
-  (everything the widget can, and Write and Templates), with a live
-  preview.
-- **Buttons** — your buttons and their shortcuts, a set per project;
-  templates.
+- **Widget** — the widget itself on top, the pill or the panel, to arrange
+  right there; show it, in the notch; behind More: follow the chat at work,
+  keep the pill visible, open on hover, its position; what it shows (a chip
+  for each thing).
+- **Touch Bar** — the bar itself on top, the whole one and the short one, to
+  arrange (drag a block, or its right edge); on or off, in every app or only
+  Claude's, short or whole outside Claude, what it shows (everything the
+  widget can, and Write and Templates).
+- **Buttons** — your buttons and their shortcuts, a set per project, shown
+  on the Touch Bar as you edit them; templates.
 - **Cowork** — how often it reports, the plugin (or its zip, to upload)
   and its folders; behind More, the claude.ai limit.
 - **Stats** — see above.
