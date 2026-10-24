@@ -151,6 +151,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
 </p>
 <p align="center">
   <img src="docs/images/touchbar.png" width="860" alt="The Touch Bar">
+  <img src="docs/images/touchbar-short.png" width="538" alt="The short Touch Bar beside Apple's buttons: the limits, your buttons, the chat as one letter">
   <img src="docs/images/touchbar-permission.png" width="860" alt="The Touch Bar asking, with the chat it comes from">
 </p>
 
@@ -323,7 +324,7 @@ Everything is stored in `~/.cloudingbar/config.json`; every key is
 optional.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="420" alt="Settings">
+  <img src="docs/images/settings.png" width="420" alt="Settings: the widget itself, to arrange">
   <img src="docs/images/tour.png" width="420" alt="The tour">
 </p>
 <p align="center">

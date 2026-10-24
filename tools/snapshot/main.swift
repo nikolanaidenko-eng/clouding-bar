@@ -91,6 +91,11 @@ add("normal-short-3", width: 628) { $0.short = true; $0.chats = chats; $0.button
     $0.shows = ["reset", "session", "context", "mic", "shot", "chat", "buttons"] }
 add("normal-short-1", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = Array(mine.suffix(1))
     $0.shows = ["reset", "session", "context", "mic", "shot", "chat", "buttons"] }
+// The README's pictures of the bar: the whole one, and the short one beside Apple's buttons.
+add("readme-touchbar") { $0.chats = chats; $0.buttons = three; $0.modelLabel = "Opus 5.5 1M · xhigh"
+    $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"] }
+add("readme-touchbar-short", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = three
+    $0.shows = ["session", "reset", "context", "chat", "buttons"] }
 add("normal-expanded") { $0.expanded = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
 add("permission-short", width: 628) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
