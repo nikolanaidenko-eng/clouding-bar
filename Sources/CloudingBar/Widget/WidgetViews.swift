@@ -808,7 +808,7 @@ struct MainPanel: View {
                 .buttonStyle(IconButtonStyle(size: 30))
                 .accessibilityLabel("Collapse")
         }
-        .allowsHitTesting(!preview) // Settings' copy: the chats aren't opened from it
+        .disabled(preview) // Settings' copy: the chats aren't opened from it, not even by keyboard
     }
 
     // MARK: Limits
@@ -889,8 +889,8 @@ struct MainPanel: View {
         let busy = typing || !queueDraft.isEmpty
         let sendable = !queueDraft.isEmpty || !model.attachments.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
-            if field && !model.queue.isEmpty { queueList.allowsHitTesting(!preview) }
-            if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field).allowsHitTesting(!preview) }
+            if field && !model.queue.isEmpty { queueList.disabled(preview) }
+            if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field).disabled(preview) }
             ZStack(alignment: .topLeading) {
                 if field {
                     TextField(placeholder, text: $queueDraft)
