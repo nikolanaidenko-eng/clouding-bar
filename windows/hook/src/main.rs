@@ -12,7 +12,7 @@
 //! ends in a silent exit 0 with no output: "no decision", and Claude
 //! carries on as if this hook didn't exist (its own dialog shows).
 
-use cloudingbar_core::protocol::{parse_reply, Reply, SOCKET_NAME};
+use cloudingbar_core::protocol::{parse_reply, socket_name, Reply};
 use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -27,11 +27,6 @@ const PERMISSION_CAP: Duration = Duration::from_secs(900);
 
 fn pass() -> ! {
     std::process::exit(0)
-}
-
-fn socket_name() -> String {
-    // CLOUDINGBAR_SOCKET picks another name (tests, a second copy).
-    std::env::var("CLOUDINGBAR_SOCKET").unwrap_or_else(|_| SOCKET_NAME.to_string())
 }
 
 /// `--statusline`: Claude Code's status line command. Hands the status JSON

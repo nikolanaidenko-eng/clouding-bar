@@ -114,7 +114,8 @@ function request(s) {
   const r = s.request;
   if (r.kind === "permission") {
     return `<div class="panel glass enter">${head(s, "Needs your OK", r.verb === "Run" ? "run in terminal" : r.verb.toLowerCase(), chatTag(r.chat, r.chatColor, r.elsewhere))}
-      <div class="code">${esc(r.detail)}</div>
+      <div class="code" tabindex="0">${esc(r.detail)}</div>${
+        (r.detail.includes("⏎") || r.detail.length > 120) ? `<div class="code-note">Long or multi-line command: scroll to read all of it before allowing.</div>` : ""}
       <div class="btns"><button class="btn primary" data-answer="allow">Allow</button>
         <button class="btn" data-answer="always">Always allow</button>
         <button class="btn deny" data-answer="deny">Deny</button></div></div>`;
@@ -210,8 +211,6 @@ document.addEventListener("keydown", (e) => {
       otherText = "";
       invoke("answer", { id: r.id, action: "other", index: null, text });
     }
-  } else if (r.kind === "permission" && e.key === "Enter") {
-    invoke("answer", { id: r.id, action: "allow", index: null, text: null });
   } else if (r.kind === "permission" && e.key === "Escape") {
     invoke("answer", { id: r.id, action: "deny", index: null, text: null });
   } else if (r.kind === "question" && /^[1-9]$/.test(e.key) && document.activeElement?.id !== "other") {
