@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var ticks = 0
     private var refreshQueued = false
     private var lastActiveId: String?
+    /// The request on show and since when: a tap or key answers only the one
+    /// that's been there a moment — not one that took its place as the
+    /// finger came down.
+    private var requestShown: (id: UUID?, at: Date) = (nil, .distantPast)
     /// Following the chat at work (owner's request, 20.10): after the chat
     /// shown finished, "done" for a moment (`handoff`), then the one still
     /// working (`followWorking`). `front` is what was in front then: going
@@ -92,6 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? FileManager.default.createDirectory(at: Config.directory, withIntermediateDirectories: true)
+        // Yours alone: messages in the queue, screenshots, the log, copies of
+        // your settings and the sockets live here (it was 755).
+        chmod(Config.directory.path, 0o700)
         MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
         setUpMainMenu()
         setUpMenuBarItem()
@@ -346,6 +353,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// A Claude app in front — a terminal or VS Code (the hosts in the
+    /// config) or Claude Desktop — not a browser or a messenger.
+    private var claudeAppInFront: Bool {
+        guard let app = frontApp else { return false }
+        return isTerminal(app) || app.bundleIdentifier == Self.desktopBundle
+    }
+
+    /// Keys into the chat in front, unless Claude is asking for permission
+    /// there in its own menu: Return would pick "Yes", a digit an option.
+    private func safeToType() -> Bool {
+        let front = frontApp?.bundleIdentifier == Self.desktopBundle
+            ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)
+            : store.session(inWindow: frontTitle, tty: frontTTY)
+        guard let s = front ?? focusedSession, s.waitingNotice else { return true }
+        NSSound.beep()
+        DebugLog.note("typing held back: \(s.displayName) is asking for permission")
+        return false
+    }
+
     private func isTerminal(_ app: NSRunningApplication) -> Bool {
         guard let id = app.bundleIdentifier else { return false }
         return config.terminalBundleIDs.contains(id)
@@ -424,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         updateFollowing()
         let active = focusedSession
+        if let shown = currentRequest(active: active)?.id, shown != requestShown.id { requestShown = (shown, Date()) }
         updateDoneAlerts(active: active)
         if active?.id != lastActiveId {
             lastActiveId = active?.id
@@ -561,6 +588,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return session.activity
     }
 
+    private func pickOption(_ i: Int, _ request: PendingRequest) {
+        guard let q = request.current, q.options.indices.contains(i) else { return }
+        if q.multiSelect {
+            if request.picked.contains(i) { request.picked.remove(i) } else { request.picked.insert(i) }
+            DebugLog.tap("toggle \(q.options[i])")
+            extendHold(request)
+            setNeedsRefresh()
+        } else {
+            DebugLog.tap("option \(q.options[i])")
+            advance(request, with: q.options[i])
+        }
+    }
+
+    private func sendPicked(_ request: PendingRequest) {
+        guard let q = request.current, !request.picked.isEmpty else { return }
+        let labels = request.picked.sorted().map { q.options[$0] }
+        DebugLog.tap("send \(labels.joined(separator: ", "))")
+        advance(request, with: labels.joined(separator: ", "))
+    }
+
     // MARK: - Taps
 
     private func perform(_ action: BarAction) {
@@ -594,15 +641,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 run(spec)
             }
 
-        case .allow, .always, .deny:
-            guard let request, request.kind == .permission else { return }
+        case .allow, .always, .deny, .option, .sendPicked:
+            guard let request else { return }
+            guard request.id == requestShown.id, Date().timeIntervalSince(requestShown.at) >= 0.7 else {
+                // It has only just come (or replaced the one you meant).
+                if request.id != requestShown.id { requestShown = (request.id, Date()) }
+                DebugLog.tap("answer ignored: the request had only just come")
+                return
+            }
+            if case let .option(i) = action { pickOption(i, request); return }
+            if case .sendPicked = action { sendPicked(request); return }
+            guard request.kind == .permission else { return }
             if request.desktopKey != nil {
                 // Asked in Claude Desktop's window: its button pressed there.
                 let labels = desktopPrompt?.options ?? []
                 let pick: String?
                 switch action {
+                // Never "Always allow" for an Allow: no plain one, nothing pressed.
                 case .allow: pick = labels.first { DesktopChat.allows($0) && !$0.lowercased().contains("always") }
-                    ?? labels.first(where: DesktopChat.allows)
                 case .always: pick = labels.first { $0.lowercased().contains("always") } ?? labels.first(where: DesktopChat.allows)
                 default: pick = labels.first(where: DesktopChat.denies)
                 }
@@ -619,24 +675,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             DebugLog.tap("\(name) \(request.toolName)")
             answer(request, output)
-
-        case let .option(i):
-            guard let request, let q = request.current, q.options.indices.contains(i) else { return }
-            if q.multiSelect {
-                if request.picked.contains(i) { request.picked.remove(i) } else { request.picked.insert(i) }
-                DebugLog.tap("toggle \(q.options[i])")
-                extendHold(request)
-                setNeedsRefresh()
-            } else {
-                DebugLog.tap("option \(q.options[i])")
-                advance(request, with: q.options[i])
-            }
-
-        case .sendPicked:
-            guard let request, let q = request.current, !request.picked.isEmpty else { return }
-            let labels = request.picked.sorted().map { q.options[$0] }
-            DebugLog.tap("send \(labels.joined(separator: ", "))")
-            advance(request, with: labels.joined(separator: ", "))
 
         case .other:
             guard let request, request.kind == .question else { return }
@@ -730,6 +768,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .compact:
             DebugLog.tap("compact (context warning)")
             active?.contextSnoozedUntil = 101 // until it drops below the threshold
+            guard claudeAppInFront, safeToType() else { return }
             KeySender.type(config.compactCommand, pressReturn: true)
             setNeedsRefresh()
 
@@ -802,8 +841,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .screenshot:
             takeScreenshot()
         case .phrase, .command:
-            KeySender.type(spec.value, pressReturn: true)
+            if claudeAppInFront {
+                guard safeToType() else { return }
+                KeySender.type(spec.value, pressReturn: true)
+            } else if let session = focusedSession {
+                // Another app in front (the bar shows everywhere): not typed
+                // there — to the chat, like the widget's message.
+                deliver(spec.value, to: session)
+            } else {
+                NSSound.beep()
+            }
         case .key:
+            guard claudeAppInFront, safeToType() else { NSSound.beep(); return }
             if !KeySender.press(spec.value) { NSSound.beep() }
         case .link:
             guard let url = URL(string: spec.value) else { NSSound.beep(); return }
@@ -1691,6 +1740,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // To check in the widget first ("Say more" adds to it).
             let before = (model.dictated ?? "").trimmingCharacters(in: .whitespaces)
             model.dictated = before.isEmpty ? text : before + " " + text
+        } else if claudeAppInFront && !safeToType() {
+            // Claude's own permission menu is open there: a "2" in your words
+            // would pick an option. Kept on the dictation card instead.
+            let before = (model.dictated ?? "").trimmingCharacters(in: .whitespaces)
+            model.dictated = before.isEmpty ? text : before + " " + text
         } else {
             widget.releaseKey()
             KeySender.type(text)
@@ -1908,6 +1962,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Types into the chat in front — after a moment if the widget had the
     /// keyboard, so the first letters don't go missing on the way back.
     private func typeAfterReleasingKey(_ text: String) {
+        guard safeToType() else { return }
         let hadKey = widget.releaseKey()
         DispatchQueue.main.asyncAfter(deadline: .now() + (hadKey ? 0.25 : 0)) {
             KeySender.type(text, pressReturn: true)
@@ -1932,11 +1987,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// A message for this chat (the widget's box, the bar, the voice card):
-    /// typed in once its chat is in front — brought there now if another
-    /// app is. No chat known: into the app in front, as before.
+    /// straight into Claude where it takes that, else typed in once its chat
+    /// is in front. No chat known: left in a Claude app's field without
+    /// Enter — never sent into whatever app is in front.
     private func deliver(_ text: String, to session: Session?) {
         guard let session else {
-            typeAfterReleasingKey(text)
+            guard claudeAppInFront, safeToType() else { NSSound.beep(); DebugLog.note("send: no chat known — not sent"); return }
+            widget.releaseKey()
+            KeySender.type(text)
             return
         }
         if Inject.available(pid: session.claudePid) {
@@ -1953,6 +2011,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// command. Claude Code switches at once and notes it in the transcript.
     private func switchModel(_ command: String) {
         DebugLog.tap(command)
+        guard claudeAppInFront, safeToType() else { return }
         widget.releaseKey()
         KeySender.type(command, pressReturn: true)
         setNeedsRefresh()

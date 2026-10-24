@@ -85,10 +85,17 @@ enum Cowork {
     private static func usage(_ value: Any?) -> [Int: Spent] {
         var out: [Int: Spent] = [:]
         for (key, pair) in value as? [String: Any] ?? [:] {
-            guard let hour = Int(key), let p = pair as? [NSNumber], p.count >= 2 else { continue }
-            out[hour] = Spent(tokens: p[0].intValue, minutes: p[1].intValue)
+            guard let hour = Int(key), (0...1_000_000).contains(hour), let p = pair as? [NSNumber], p.count >= 2 else { continue }
+            out[hour] = Spent(tokens: clamp(p[0], 0...100_000_000), minutes: clamp(p[1], 0...60))
         }
         return out
+    }
+
+    /// The file is written in a folder anyone's repo could bring along:
+    /// numbers kept sane, so a 9e18 can't bring the app down.
+    private static func clamp(_ n: NSNumber?, _ range: ClosedRange<Int>) -> Int {
+        guard let d = n?.doubleValue, d.isFinite else { return range.lowerBound }
+        return Int(min(max(d, Double(range.lowerBound)), Double(range.upperBound)))
     }
 
     static func read(_ url: URL) -> Status? {
@@ -96,11 +103,11 @@ enum Cowork {
               let line = data.split(separator: 0x0A).last,
               let o = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
               let session = o["session"] as? String,
-              let tokens = (o["context_tokens"] as? NSNumber)?.intValue else { return nil }
-        return Status(session: session, project: o["project"] as? String, contextTokens: tokens,
-                      contextWindow: (o["context_window"] as? NSNumber)?.intValue ?? 200_000,
+              let tokens = o["context_tokens"] as? NSNumber else { return nil }
+        return Status(session: session, project: o["project"] as? String, contextTokens: clamp(tokens, 0...10_000_000),
+                      contextWindow: o["context_window"] == nil ? 200_000 : clamp(o["context_window"] as? NSNumber, 1_000...10_000_000),
                       model: o["model"] as? String,
-                      time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date(),
+                      time: (o["t"] as? NSNumber).map { Date(timeIntervalSince1970: Double(clamp($0, 0...4_102_444_800))) } ?? Date(),
                       working: o["state"] as? String == "working",
                       title: (o["title"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                       usage: usage(o["usage"]))

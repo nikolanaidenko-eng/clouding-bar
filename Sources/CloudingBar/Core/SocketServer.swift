@@ -69,6 +69,7 @@ final class SocketServer {
             close(listenFD)
             throw posixError("bind/listen")
         }
+        chmod(path, 0o600)
 
         let source = DispatchSource.makeReadSource(fileDescriptor: listenFD, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptConnection() }
@@ -79,6 +80,12 @@ final class SocketServer {
     private func acceptConnection() {
         let fd = accept(listenFD, nil, nil)
         guard fd >= 0 else { return }
+        // Only your own processes: another user's can't ask or answer here.
+        var uid: uid_t = 0, gid: gid_t = 0
+        guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else {
+            close(fd)
+            return
+        }
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         var on: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))

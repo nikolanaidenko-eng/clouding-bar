@@ -203,7 +203,9 @@ enum Setup {
             stamp.dateFormat = "yyyyMMdd-HHmmss"
             try before.write(to: backups.appendingPathComponent("settings-\(stamp.string(from: Date())).json"))
         }
-        try (after + Data("\n".utf8)).write(to: settingsURL, options: .atomic)
+        // Through a link to the file itself (dotfiles): replacing the link
+        // with a plain file would quietly cut it.
+        try (after + Data("\n".utf8)).write(to: settingsURL.resolvingSymlinksInPath(), options: .atomic)
         DebugLog.note(withPlugin ? "setup: status line registered (the plugin brings the hooks)"
                                  : "setup: Claude Code hooks and status line registered")
     }
@@ -272,7 +274,7 @@ enum Setup {
             stamp.dateFormat = "yyyyMMdd-HHmmss"
             try before.write(to: backups.appendingPathComponent("codex-hooks-\(stamp.string(from: Date())).json"))
         }
-        try (after + Data("\n".utf8)).write(to: codexHooksURL, options: .atomic)
+        try (after + Data("\n".utf8)).write(to: codexHooksURL.resolvingSymlinksInPath(), options: .atomic)
         DebugLog.note("setup: Codex hooks registered")
     }
 
@@ -312,7 +314,7 @@ enum Setup {
             text = "{\n    \(entry)\n}\n"
         }
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url.resolvingSymlinksInPath(), atomically: true, encoding: .utf8)
         DebugLog.note("setup: VS Code runs Claude through the wrapper")
     }
 }

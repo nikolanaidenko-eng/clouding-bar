@@ -1348,8 +1348,21 @@ struct RequestCardView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @FocusState private var otherFocused: Bool
+    /// The card whose keys work: a moment after it came. You may have been
+    /// typing when it took the panel's place — the next key must not answer
+    /// it (Esc, the numbers). Allow has no key at all.
+    @State private var armed: UUID?
 
     var body: some View {
+        cards
+            .task(id: model.request?.id) {
+                armed = nil
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                armed = model.request?.id
+            }
+    }
+
+    @ViewBuilder private var cards: some View {
         if let r = model.request {
             if r.kind == .permission {
                 // Wider and lower than the mockup, at the owner's request.
@@ -1388,13 +1401,11 @@ struct RequestCardView: View {
             Button("Allow") { model.perform(.allow) }
                 .buttonStyle(WidgetButtonStyle(background: .cbAction, foreground: .white, weight: .semibold,
                                                height: 32, radius: 9))
-                .keyboardShortcut(.defaultAction)
-                .help("Return")
             Button("Always allow") { model.perform(.always) }
                 .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
             Button("Deny") { model.perform(.deny) }
                 .buttonStyle(WidgetButtonStyle(foreground: .cbDeny, height: 32, radius: 9))
-                .keyboardShortcut(.cancelAction)
+                .cancelKey(enabled: armed == r.id)
                 .help("Esc")
         }
     }
@@ -1424,7 +1435,7 @@ struct RequestCardView: View {
                           picked: r.multiSelect ? r.picked.contains(i) : nil, delay: 0.08 + 0.04 * Double(i)) {
                     model.perform(.option(i))
                 }
-                .numberKey(i + 1, enabled: i < 9 && !otherFocused)
+                .numberKey(i + 1, enabled: i < 9 && !otherFocused && armed == r.id)
                 Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
             }
             HStack(spacing: 8) {
@@ -1594,6 +1605,10 @@ struct SessionsPanel: View {
 }
 
 extension View {
+    @ViewBuilder func cancelKey(enabled: Bool) -> some View {
+        if enabled { keyboardShortcut(.cancelAction) } else { self }
+    }
+
     /// 1–9 picks an option, but not while you type in the Other field.
     @ViewBuilder func numberKey(_ n: Int, enabled: Bool) -> some View {
         if enabled {
