@@ -13,6 +13,16 @@ use serde_json::{json, Map, Value};
 /// a socket file elsewhere.
 pub const SOCKET_NAME: &str = "cloudingbar";
 
+/// The socket's name: CLOUDINGBAR_SOCKET if set (tests, a second copy), else
+/// "cloudingbar-<user>", so two users of one machine don't share a pipe.
+/// The app and the hook both call this, so they always agree.
+pub fn socket_name() -> String {
+    if let Ok(n) = std::env::var("CLOUDINGBAR_SOCKET") { return n; }
+    let user: String = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_default()
+        .chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(64).collect();
+    if user.is_empty() { SOCKET_NAME.to_string() } else { format!("{SOCKET_NAME}-{user}") }
+}
+
 /// One message that arrived on the socket.
 #[derive(Clone, Debug)]
 pub struct Inbound(pub Map<String, Value>);

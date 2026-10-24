@@ -33,10 +33,10 @@ fn home() -> PathBuf {
 fn data_dir() -> PathBuf { home().join(if cfg!(windows) { ".cloudingbar" } else { ".cloudingbar-dev" }) }
 
 /// How a path goes into a hook command: forward slashes (Claude Code runs
-/// hooks through Git Bash on Windows), quoted when it has spaces.
+/// hooks through Git Bash on Windows), always quoted.
 fn command_path(p: &std::path::Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
-    if s.contains(' ') { format!("\"{s}\"") } else { s }
+    format!("\"{s}\"")
 }
 
 fn hook_exe() -> PathBuf { data_dir().join(if cfg!(windows) { "cloudingbar-hook.exe" } else { "cloudingbar-hook" }) }
@@ -94,7 +94,9 @@ fn focus_session(app: AppHandle, shared: tauri::State<'_, Shared>, id: String) {
         st.store.sessions.get(&id).is_some_and(|s| s.entrypoint.as_deref() == Some("claude-vscode"))
     };
     changed(&app, &shared);
-    if vscode { open_url(&format!("vscode://anthropic.claude-code/open?session={id}")); }
+    // The id ends up in a URL handed to the shell: only plain ids pass.
+    let plain = (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if vscode && plain { open_url(&format!("vscode://anthropic.claude-code/open?session={id}")); }
 }
 
 fn open_url(url: &str) {

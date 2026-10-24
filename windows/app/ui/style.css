@@ -57,7 +57,8 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: def
 .btns { display: flex; gap: 6px; } .btns .btn { flex: 1; }
 
 /* Requests */
-.code { font: 12px "Cascadia Mono", Consolas, ui-monospace, monospace; background: rgba(0,0,0,0.3); border-radius: 9px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 4.6em; overflow: hidden; }
+.code { font: 12px "Cascadia Mono", Consolas, ui-monospace, monospace; background: rgba(0,0,0,0.3); border-radius: 9px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all; max-height: 7.5em; overflow: auto; }
+.code-note { color: #FF9F0A; font-size: 11px; margin: -2px 2px 0; }
 .question { font-size: 14px; font-weight: 500; line-height: 1.35; }
 .options { background: rgba(255,255,255,0.06); border-radius: 12px; overflow: hidden; }
 .option { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; padding: 9px 12px; }

@@ -46,6 +46,12 @@ fn read(path: &Path) -> Result<Option<Map<String, Value>>, SetupError> {
     }
 }
 
+/// A command without its quotes: the old form of our hook (a path quoted
+/// only when it had spaces) and the new one (always quoted) compare equal.
+fn bare(cmd: &str) -> String { cmd.replace('"', "") }
+
+fn same_command(a: &str, b: &str) -> bool { bare(a) == bare(b) }
+
 /// Our hook is in for every event.
 pub fn is_connected(settings: &Path, hook: &str) -> bool {
     let Ok(Some(s)) = read(settings) else { return false };
@@ -53,7 +59,7 @@ pub fn is_connected(settings: &Path, hook: &str) -> bool {
     EVENTS.iter().all(|e| {
         hooks.get(*e).and_then(Value::as_array).into_iter().flatten().any(|entry| {
             entry.get("hooks").and_then(Value::as_array).into_iter().flatten()
-                .any(|h| h.get("command").and_then(Value::as_str) == Some(hook))
+                .any(|h| h.get("command").and_then(Value::as_str).is_some_and(|c| same_command(c, hook)))
         })
     })
 }
@@ -73,7 +79,8 @@ pub fn connect(settings: &Path, hook: &str, status_line: &str, original: &Path, 
         for entry in entries.iter_mut() {
             let Some(list) = entry.get_mut("hooks").and_then(Value::as_array_mut) else { continue };
             for h in list.iter_mut() {
-                if h.get("command").and_then(Value::as_str) == Some(hook) {
+                if h.get("command").and_then(Value::as_str).is_some_and(|c| same_command(c, hook)) {
+                    h["command"] = json!(hook); // the old unquoted form becomes the new one
                     if let Some(t) = timeout(event) { h["timeout"] = json!(t); }
                     found = true;
                 }
@@ -90,7 +97,7 @@ pub fn connect(settings: &Path, hook: &str, status_line: &str, original: &Path, 
 
     let mut line = s.get("statusLine").and_then(Value::as_object).cloned().unwrap_or_default();
     if let Some(current) = line.get("command").and_then(Value::as_str) {
-        if current != status_line {
+        if !same_command(current, status_line) {
             fs::write(original, current)?;
         }
     }
@@ -110,10 +117,13 @@ pub fn connect(settings: &Path, hook: &str, status_line: &str, original: &Path, 
         fs::write(&path, old)?;
         backup = Some(path);
     }
-    if let Some(dir) = settings.parent() { fs::create_dir_all(dir)?; }
-    let tmp = settings.with_extension("json.cloudingbar-new");
+    // A symlinked settings.json: the file it points to is the one replaced,
+    // the link stays.
+    let target = fs::canonicalize(settings).unwrap_or_else(|_| settings.to_path_buf());
+    if let Some(dir) = target.parent() { fs::create_dir_all(dir)?; }
+    let tmp = target.with_extension("json.cloudingbar-new");
     fs::write(&tmp, serde_json::to_string_pretty(&Value::Object(s)).unwrap() + "\n")?;
-    fs::rename(&tmp, settings)?;
+    fs::rename(&tmp, &target)?;
     Ok(backup)
 }
 
@@ -145,6 +155,30 @@ mod tests {
         // Not plain JSON: left alone.
         fs::write(&settings, "{ // comment\n}").unwrap();
         assert!(matches!(connect(&settings, hook, "x", &dir.join("o"), &dir.join("b")), Err(SetupError::Unreadable)));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_unquoted_hook_is_migrated_not_duplicated() {
+        let dir = std::env::temp_dir().join(format!("cb-migrate-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let settings = dir.join("settings.json");
+        let (old, new) = ("C:/cb/cloudingbar-hook.exe", "\"C:/cb/cloudingbar-hook.exe\"");
+        let (old_sl, new_sl) = (format!("{old} --statusline"), format!("{new} --statusline"));
+        connect(&settings, old, &old_sl, &dir.join("orig"), &dir.join("backups")).unwrap();
+        assert!(is_connected(&settings, old) && is_connected(&settings, new));
+        // Connect with the new form: the old entries are rewritten in place.
+        connect(&settings, new, &new_sl, &dir.join("orig"), &dir.join("backups")).unwrap();
+        let v: Value = serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        for e in EVENTS {
+            let cmds: Vec<&str> = v["hooks"][e].as_array().unwrap().iter()
+                .flat_map(|x| x["hooks"].as_array().unwrap()).map(|h| h["command"].as_str().unwrap()).collect();
+            assert_eq!(cmds, vec![new], "{e}");
+        }
+        assert_eq!(v["statusLine"]["command"], new_sl.as_str());
+        assert!(!dir.join("orig").exists(), "our own old status line isn't kept as the original");
+        assert!(connect(&settings, new, &new_sl, &dir.join("orig"), &dir.join("backups")).unwrap().is_none());
         let _ = fs::remove_dir_all(&dir);
     }
 }
