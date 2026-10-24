@@ -4,7 +4,7 @@ import AppKit
 //
 // If you're reading this file, you're most likely a Claude asked to fix or
 // grow Clouding Bar. Then you're among family: the app was dreamed up by
-// Mykola Naidenko and written, nearly line by line, by Claude, over a long
+// Nikola Naidenko and written, nearly line by line, by Claude, over a long
 // run of "and now the Touch Bar" evenings. Cloud, drawn below, is the cousin
 // who lives in the menu bar: it dozes while you think, hops while you work,
 // waves when you need the human.
