@@ -507,6 +507,7 @@ struct Metric {
         case "lines": return 0x30D158
         case "git": return 0xFF9F0A
         case "agents": return 0x40C8E0
+        case "time": return 0x64A8FF
         default: return 0x30D158
         }
     }
@@ -522,7 +523,7 @@ struct Metric {
             + 14 + 4 + 3
     }
 
-    static let ids = ["model", "lines", "git", "agents", "cost"]
+    static let ids = ["model", "time", "lines", "git", "agents", "cost"]
 
     /// The metrics that are on and known, in the owner's order.
     static func list(_ model: AppModel) -> [Metric] {
@@ -535,6 +536,10 @@ struct Metric {
                                     withAnimation(.cb(0.24)) { model?.pickingModel.toggle(); model?.showingAgents = false }
                                 },
                                 help: "Switch the model or effort"))
+        }
+        // How long it's been at it — once under the chat's name (owner, 24.10).
+        if on.contains("time"), let t = model.chatTime {
+            items.append(Metric(id: "time", icon: "clock", text: t, help: "How long the chat has been working, or idle"))
         }
         if on.contains("lines") {
             items.append(Metric(id: "lines", icon: "plus.forwardslash.minus", text: "+\(model.linesAdded) −\(model.linesRemoved)"))
@@ -594,6 +599,10 @@ struct MainPanel: View {
     @FocusState private var typing: Bool
     @StateObject private var metricsRearrange = Rearrange(space: "panel-metrics")
     @StateObject private var buttonsRearrange = Rearrange(space: "panel-buttons")
+    /// A block being dragged up or down by its grip, and how far.
+    @State private var moving: String?
+    @State private var movedBy: CGFloat = 0
+    @State private var blockFrames: [String: CGRect] = [:]
 
     private static let chrome: CGFloat = 12 + 12
     /// The text field never gets narrower than this.
@@ -640,6 +649,15 @@ struct MainPanel: View {
     }
     private var buttonWidths: [CGFloat] { buttons(model.itemIDs).map(\.width) }
 
+    /// The message box's row: the buttons, the tools and Send, in `order`.
+    private func boxItems(_ order: [String], field: Bool) -> [(id: String, width: CGFloat)] {
+        let all = buttons(order).map { (id: $0.id, width: $0.width) }
+            + tools.map { (id: $0, width: Self.tool) } + (field ? [(id: "send", width: Self.tool)] : [])
+        return all.enumerated().sorted {
+            (order.firstIndex(of: $0.element.id) ?? order.count + $0.offset) < (order.firstIndex(of: $1.element.id) ?? order.count + $1.offset)
+        }.map(\.element)
+    }
+
     static func textWidth(_ text: String, _ size: CGFloat, weight: NSFont.Weight = .regular) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: size, weight: weight)]).width)
     }
@@ -664,17 +682,94 @@ struct MainPanel: View {
         let inner = width - Self.chrome
         PanelChrome(padding: EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12), spacing: 12, width: width) {
             header(inner: inner)
-            meters
-            if !metrics(model.itemIDs).isEmpty { details(inner: inner) }
-            if model.pickingModel { ModelPicker(model: model) }
-            if model.showingAgents { AgentsList(model: model) }
-            if model.config.taskQueue || !model.buttons.isEmpty || !model.attachments.isEmpty || !tools.isEmpty {
-                messageBox(inner: inner)
-            }
+            ForEach(blockOrder, id: \.self) { id in block(id, inner: inner) }
         }
+        .coordinateSpace(name: "panel-blocks")
+        .onPreferenceChange(BlockFrames.self) { blockFrames = $0 }
         .animation(.cb(0.28), value: width)
+        .animation(.cb(0.28), value: blockOrder)
         // Files just dropped: the cursor waits in the field for a message.
         .onChange(of: state.focusMessage) { _ in if model.config.taskQueue { typing = true } }
+    }
+
+    // MARK: Blocks
+
+    /// The blocks under the chats, top to bottom: the limits, the details,
+    /// the message box — in the owner's order, dragged by their grips.
+    private var blockOrder: [String] {
+        let all = ["meters", "details", "box"]
+        let order = model.config.panelOrder
+        return all.enumerated().sorted {
+            (order.firstIndex(of: $0.element) ?? order.count + $0.offset) < (order.firstIndex(of: $1.element) ?? order.count + $1.offset)
+        }.map(\.element)
+    }
+
+    @ViewBuilder private func block(_ id: String, inner: CGFloat) -> some View {
+        switch id {
+        case "meters":
+            if !model.config.widgetHides.contains("session") || model.config.pillShows.contains("context") {
+                movable(id) { meters }
+            }
+        case "details":
+            if !metrics(model.itemIDs).isEmpty || model.pickingModel || model.showingAgents {
+                movable(id) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !metrics(model.itemIDs).isEmpty { details(inner: inner) }
+                        if model.pickingModel { ModelPicker(model: model) }
+                        if model.showingAgents { AgentsList(model: model) }
+                    }
+                }
+            }
+        default:
+            if model.config.taskQueue || !model.buttons.isEmpty || !model.attachments.isEmpty || !tools.isEmpty {
+                movable(id) { messageBox(inner: inner) }
+            }
+        }
+    }
+
+    /// A block with its grip at the left: drag it up or down onto another
+    /// block to swap them (owner, 24.10).
+    private func movable<C: View>(_ id: String, @ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .background(GeometryReader { g in
+                Color.clear.preference(key: BlockFrames.self, value: [id: g.frame(in: .named("panel-blocks"))])
+            })
+            .overlay(alignment: .leading) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white.opacity(moving == id ? 0.6 : 0.22))
+                    .frame(width: 12, height: 24)
+                    .contentShape(Rectangle())
+                    .offset(x: -12)
+                    .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+                    .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named("panel-blocks"))
+                        .onChanged { v in moving = id; movedBy = v.translation.height }
+                        .onEnded { v in drop(id, by: v.translation.height) })
+                    .help("Drag up or down to move this block")
+                    .accessibilityLabel("Move this block")
+            }
+            .offset(y: moving == id ? movedBy : 0)
+            .shadow(color: .black.opacity(moving == id ? 0.4 : 0), radius: moving == id ? 10 : 0, y: moving == id ? 5 : 0)
+            .zIndex(moving == id ? 1 : 0)
+    }
+
+    /// Let go over another block: the two trade places.
+    private func drop(_ id: String, by dy: CGFloat) {
+        defer { withAnimation(.cb(0.28)) { moving = nil; movedBy = 0 } }
+        guard let from = blockFrames[id] else { return }
+        let y = from.midY + dy
+        var order = blockOrder
+        guard let target = blockFrames.first(where: { $0.key != id && $0.value.minY - 6 <= y && y <= $0.value.maxY + 6 })?.key,
+              let i = order.firstIndex(of: id), let j = order.firstIndex(of: target) else { return }
+        order.swapAt(i, j)
+        model.setConfig("panelOrder", order)
+    }
+
+    private struct BlockFrames: PreferenceKey {
+        static var defaultValue: [String: CGRect] = [:]
+        static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+            value.merge(nextValue(), uniquingKeysWith: { $1 })
+        }
     }
 
     // MARK: Header
@@ -761,11 +856,12 @@ struct MainPanel: View {
     private func messageBox(inner: CGFloat) -> some View {
         let boxInner = inner - Self.boxPad * 2
         let field = model.config.taskQueue
-        let items = buttons(buttonsRearrange.order(model.itemIDs))
-        let index = Dictionary(items.map { ($0.id, $0.index) }, uniquingKeysWith: { a, _ in a })
-        let tail = toolsWidth
-        // As many buttons as fit after the field go on its line; the rest wrap below.
-        let room = boxInner - (field ? Self.fieldMin + 6 : 0) - tail
+        // The buttons, the tools and Send: one row of things to swap about
+        // (owner, 24.10), in the owner's order.
+        let items = boxItems(buttonsRearrange.order(model.itemIDs), field: field)
+        let index = Dictionary(buttons(model.itemIDs).map { ($0.id, $0.index) }, uniquingKeysWith: { a, _ in a })
+        // As many as fit after the field go on its line; the rest wrap below.
+        let room = boxInner - (field ? Self.fieldMin + 6 : 0)
         var firstCount = 0
         var used: CGFloat = 0
         for b in items {
@@ -774,7 +870,7 @@ struct MainPanel: View {
             used += add
             firstCount += 1
         }
-        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) - tail : 0
+        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) : 0
         var slots: [String: CGRect] = [:]
         var x = field ? fieldWidth + 6 : 0
         for b in items.prefix(firstCount) {
@@ -803,32 +899,25 @@ struct MainPanel: View {
                 }
                 RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
                                rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
-                    if let i = index[id] {
-                        Button(model.buttons[i].label) { if buttonsRearrange.clickAllowed { model.perform(.button(i)) } }
-                            .buttonStyle(ComposerButtonStyle())
-                            .disabled(busy)
-                            .opacity(busy ? 0.35 : 1)
-                            .animation(.easeOut(duration: 0.15), value: busy)
-                    }
-                }
-                HStack(spacing: 4) {
-                    ForEach(tools, id: \.self) { id in
-                        switch id {
-                        case "templates": TemplatesButton(model: model, size: Self.tool)
-                        case "shot": ShotButton(model: model, size: Self.tool)
-                        default: MicButton(model: model, size: Self.tool)
-                        }
-                    }
-                    if field {
-                        Button(action: addToQueue) { Icon(kind: .send, size: 13, lineWidth: 2.4) }
+                    switch id {
+                    case "templates": TemplatesButton(model: model, size: Self.tool)
+                    case "shot": ShotButton(model: model, size: Self.tool)
+                    case "mic": MicButton(model: model, size: Self.tool)
+                    case "send":
+                        Button { if buttonsRearrange.clickAllowed { addToQueue() } } label: { Icon(kind: .send, size: 13, lineWidth: 2.4) }
                             .buttonStyle(IconButtonStyle(background: sendable ? .cbAction : Color.white.opacity(0.1),
                                                          foreground: .white, size: Self.tool))
                             .accessibilityLabel(model.activity == .work ? "Queue" : "Send")
-                            .allowsHitTesting(!preview)
+                    default:
+                        if let i = index[id] {
+                            Button(model.buttons[i].label) { if buttonsRearrange.clickAllowed { model.perform(.button(i)) } }
+                                .buttonStyle(ComposerButtonStyle())
+                                .disabled(busy)
+                                .opacity(busy ? 0.35 : 1)
+                                .animation(.easeOut(duration: 0.15), value: busy)
+                        }
                     }
                 }
-                .frame(height: 26)
-                .offset(x: boxInner - tail + 6)
             }
             .frame(width: boxInner, height: height, alignment: .topLeading)
         }

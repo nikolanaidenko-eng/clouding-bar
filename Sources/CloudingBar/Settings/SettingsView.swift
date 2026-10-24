@@ -1008,7 +1008,8 @@ struct WidgetTab: View {
                     }
                     MoreRows("shows", count: 2) {
                         SettingsRow(title: "Details") {
-                            ToggleChips(items: [listChip("Model", "metrics", "model"), listChip("Lines", "metrics", "lines"),
+                            ToggleChips(items: [listChip("Model", "metrics", "model"), listChip("Time", "metrics", "time"),
+                                                listChip("Lines", "metrics", "lines"),
                                                 listChip("Branch", "metrics", "git"), listChip("Subagents", "metrics", "agents")])
                         }
                         SettingsRow(title: "Controls") {
