@@ -123,6 +123,17 @@ final class ClaudeAILimit {
         }
     }
 
+    /// Never follows a redirect: the cookie would go along to wherever it
+    /// points. A redirect comes back as it is, and counts as no answer.
+    private static let session = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+
+    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
     /// A read-only GET to claude.ai with the session cookie.
     private func get(_ url: String, key: String, _ done: @escaping (Any?) -> Void) {
         guard let u = URL(string: url), u.host == "claude.ai" else { return }
@@ -131,7 +142,7 @@ final class ClaudeAILimit {
         request.setValue("sessionKey=\(key)", forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpShouldHandleCookies = false
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        Self.session.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if error != nil || status == 0 {

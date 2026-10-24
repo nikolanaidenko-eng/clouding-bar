@@ -106,7 +106,9 @@ final class DesktopChat {
             }
             var done = true
             for choice in choices {
-                guard let e = found.controls.first(where: { Self.label($0).map { Self.same($0, choice) } ?? false }) else {
+                // The very label first: "Allow" must not press "Allow always".
+                guard let e = found.controls.first(where: { Self.label($0)?.lowercased() == choice.lowercased() })
+                        ?? found.controls.first(where: { Self.label($0).map { Self.same($0, choice) } ?? false }) else {
                     done = false
                     continue
                 }
