@@ -158,6 +158,8 @@ final class AppModel: ObservableObject {
     var perform: (BarAction) -> Void = { _ in }
     var answerText: (String) -> Void = { _ in }
     var openSession: (String) -> Void = { _ in }
+    /// The Touch Bar as it is now, for Settings to arrange (true: the short one).
+    var barPreview: (Bool) -> BarModel = { _ in BarModel() }
     /// Follow this chat in the widget and bring it to the front.
     var focusSession: (String) -> Void = { _ in }
     var showRequest: (String) -> Void = { _ in }

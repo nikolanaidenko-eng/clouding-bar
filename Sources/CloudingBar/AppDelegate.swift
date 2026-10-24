@@ -475,36 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        var bar = BarModel()
-        bar.buttons = currentButtons(active)
-        let account = active?.entrypoint == "codex" ? store.codexAccount : store.account
-        bar.sessionPercent = account.sessionPercent
-        bar.resetCountdown = account.resetCountdown
-        bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
-        bar.activity = activity(of: active)
-        bar.quiet = config.doNotDisturb
-        bar.awake = config.widget ? widget.panelOpen : drawer.shown
-        bar.shows = Set(config.touchBarShows)
-        bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
-        bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
-        bar.effort = barPendingEffort ?? active?.effort
-        bar.agents = (active?.agents ?? []).map { a in
-            ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
-        }
-        bar.chats = model.sessions.map {
-            BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.barName($0.name, id: $0.id),
-                          color: $0.color, current: $0.current, waiting: $0.waiting)
-        }
-        bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
-        if let active, active.linesAdded + active.linesRemoved > 0 {
-            bar.lines = "+\(active.linesAdded) −\(active.linesRemoved)"
-        }
-        bar.branch = active.flatMap(branch(of:))
-        bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
-        bar.chatName = active.map { Self.short($0.displayName, 18) }
-        bar.short = !barFullWidth // beside Apple's buttons: everything smaller
-        bar.expanded = barExpanded
-        bar.listening = voiceIntoBar && voice.isRunning
+        var bar = barModel(active: active, short: !barFullWidth)
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.barName(s.displayName, id: s.id),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -586,6 +557,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let session else { return .sleep }
         if session.waitingNotice || requests.contains(where: { $0.sessionId == session.id }) { return .wait }
         return session.activity
+    }
+
+    /// The bar for the chat shown, as it is between requests — for the
+    /// Touch Bar, and for Settings to arrange (`short`: beside Apple's buttons).
+    private func barModel(active: Session?, short: Bool) -> BarModel {
+        var bar = BarModel()
+        bar.buttons = currentButtons(active)
+        let account = active?.entrypoint == "codex" ? store.codexAccount : store.account
+        bar.sessionPercent = account.sessionPercent
+        bar.resetCountdown = account.resetCountdown
+        bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
+        bar.activity = activity(of: active)
+        bar.quiet = config.doNotDisturb
+        bar.awake = config.widget ? widget.panelOpen : drawer.shown
+        bar.shows = Set(config.touchBarShows)
+        bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
+        bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
+        bar.effort = barPendingEffort ?? active?.effort
+        bar.agents = (active?.agents ?? []).map { a in
+            ([a.type] + [a.task ?? a.doing].compactMap { $0 }).joined(separator: " · ")
+        }
+        bar.chats = model.sessions.map {
+            BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.barName($0.name, id: $0.id),
+                          color: $0.color, current: $0.current, waiting: $0.waiting)
+        }
+        bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
+        if let active, active.linesAdded + active.linesRemoved > 0 {
+            bar.lines = "+\(active.linesAdded) −\(active.linesRemoved)"
+        }
+        bar.branch = active.flatMap(branch(of:))
+        bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
+        bar.chatName = active.map { Self.short($0.displayName, 18) }
+        bar.short = short // beside Apple's buttons: everything smaller
+        bar.expanded = barExpanded
+        bar.listening = voiceIntoBar && voice.isRunning
+        let which = short ? "short" : "whole"
+        bar.order = config.touchBarOrder[which] ?? []
+        bar.widths = (config.touchBarWidths[which] ?? [:]).mapValues { CGFloat($0) }
+        return bar
     }
 
     private func pickOption(_ i: Int, _ request: PendingRequest) {
@@ -1218,6 +1228,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.perform = { [weak self] in self?.perform($0) }
         model.answerText = { [weak self] in self?.answerTyped($0) }
         model.openSession = { [weak self] in self?.openSession($0) }
+        model.barPreview = { [weak self] short in
+            guard let self else { return BarModel() }
+            var bar = self.barModel(active: self.focusedSession, short: short)
+            bar.expanded = false
+            return bar
+        }
         model.focusSession = { [weak self] id in
             guard let self, self.store.sessions[id] != nil else { return }
             DebugLog.tap("focus session \(self.store.sessions[id]?.displayName ?? id)")
