@@ -111,8 +111,18 @@ final class BarButton: NSButton {
 
     override func layout() {
         super.layout()
-        if marquee { updateMarquee() }
+        if marquee {
+            Self.passes += 1 // for a while: how often the bar lays a sliding name out
+            if Date().timeIntervalSince(Self.passesSince) > 5 {
+                if Self.passes > 25 { DebugLog.note("touch bar: \(Self.passes) name layouts in 5 s") }
+                Self.passes = 0
+                Self.passesSince = Date()
+            }
+            updateMarquee()
+        }
     }
+    private static var passes = 0
+    private static var passesSince = Date()
 
     /// The name is drawn for the size the button has: a new size, a new
     /// drawing (else one made before the bar set the size stays — empty).
@@ -127,20 +137,29 @@ final class BarButton: NSButton {
     /// stayed empty until its size changed. Drawn again.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if marquee, window != nil { updateMarquee() }
+        if marquee, window != nil { updateMarquee(force: true) }
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        if marquee, window != nil { updateMarquee() }
+        if marquee, window != nil { updateMarquee(force: true) }
     }
+
+    /// What the name was last drawn for. Drawn again only when that changes:
+    /// each layout pass of the bar drew it anew, restarting the slide, and
+    /// on the Touch Bar a name drawn anew that often never showed (the dot,
+    /// a plain colour, did).
+    private var drawnFor: (size: NSSize, scale: CGFloat)?
 
     /// The dot and the name, drawn here: centred when the name fits, else
     /// from the left edge, sliding along to its end and starting over.
-    private func updateMarquee() {
+    private func updateMarquee(force: Bool = false) {
         guard let layer else { return }
+        let scale = window?.backingScaleFactor ?? 2
+        if !force, let d = drawnFor, d.size == bounds.size, d.scale == scale, scroller?.superlayer === layer { return }
         scroller?.removeFromSuperlayer()
         scroller = nil
+        drawnFor = nil
         let dotRoom: CGFloat = dotColor != nil ? 13 : 0
         let width = ceil(titleWidth)
         let room = bounds.width - 18 - dotRoom
@@ -177,6 +196,7 @@ final class BarButton: NSButton {
         box.addSublayer(clip)
         layer.addSublayer(box)
         scroller = box
+        drawnFor = (bounds.size, scale)
         guard slides else {
             clip.addSublayer(copy(at: 0))
             return
