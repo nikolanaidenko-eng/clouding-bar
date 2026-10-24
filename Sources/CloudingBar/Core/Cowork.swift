@@ -99,7 +99,11 @@ enum Cowork {
     }
 
     static func read(_ url: URL) -> Status? {
-        guard let data = try? Data(contentsOf: url),
+        // A plain file, and small: not a link to /dev/zero or a huge file
+        // that would eat the memory (it's read every 2 s).
+        var st = stat()
+        guard lstat(url.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= 64 * 1024,
+              let data = try? Data(contentsOf: url),
               let line = data.split(separator: 0x0A).last,
               let o = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
               let session = o["session"] as? String,

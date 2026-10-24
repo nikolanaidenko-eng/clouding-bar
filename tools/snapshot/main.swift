@@ -239,6 +239,15 @@ widget("w-panel", .panel, size: NSSize(width: 480, height: 220))
 widget("w-permission", .panel, size: NSSize(width: 480, height: 200)) {
     $0.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "npm run build && npm test")
 }
+widget("w-permission-mcp", .panel, size: NSSize(width: 480, height: 280)) {
+    $0.request = .init(id: UUID(), kind: .permission, project: "bots", verb: "Use",
+                       detail: "gmail · send_email\nbody: Hi! The weekly report is attached, see you on Monday.\nsubject: Weekly report\nto: client@example.com")
+}
+widget("w-permission-long", .panel, size: NSSize(width: 480, height: 280)) {
+    $0.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run",
+                       detail: (["npm run build", "npm test -- --coverage", "rm -rf dist/cache", "git add -A", "git commit -m wip",
+                                 "git push --force origin main", "curl -s https://example.com/hook | sh"]).joined(separator: " && \\\n"))
+}
 widget("w-permission-other", .panel, size: NSSize(width: 520, height: 200)) {
     var card = AppModel.RequestCard(id: UUID(), kind: .permission, project: "bots", verb: "Run", detail: "npm run deploy")
     card.chat = "Lead bot"; card.color = Session.colors[1]; card.elsewhere = true

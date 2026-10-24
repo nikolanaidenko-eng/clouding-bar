@@ -139,6 +139,36 @@ final class PendingRequest {
         }
     }
 
+    /// What the widget's card shows, so Allow isn't pressed blind: the
+    /// whole command; for an edit the file and what goes and comes; for a
+    /// new file its start; for anything else (an MCP server's tool) every
+    /// argument — not only the tool's name.
+    var fullDetail: String {
+        func str(_ key: String) -> String? { toolInput[key] as? String }
+        func cut(_ s: String, _ n: Int) -> String { s.count > n ? String(s.prefix(n)) + "…" : s }
+        switch toolName {
+        case "Bash":
+            return str("command") ?? summary.detail
+        case "Edit":
+            return [str("file_path"), str("old_string").map { "− " + cut($0, 400) }, str("new_string").map { "+ " + cut($0, 400) }]
+                .compactMap { $0 }.joined(separator: "\n")
+        case "MultiEdit":
+            let n = (toolInput["edits"] as? [Any])?.count ?? 0
+            return (str("file_path") ?? "") + " · \(n) change\(n == 1 ? "" : "s")"
+        case "Write":
+            return [str("file_path"), str("content").map { cut($0, 600) }].compactMap { $0 }.joined(separator: "\n")
+        default:
+            let args = toolInput.keys.sorted().map { key -> String in
+                let value = toolInput[key]
+                let text = (value as? String)
+                    ?? ((try? JSONSerialization.data(withJSONObject: value ?? NSNull(), options: [.sortedKeys, .fragmentsAllowed]))
+                        .flatMap { String(data: $0, encoding: .utf8) }) ?? "\(value ?? "")"
+                return key + ": " + cut(text, 400)
+            }
+            return ([summary.detail] + args).joined(separator: "\n")
+        }
+    }
+
     // MARK: Hook output (docs: code.claude.com/docs/en/hooks)
 
     static func allow() -> [String: Any] {

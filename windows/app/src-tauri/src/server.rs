@@ -3,7 +3,7 @@
 //! open until it's answered or the hook goes away.
 
 use crate::state::Shared;
-use cloudingbar_core::protocol::{self, socket_name, Inbound};
+use cloudingbar_core::protocol::{self, socket_name, Inbound, SOCKET_NAME};
 use interprocess::local_socket::{prelude::*, GenericNamespaced, ListenerOptions, Stream};
 use std::io::{BufReader, ErrorKind, Read, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,31 +18,39 @@ const READ_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_CONNECTIONS: usize = 64;
 static OPEN: AtomicUsize = AtomicUsize::new(0);
 
+/// Listens on the user's pipe and, for a release or two, on the old shared
+/// name too (hooks installed before the rename still talk to it).
 pub fn start(app: AppHandle, shared: Shared) {
-    std::thread::spawn(move || {
-        let name = socket_name();
-        let Ok(ns) = name.as_str().to_ns_name::<GenericNamespaced>() else { return };
-        // A socket file left by a copy that didn't quit cleanly is taken over
-        // (named pipes on Windows don't linger like that).
-        let listener = match ListenerOptions::new().name(ns).try_overwrite(true).create_sync() {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("Clouding Bar: can't open the socket {name}: {e}");
-                return;
-            }
-        };
-        for conn in listener.incoming().flatten() {
-            if OPEN.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
-                OPEN.fetch_sub(1, Ordering::SeqCst);
-                continue; // too many at once: this one is dropped
-            }
-            let (app, shared) = (app.clone(), shared.clone());
-            std::thread::spawn(move || {
-                handle(conn, app, shared);
-                OPEN.fetch_sub(1, Ordering::SeqCst);
-            });
+    let mut names = vec![socket_name()];
+    if std::env::var("CLOUDINGBAR_SOCKET").is_err() && names[0] != SOCKET_NAME { names.push(SOCKET_NAME.to_string()); }
+    for name in names {
+        let (app, shared) = (app.clone(), shared.clone());
+        std::thread::spawn(move || listen(name, app, shared));
+    }
+}
+
+fn listen(name: String, app: AppHandle, shared: Shared) {
+    let Ok(ns) = name.as_str().to_ns_name::<GenericNamespaced>() else { return };
+    // A socket file left by a copy that didn't quit cleanly is taken over
+    // (named pipes on Windows don't linger like that).
+    let listener = match ListenerOptions::new().name(ns).try_overwrite(true).create_sync() {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Clouding Bar: can't open the socket {name}: {e}");
+            return;
         }
-    });
+    };
+    for conn in listener.incoming().flatten() {
+        if OPEN.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+            OPEN.fetch_sub(1, Ordering::SeqCst);
+            continue; // too many at once: this one is dropped
+        }
+        let (app, shared) = (app.clone(), shared.clone());
+        std::thread::spawn(move || {
+            handle(conn, app, shared);
+            OPEN.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
 }
 
 fn handle(conn: Stream, app: AppHandle, shared: Shared) {
