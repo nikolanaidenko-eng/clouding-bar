@@ -157,6 +157,9 @@ struct Config: Equatable {
     /// The pill's items dragged wider or narrower by their right edge, in
     /// points, by id ("session", "chat", "mic", …).
     var itemWidths: [String: Double] = [:]
+    /// The open panel's blocks top to bottom, as dragged by their grips:
+    /// "meters", "details", "box" (the chats stay on top).
+    var panelOrder: [String] = []
     /// What the pill (and the panel) shows besides the session limit:
     /// "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
@@ -287,6 +290,7 @@ struct Config: Equatable {
         if let v = obj["cloudColor"] as? String { config.cloudColor = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["touchBarOrder"] as? [String: [String]] { config.touchBarOrder = v }
+        if let v = obj["panelOrder"] as? [String] { config.panelOrder = v }
         if let v = obj["itemWidths"] as? [String: NSNumber] { config.itemWidths = v.mapValues { min(max($0.doubleValue, 20), 600) } }
         if let v = obj["touchBarWidths"] as? [String: [String: NSNumber]] {
             config.touchBarWidths = v.mapValues { $0.mapValues { min(max($0.doubleValue, 24), 800) } }

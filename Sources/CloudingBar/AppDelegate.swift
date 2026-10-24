@@ -1302,7 +1302,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.chatName, active?.displayName)
         set(\.chatColor, Session.colors[(active?.colorIndex ?? 0) % Session.colors.count])
         set(\.chatPlace, active.map { place(of: $0) })
-        set(\.chatStatus, active.map { status(of: $0, waiting: activity(of: $0) == .wait) })
+        // The time on its own in the details line, when that shows it.
+        let timeApart = config.metrics.contains("time")
+        set(\.chatStatus, active.map { status(of: $0, waiting: activity(of: $0) == .wait, time: !timeApart) })
+        set(\.chatTime, active.map { AppModel.duration(since: $0.activity == .work ? $0.activitySince : $0.lastSeen) })
         set(\.chatDone, handoff != nil && active?.id == handoff?.doneId)
         // A Codex session in front: Codex's own limits (a different account).
         let isCodex = active?.entrypoint == "codex"
@@ -1391,11 +1394,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// "Needs your OK", "Working · 3 min", "Done · your turn", "Idle · 12 min".
-    private func status(of s: Session, waiting: Bool) -> String {
+    private func status(of s: Session, waiting: Bool, time: Bool = true) -> String {
         waiting ? "Needs your OK"
-            : s.activity == .work ? "Working · \(AppModel.duration(since: s.activitySince))"
+            : s.activity == .work ? "Working" + (time ? " · \(AppModel.duration(since: s.activitySince))" : "")
             : handoff?.doneId == s.id || (s.finishedAt.map { Date().timeIntervalSince($0) < 15 * 60 } ?? false) ? "Done · your turn"
-            : "Idle · \(AppModel.duration(since: s.lastSeen))"
+            : "Idle" + (time ? " · \(AppModel.duration(since: s.lastSeen))" : "")
     }
 
     /// What's in front, to tell when you've gone elsewhere: the app and the

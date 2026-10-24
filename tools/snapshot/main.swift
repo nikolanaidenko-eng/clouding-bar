@@ -288,6 +288,15 @@ widget("w-panel-extras", .panel, size: NSSize(width: 720, height: 330)) {
     $0.queue = [.init(text: "Run the tests and fix what fails", sessionId: nil, project: nil),
                 .init(text: "Update the README", sessionId: nil, project: nil)]
 }
+widget("w-panel-arranged", .panel, size: NSSize(width: 720, height: 360)) { // blocks, tools and time moved by hand
+    $0.config.metrics = ["model", "time", "lines", "git"]
+    $0.config.screenshot = true
+    $0.config.taskQueue = true
+    $0.config.panelOrder = ["box", "details", "meters"]
+    $0.config.itemOrder = ["mic", "send"]
+    $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"; $0.chatTime = "3 min"; $0.chatStatus = "Working"
+    $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"
+}
 widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]
     $0.config.templatesEnabled = true

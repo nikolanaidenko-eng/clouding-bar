@@ -11,7 +11,7 @@ extension AppModel {
     /// Every item the pill and the panel can show, in the owner's order.
     var itemIDs: [String] {
         let all = ["focus", "session", "context", "reset", "cost"] + Metric.ids.map { "metric:" + $0 } + ["chat"]
-            + buttons.map { "button:" + $0.label } + ["templates", "shot", "mic"]
+            + buttons.map { "button:" + $0.label } + ["templates", "shot", "mic", "send"]
         let order = config.itemOrder
         // Which chat it shows comes first, unless it was moved.
         func rank(_ e: (offset: Int, element: String)) -> Int {
