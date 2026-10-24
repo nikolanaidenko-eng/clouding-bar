@@ -583,14 +583,17 @@ struct PillLayout {
 struct PillView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    /// Settings' copy: always the pill itself — never the dictation card or a
+    /// request, whose keys would act from the Settings window.
+    @Environment(\.cbPreview) private var preview
 
     private var editing: Bool { state.pillEditSize != nil }
 
     var body: some View {
         let layout = PillLayout(model: model)
-        let special = model.request != nil || !model.hasSession
+        let special = (model.request != nil && !preview) || !model.hasSession
         Group {
-            if model.voiceShown && model.request == nil {
+            if model.voiceShown && model.request == nil && !preview {
                 // Dictating, or the words to check: grows with them.
                 DictationCard(model: model)
                     .padding(.horizontal, 16).padding(.vertical, 12)
@@ -740,7 +743,8 @@ struct PillBoard: View {
                     }
                     if !a.vertical && !rearrange.isDragging {
                         ForEach(a.ids, id: \.self) { id in
-                            if let r = a.slots[id] { edge(id, r) }
+                            // Not at the pill's own right edge: that pulls the whole pill.
+                            if let r = a.slots[id], r.maxX < a.board.width - 1 { edge(id, r) }
                         }
                     }
                 }
@@ -764,14 +768,19 @@ struct PillBoard: View {
             .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { v in
+                    // From the width it had when the drag began, not the one
+                    // it has grown to: else it ran away from the pointer.
+                    if state.itemResizing?.id != id { state.itemResizing = (id, r.width) }
+                    let start = state.itemResizing?.width ?? r.width
+                    // No wider than the pill's room, so it stays on the pill.
+                    let most = max(20, min(600, budget.width - PillLayout.pad - PillLayout.character - PillLayout.gap))
                     var w = state.itemWidthsLive ?? model.config.itemWidths
-                    w[id] = Double(max(20, min(600, r.width + v.translation.width / scale))).rounded()
+                    w[id] = Double(max(20, min(most, start + v.translation.width / scale))).rounded()
                     state.itemWidthsLive = w
                 }
-                .onEnded { _ in
-                    if let w = state.itemWidthsLive { model.setConfig("itemWidths", w) }
-                    state.itemWidthsLive = nil
-                })
+                .onEnded { _ in finishResize() })
+            // The edge gone mid-drag (its item left the pill): the drag ends here.
+            .onDisappear { if state.itemResizing?.id == id { finishResize() } }
             .onTapGesture(count: 2) {
                 var w = model.config.itemWidths
                 w[id] = nil
@@ -779,6 +788,12 @@ struct PillBoard: View {
             }
             .help("Drag to make it wider or narrower · double-click for its own width")
             .offset(x: r.maxX + 1, y: r.minY)
+    }
+
+    private func finishResize() {
+        if let w = state.itemWidthsLive { model.setConfig("itemWidths", w) }
+        state.itemWidthsLive = nil
+        state.itemResizing = nil
     }
 
     /// Cloud, with the number of files waiting for Claude (or a "+" while

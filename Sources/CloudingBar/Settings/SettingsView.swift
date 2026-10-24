@@ -1224,6 +1224,8 @@ struct TouchBarEditor: View {
         }
         .frame(width: w, height: h)
         .offset(x: x)
+        // Its block left the bar mid-drag: the drag ends, it doesn't hang on.
+        .onDisappear { if dragged == block.key { finish() } }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Touch Bar block: \(block.key)")
     }
@@ -1251,7 +1253,8 @@ struct TouchBarEditor: View {
         begin(key)
         guard let start, let frame = start.frames[key] else { return }
         var w = start.widths
-        w[key] = Double(min(max(frame.width + dx, 24), 800)).rounded()
+        // Never past the bar: Cloud, "Whole bar" and a little room stay on it.
+        w[key] = Double(min(max(frame.width + dx, 24), barWidth - 120)).rounded()
         if w != widths { widths = w }
     }
 

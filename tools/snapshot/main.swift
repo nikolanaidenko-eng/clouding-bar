@@ -524,6 +524,12 @@ do { // the Touch Bar tab with everything on, and the model known
     let host = NSHostingView(rootView: SettingsView(model: m, tab: "touchbar"))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-touchbar-all")
 }
+do { // Settings' copy of the widget while Claude asks: the widget, never the request (its keys would answer)
+    let m = sampleModel()
+    m.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "rm -rf build")
+    let host = NSHostingView(rootView: SettingsView(model: m, tab: "widget"))
+    renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-request")
+}
 for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     let m = sampleModel()
     m.touchBarPresent = true

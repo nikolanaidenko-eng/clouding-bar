@@ -11,6 +11,8 @@ final class WidgetState: ObservableObject {
     /// While an item's right edge is dragged: the widths as they'd be on
     /// letting go (the pill and its window follow at once).
     @Published var itemWidthsLive: [String: Double]?
+    /// The item whose edge is held, and its width when the drag began.
+    var itemResizing: (id: String, width: CGFloat)?
     /// What it collapses to: the pill, or the thin line.
     var rest: WidgetMode = .pill
     /// Set when collapsing means something else (the drawer slides away).
@@ -328,6 +330,9 @@ struct Icon: View {
 struct WidgetView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    /// Settings' copy: never Claude's request (its keys — Esc, the numbers,
+    /// Return in its field — would answer it from the Settings window).
+    @Environment(\.cbPreview) private var preview
 
     var body: some View {
         Group {
@@ -336,7 +341,7 @@ struct WidgetView: View {
             case .pill:
                 if state.notched { NotchView(model: model, state: state) } else { PillView(model: model, state: state) }
             case .panel:
-                if model.request != nil { RequestCardView(model: model, state: state) }
+                if model.request != nil && !preview { RequestCardView(model: model, state: state) }
                 else if !model.hasSession { EmptyPanel(model: model) }
                 else { MainPanel(model: model, state: state) }
             case .sessions: SessionsPanel(model: model, state: state)
@@ -895,7 +900,7 @@ struct MainPanel: View {
                         .focused($typing)
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
-                        .allowsHitTesting(!preview) // Settings' copy: nothing is sent from it
+                        .disabled(preview) // Settings' copy: not even Tab reaches it, nothing is sent from it
                 }
                 RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
                                rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
@@ -1398,6 +1403,7 @@ struct TemplatesButton: View {
     var size: CGFloat = 32
     var plain = false
     var width: CGFloat?
+    @Environment(\.cbPreview) private var preview
 
     var body: some View {
         Menu {
@@ -1409,6 +1415,7 @@ struct TemplatesButton: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .disabled(preview) // Settings' copy: nothing typed from it
         .foregroundColor(plain ? .cbSecondary : .cbText)
         .frame(width: max(size, width ?? size), height: size)
         .background(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
