@@ -596,8 +596,9 @@ final class BarView: NSView {
     private func refreshValues() {
         mascot.activity = model.activity
         mascot.awake = model.awake
+        // The short bar: no countdown to the reset (owner, 24.10).
         meters?.set(session: model.sessionPercent,
-                    countdown: model.mode == .normal && !model.shows.contains("reset") ? nil : model.resetCountdown,
+                    countdown: model.mode == .normal && (!model.shows.contains("reset") || model.short) ? nil : model.resetCountdown,
                     context: model.contextPercent)
         mini?.set(session: model.sessionPercent, context: model.contextPercent)
         if case let .typing(text) = model.mode { field?.set(text: text) }
