@@ -553,14 +553,14 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
 }
 
 // The tour in the settings window, at a few of its stops.
-for step in [0, 4, 7, 8, 9, 10, 11] {
+for step in [0, 4, 5, 6, 8, 9, 10, 11, 12] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.hasNotch = true
     m.tourStep = step
     let host = NSHostingView(rootView: SettingsView(model: m, tab: SettingsTour.stops[step].tab))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560),
-               name: [8, 9, 10].contains(step) ? "s-stats-tour-\(step)" : "tour-\(step)")
+               name: [9, 10, 11].contains(step) ? "s-stats-tour-\(step)" : "tour-\(step)")
 }
 
 do { // Cloud's faces: awake, happy, dizzy, shy

@@ -933,6 +933,7 @@ struct WidgetTab: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             WidgetPreview(model: model)
+                .tourAnchor("widget.preview")
             if model.config.achievements.contains("claude-wave") {
                 // Unlocked when Claude first waved at Cloud with a ☁️.
                 SettingsSection(title: "Cloud", icon: "trophy.fill", tint: 0xFFD60A) {
