@@ -234,14 +234,31 @@ final class BarView: NSView {
         switch model.mode {
         case .normal:
             let short = model.short
+            // Short (owner, 24.10): the limits at least half the bar; the chat
+            // line's frame with your commands in it (three at most, the rest
+            // on the whole bar) but no room for words — and the chat's name
+            // only in what room is left.
+            let shortHalf = (Self.narrowWidth - Palette.edge * 2) / 2
+            var shortBox: NSView?
+            var shortBoxWidth: CGFloat = 0
+            if short, case let commands = commandButtons(limit: 3), !commands.isEmpty {
+                let field = ComposeFieldButton(placeholder: "") { [weak self] in self?.onAction?(.write) }
+                let box = ChatBoxView(field: field, commands: commands, compact: true)
+                shortBox = box
+                shortBoxWidth = box.commandsWidth + 6
+            }
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
                 let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
                 // A name that fits keeps its room (it stands still; what doesn't
                 // fit goes from the right instead); a longer one gives way and slides.
-                let cap: CGFloat = short ? 130 : 220
+                var cap: CGFloat = short ? 130 : 220
+                if short {
+                    // Room beside Cloud (60), half the bar, the commands and "whole bar" (40).
+                    cap = min(cap, shortHalf - 60 - 40 - shortBoxWidth - Palette.gap * (shortBox == nil ? 2 : 3))
+                }
                 let fit = b.fittingWidth(padding: short ? 8 : 10)
-                add(b, fit <= cap ? .fixed(fit) : .shrinkable(cap))
+                if cap >= min(fit, 60) { add(b, fit <= cap ? .fixed(fit) : .shrinkable(cap)) }
             }
             // Short (beside Apple's buttons): everything, smaller; what
             // still doesn't fit is left out from the right (layout()).
@@ -250,7 +267,7 @@ final class BarView: NSView {
             if session || context {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
-                add(pair, .flex(weight: 1, min: short ? 150 : session && context ? 120 : 80))
+                add(pair, .flex(weight: 1, min: short ? shortHalf : session && context ? 120 : 80))
             }
             if shows.contains("model"), let label = model.modelLabel {
                 let b = BarButton(label, fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
@@ -272,7 +289,9 @@ final class BarView: NSView {
                 let b = BarButton(text, fontSize: short ? 11 : 12, symbol: symbol)
                 add(b, .shrinkable(min(short ? 100 : 150, b.fittingWidth(padding: short ? 8 : 12))), droppable: true)
             }
-            if shows.contains("chat") {
+            if short {
+                if let shortBox { add(shortBox, .fixed(shortBoxWidth), droppable: true) }
+            } else if shows.contains("chat") {
                 // The chat's name is on the bar already when there are several.
                 let placeholder = model.current != nil ? "Message…" : model.chatName.map { "Write to “\($0)”…" } ?? "Message…"
                 let field = ComposeFieldButton(placeholder: placeholder) {
@@ -289,7 +308,7 @@ final class BarView: NSView {
                 add(b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), droppable: true)
             }
             // With the chat field, your buttons are inside it.
-            if shows.contains("buttons") && !shows.contains("chat") {
+            if !short && shows.contains("buttons") && !shows.contains("chat") {
                 for (i, spec) in model.buttons.enumerated() {
                     let b = customButton(spec.label, compact: short) { [weak self] in self?.onAction?(.button(i)) }
                     add(b.button, .shrinkable(b.width), droppable: true)

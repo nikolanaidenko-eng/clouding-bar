@@ -47,25 +47,25 @@ add("agents") { $0.mode = .agents; $0.agents = ["Explore · Find the hook code",
 add("normal-agents") { $0.shows = ["session", "context", "model", "agents", "buttons"]; $0.modelLabel = "Opus 5.5 1M · xhigh"; $0.agents = ["a", "b"] }
 let chats = [BarModel.Chat(id: "1", name: "Status bar", color: Session.colors[0], current: true, waiting: false),
              BarModel.Chat(id: "2", name: "Lead bot", color: Session.colors[1], current: false, waiting: true),
-             BarModel.Chat(id: "3", name: "Сайт ordermeshop portf…", color: Session.colors[2], current: false, waiting: false)]
+             BarModel.Chat(id: "3", name: "Portfolio site redesi…", color: Session.colors[2], current: false, waiting: false)]
 add("normal-chats") { $0.chats = chats }
 add("chats") { $0.chats = chats; $0.mode = .chats }
-let longChats = [BarModel.Chat(id: "1", name: "привет, давай небольшой анализ по постам в Threads", color: Session.colors[3], current: true, waiting: false),
-                 BarModel.Chat(id: "2", name: "Промо-видео Remotion для автосервиса", color: Session.colors[1], current: false, waiting: false)]
+let longChats = [BarModel.Chat(id: "1", name: "привет, давай разберём тесты в модуле оплаты", color: Session.colors[3], current: true, waiting: false),
+                 BarModel.Chat(id: "2", name: "Промо-ролик для лендинга", color: Session.colors[1], current: false, waiting: false)]
 add("normal-longchat") { $0.chats = longChats }
 add("chats-long") { $0.chats = longChats + chats; $0.mode = .chats }
 // Many chats, Cowork ones among them (long Russian names): each keeps a readable name.
-let manyChats = chats + [BarModel.Chat(id: "4", name: "Промо-видео для бота", color: Session.colors[4], current: false, waiting: false),
-                         BarModel.Chat(id: "5", name: "Threads: поиск лидов", color: Session.colors[5], current: false, waiting: false),
-                         BarModel.Chat(id: "6", name: "Письма клиентам Prague", color: Session.colors[6], current: false, waiting: false)]
+let manyChats = chats + [BarModel.Chat(id: "4", name: "Ролик для презентации", color: Session.colors[4], current: false, waiting: false),
+                         BarModel.Chat(id: "5", name: "Блог: черновики постов", color: Session.colors[5], current: false, waiting: false),
+                         BarModel.Chat(id: "6", name: "Рассылка: шаблоны писем", color: Session.colors[6], current: false, waiting: false)]
 add("chats-many") { $0.chats = manyChats; $0.mode = .chats }
 add("chats-many-short", width: 628) { $0.short = true; $0.chats = manyChats; $0.mode = .chats }
-let crowd = manyChats + [BarModel.Chat(id: "7", name: "Промо-видео Remotion", color: Session.colors[7], current: false, waiting: false),
+let crowd = manyChats + [BarModel.Chat(id: "7", name: "Анимация логотипа", color: Session.colors[7], current: false, waiting: false),
                         BarModel.Chat(id: "8", name: "claudebar", color: Session.colors[0], current: false, waiting: false),
-                        BarModel.Chat(id: "9", name: "24H: сайт", color: Session.colors[1], current: false, waiting: false)]
+                        BarModel.Chat(id: "9", name: "Docs: сайт", color: Session.colors[1], current: false, waiting: false)]
 add("chats-crowd") { $0.chats = crowd; $0.mode = .chats }
 add("chats-crowd-short", width: 628) { $0.short = true; $0.chats = crowd; $0.mode = .chats }
-add("done") { $0.chats = chats; $0.mode = .done(BarModel.Chat(id: "4", name: "Cowork · Промо-видео для бота", color: Session.colors[4], current: false, waiting: false)) }
+add("done") { $0.chats = chats; $0.mode = .done(BarModel.Chat(id: "4", name: "Cowork · Ролик для презентации", color: Session.colors[4], current: false, waiting: false)) }
 add("done-short", width: 628) { $0.short = true; $0.chats = chats; $0.mode = .done(chats[1]) }
 add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
@@ -82,6 +82,11 @@ add("normal-short", width: 628) { $0.short = true; $0.chats = chats
 add("normal-short-all", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "lines", "chat", "templates", "buttons", "shot", "mic"]
     $0.modelLabel = "Opus 5.5 1M"; $0.lines = "+120 −8"; $0.templates = ["Review"] }
+let mine = ["caveman", "compact", "office"].map { ButtonSpec(label: $0, type: .command, value: $0) }
+add("normal-short-3", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = mine + Array(seven.suffix(2))
+    $0.shows = ["reset", "session", "context", "mic", "shot", "chat", "buttons"] }
+add("normal-short-1", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = Array(mine.suffix(1))
+    $0.shows = ["reset", "session", "context", "mic", "shot", "chat", "buttons"] }
 add("normal-expanded") { $0.expanded = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
 add("permission-short", width: 628) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
@@ -172,7 +177,7 @@ func sampleModel() -> AppModel {
               place: "GitHub · VS Code", color: Session.colors[2]),
         .init(id: "4", name: "claudebar", status: "Idle · 12 min", activity: .sleep, context: 94, waiting: false,
               place: "Terminal", color: Session.colors[3]),
-        .init(id: "5", name: "Сайт ordermeshop portfolio", status: "Idle · 1 h", activity: .sleep, context: 12, waiting: false,
+        .init(id: "5", name: "Portfolio site redesign", status: "Idle · 1 h", activity: .sleep, context: 12, waiting: false,
               place: "GitHub · VS Code", color: Session.colors[4]),
     ]
     return m
@@ -211,7 +216,7 @@ for c in CloudColor.allCases { // Cloud in each colour the wave unlocks (one col
 MascotView.color = .classic
 do { // Cloud tells another chat is done
     let anim = DoneBubbleAnimation()
-    anim.alert = DoneBubbleController.Alert(id: "c", name: "Промо-видео для бота", detail: "24H · Cowork", color: Session.colors[4])
+    anim.alert = DoneBubbleController.Alert(id: "c", name: "Ролик для презентации", detail: "Notes · Cowork", color: Session.colors[4])
     anim.out = 1
     anim.bubble = 1
     renderView(NSHostingView(rootView: DoneBubbleView(anim: anim, open: {}, hover: { _ in })),
