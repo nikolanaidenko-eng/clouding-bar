@@ -179,6 +179,7 @@ do { // the hook writes into the connected folder itself: working, then done
     let mac = task.appendingPathComponent("mnt/Notes")
     try? FileManager.default.removeItem(at: task)
     try? FileManager.default.createDirectory(at: mac, withIntermediateDirectories: true)
+    try? FileManager.default.createDirectory(at: task.appendingPathComponent("mnt/outputs"), withIntermediateDirectories: true)  // Cowork's own folder: the sign of Cowork
     let transcript = task.appendingPathComponent("t.jsonl")
     try? #"{"type":"assistant","timestamp":"2026-10-20T10:02:00.000Z","message":{"id":"r1","model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5,"output_tokens":90}}}"#
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
@@ -549,6 +550,32 @@ do {
     let always = pending?.always()["hookSpecificOutput"] as? [String: Any]
     check((always?["decision"] as? [String: Any])?["updatedPermissions"] == nil, "codex: Always is a plain allow (no remembered rules)")
     check(pending?.hostAnswersInParallel == false, "codex: Codex waits on the hook, so it's held briefly")
+}
+
+// MARK: Safety
+
+do { // settings.json as a link (dotfiles): Connect writes the file it points to, the link stays
+    let fm = FileManager.default
+    let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("linked")
+    try? fm.removeItem(at: base)
+    try? fm.createDirectory(at: base, withIntermediateDirectories: true)
+    let real = base.appendingPathComponent("dotfiles-settings.json"), link = base.appendingPathComponent("settings.json")
+    try? "{}".write(to: real, atomically: true, encoding: .utf8)
+    try? fm.createSymbolicLink(at: link, withDestinationURL: real)
+    let saved = ProcessInfo.processInfo.environment["CLOUDINGBAR_CLAUDE_SETTINGS"]
+    setenv("CLOUDINGBAR_CLAUDE_SETTINGS", link.path, 1)
+    try? Setup.connect()
+    let kept = (try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil
+    check(kept && ((try? String(contentsOf: real, encoding: .utf8)) ?? "").contains("cloudingbar"),
+          "settings.json behind a link: written through it, the link kept")
+    if let saved { setenv("CLOUDINGBAR_CLAUDE_SETTINGS", saved, 1) } else { unsetenv("CLOUDINGBAR_CLAUDE_SETTINGS") }
+}
+do { // a Cowork status file with absurd numbers (anyone's repo could bring one): read within bounds, no crash
+    let f = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("cowork-huge.json")
+    try? #"{"session":"x","context_tokens":9e18,"context_window":1,"t":1e300,"usage":{"5":[9e18,9e18]}}"#
+        .write(to: f, atomically: true, encoding: .utf8)
+    let st = Cowork.read(f)
+    check(st?.contextTokens == 10_000_000 && st?.contextWindow == 1_000, "Cowork file with absurd numbers: kept in bounds")
 }
 
 // MARK: Config
