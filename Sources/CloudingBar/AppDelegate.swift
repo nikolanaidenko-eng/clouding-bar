@@ -2010,17 +2010,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.widget.releaseKey()
                 KeySender.type(path + " ")
                 DebugLog.note("screenshot → path typed")
-            } else if self.config.widget, self.attach([URL(fileURLWithPath: path)]) {
+            } else if self.attach([URL(fileURLWithPath: path)]) {
                 // Another app in front: not typed there, but attached to the
-                // chat shown, to go with your next message.
+                // chat shown, to go with your next message — in the widget,
+                // or, with the widget off, on the island the Touch Bar's Cloud
+                // calls up (owner, 24.10: never off to the chat's window).
+                if self.config.widget { self.widget.openMessage() } else { self.drawer.openMessage() }
                 self.refresh()
-                self.widget.openMessage()
                 DebugLog.note("screenshot → attached to the chat shown")
-            } else if let active = self.focusedSession {
-                // No widget: the chat comes up, and the path goes in there.
-                self.openSession(active.id)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { KeySender.type(path + " ") }
-                DebugLog.note("screenshot → chat brought up, path typed")
             }
         }
     }
