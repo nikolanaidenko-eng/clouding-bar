@@ -1088,7 +1088,7 @@ struct TouchBarTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TouchBarPreview(model: model)
+            TouchBarEditor(model: model)
                 .opacity(model.config.touchBar == "off" ? 0.4 : 1)
                 .tourAnchor("touchbar.preview")
             SettingsGroup {
@@ -1135,6 +1135,178 @@ struct TouchBarTab: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
         }
+    }
+}
+
+
+/// The Touch Bar itself — drawn by the bar's own code, not a likeness — to
+/// arrange as the widget is: drag a block to move it, its right edge to
+/// make it wider or narrower; the whole bar and the short one (beside
+/// Apple's buttons) each their own way (owner, 24.10).
+struct TouchBarEditor: View {
+    @ObservedObject var model: AppModel
+    @State private var short = false
+    @State private var blocks: [(key: String, frame: NSRect)] = []
+    /// While dragging: the order and widths as they'd be on letting go.
+    @State private var order: [String]?
+    @State private var widths: [String: Double]?
+    @State private var start: (order: [String], widths: [String: Double], frames: [String: NSRect])?
+
+    private var which: String { short ? "short" : "whole" }
+    private var barWidth: CGFloat { short ? BarView.narrowWidth : BarView.preferredWidth }
+    /// The whole bar scrolls sideways a little rather than shrink to a strip.
+    private var scale: CGFloat { short ? 0.84 : 0.72 }
+    private var savedOrder: [String] { model.config.touchBarOrder[which] ?? [] }
+    private var savedWidths: [String: Double] { model.config.touchBarWidths[which] ?? [:] }
+    private var arranged: Bool { !savedOrder.isEmpty || !savedWidths.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                SettingsSegments(options: [("whole", "Whole bar"), ("short", "Short")], selected: which, tint: 0xBF5AF2) {
+                    short = $0 == "short"
+                }
+                Spacer(minLength: 0)
+                if arranged {
+                    Button("Reset") { reset() }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.sSecondary)
+                        .help("Back to the bar's own order and widths")
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: !short) {
+                ZStack(alignment: .topLeading) {
+                    LiveBar(bar: bar, width: barWidth, scale: scale) { found in
+                        if found.map(\.key) != blocks.map(\.key) || found.map(\.frame) != blocks.map(\.frame) { blocks = found }
+                    }
+                    .frame(width: barWidth * scale, height: Palette.height * scale)
+                    ForEach(blocks, id: \.key) { block in handle(block) }
+                }
+                .frame(width: barWidth * scale, height: Palette.height * scale, alignment: .topLeading)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black))
+            }
+            Text("Drag a block to move it, its right edge to make it wider or narrower. Double-click a block for its own width again.")
+                .font(.system(size: 11)).foregroundColor(.sMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The bar as it is now, with what's being dragged.
+    private var bar: BarModel {
+        var bar = model.barPreview(short)
+        bar.short = short
+        if let order { bar.order = order }
+        if let widths { bar.widths = widths.mapValues { CGFloat($0) } }
+        return bar
+    }
+
+    /// One block: its body moves it, its right edge sizes it.
+    private func handle(_ block: (key: String, frame: NSRect)) -> some View {
+        let x = block.frame.minX * scale, w = block.frame.width * scale, h = Palette.height * scale
+        return ZStack(alignment: .trailing) {
+            Rectangle().fill(Color.white.opacity(start != nil && dragged == block.key ? 0.12 : 0.001))
+                .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
+                    .onChanged { move(block.key, by: $0.translation.width / scale) }
+                    .onEnded { _ in finish() })
+                .onTapGesture(count: 2) { resetWidth(block.key) }
+            Rectangle().fill(Color.white.opacity(0.35)).frame(width: 2, height: h * 0.5)
+                .frame(width: 10, height: h)
+                .contentShape(Rectangle())
+                .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { size(block.key, by: $0.translation.width / scale) }
+                    .onEnded { _ in finish() })
+        }
+        .frame(width: w, height: h)
+        .offset(x: x)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Touch Bar block: \(block.key)")
+    }
+
+    @State private var dragged: String?
+
+    private func begin(_ key: String) {
+        guard start == nil else { return }
+        dragged = key
+        start = (blocks.map(\.key), savedWidths, Dictionary(blocks.map { ($0.key, $0.frame) }, uniquingKeysWith: { a, _ in a }))
+    }
+
+    /// Moving: where its middle comes to among the others' middles.
+    private func move(_ key: String, by dx: CGFloat) {
+        begin(key)
+        guard let start, let frame = start.frames[key] else { return }
+        let mid = frame.midX + dx
+        var rest = start.order.filter { $0 != key }
+        let index = rest.firstIndex { (start.frames[$0]?.midX ?? 0) > mid } ?? rest.count
+        rest.insert(key, at: index)
+        if rest != order { order = rest }
+    }
+
+    private func size(_ key: String, by dx: CGFloat) {
+        begin(key)
+        guard let start, let frame = start.frames[key] else { return }
+        var w = start.widths
+        w[key] = Double(min(max(frame.width + dx, 24), 800)).rounded()
+        if w != widths { widths = w }
+    }
+
+    private func finish() {
+        if let order {
+            var all = model.config.touchBarOrder
+            all[which] = order
+            model.setConfig("touchBarOrder", all)
+        }
+        if let widths {
+            var all = model.config.touchBarWidths
+            all[which] = widths
+            model.setConfig("touchBarWidths", all)
+        }
+        order = nil
+        widths = nil
+        start = nil
+        dragged = nil
+    }
+
+    private func resetWidth(_ key: String) {
+        var all = model.config.touchBarWidths
+        all[which]?[key] = nil
+        model.setConfig("touchBarWidths", all)
+    }
+
+    private func reset() {
+        var o = model.config.touchBarOrder, w = model.config.touchBarWidths
+        o[which] = nil
+        w[which] = nil
+        model.setConfig("touchBarOrder", o)
+        model.setConfig("touchBarWidths", w)
+    }
+}
+
+/// The Touch Bar's own view, live and scaled down, for Settings: what it
+/// shows is what the bar shows. Tells where its blocks are.
+struct LiveBar: NSViewRepresentable {
+    let bar: BarModel
+    let width: CGFloat
+    let scale: CGFloat
+    let blocks: ([(key: String, frame: NSRect)]) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let holder = NSView(frame: NSRect(x: 0, y: 0, width: width * scale, height: Palette.height * scale))
+        holder.wantsLayer = true
+        let view = BarView(frame: NSRect(x: 0, y: 0, width: width, height: Palette.height))
+        view.onAction = { _ in } // only to look at and arrange here
+        holder.addSubview(view)
+        return holder
+    }
+
+    func updateNSView(_ holder: NSView, context: Context) {
+        guard let view = holder.subviews.first as? BarView else { return }
+        holder.setBoundsSize(NSSize(width: width, height: Palette.height))
+        view.frame = NSRect(x: 0, y: 0, width: width, height: Palette.height)
+        view.update(bar)
+        view.layoutSubtreeIfNeeded()
+        let found = view.blocks
+        DispatchQueue.main.async { blocks(found) }
     }
 }
 

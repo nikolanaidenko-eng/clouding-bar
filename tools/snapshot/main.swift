@@ -83,6 +83,10 @@ add("normal-short-all", width: 628) { $0.short = true; $0.chats = chats; $0.butt
     $0.shows = ["session", "reset", "context", "model", "lines", "chat", "templates", "buttons", "shot", "mic"]
     $0.modelLabel = "Opus 5.5 1M"; $0.lines = "+120 −8"; $0.templates = ["Review"] }
 let mine = ["caveman", "compact", "office"].map { ButtonSpec(label: $0, type: .command, value: $0) }
+add("normal-arranged") { $0.chats = chats; $0.buttons = mine; $0.shows = ["session", "reset", "context", "chat", "buttons", "shot", "mic"]
+    $0.order = ["chat", "meters", "mic", "name"]; $0.widths = ["meters": 200, "name": 90] }
+add("normal-short-arranged", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = mine
+    $0.shows = ["session", "reset", "context", "chat", "buttons"]; $0.order = ["chat", "meters"]; $0.widths = ["meters": 220, "chat": 260] }
 add("normal-short-3", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = mine + Array(seven.suffix(2))
     $0.shows = ["reset", "session", "context", "mic", "shot", "chat", "buttons"] }
 add("normal-short-1", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = Array(mine.suffix(1))
@@ -151,6 +155,13 @@ func renderView(_ view: NSView, size: NSSize, name: String, light: Bool = false)
 
 func sampleModel() -> AppModel {
     let m = AppModel()
+    m.barPreview = { short in // the bar Settings arranges
+        var b = BarModel()
+        b.short = short; b.chats = chats; b.buttons = three
+        b.shows = ["session", "reset", "context", "chat", "buttons", "shot", "mic"]
+        b.sessionPercent = 42; b.contextPercent = 31; b.resetCountdown = "1:23"; b.chatName = "Status bar"
+        return b
+    }
     m.config.sessionsList = true
     m.hasSession = true
     m.activity = .work

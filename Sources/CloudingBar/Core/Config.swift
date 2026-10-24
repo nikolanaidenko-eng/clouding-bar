@@ -149,6 +149,11 @@ struct Config: Equatable {
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
+    /// The bar arranged by hand in Settings, per bar ("whole", "short"):
+    /// the order of its blocks ("name", "meters", "chat", "model", …) and
+    /// the width of each one dragged wider or narrower, in points.
+    var touchBarOrder: [String: [String]] = [:]
+    var touchBarWidths: [String: [String: Double]] = [:]
     /// What the pill (and the panel) shows besides the session limit:
     /// "context", "reset", "cost".
     var pillShows: [String] = ["context", "reset"]
@@ -278,6 +283,10 @@ struct Config: Equatable {
         if let v = obj["achievements"] as? [String] { config.achievements = v }
         if let v = obj["cloudColor"] as? String { config.cloudColor = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
+        if let v = obj["touchBarOrder"] as? [String: [String]] { config.touchBarOrder = v }
+        if let v = obj["touchBarWidths"] as? [String: [String: NSNumber]] {
+            config.touchBarWidths = v.mapValues { $0.mapValues { min(max($0.doubleValue, 24), 800) } }
+        }
         if let v = obj["widgetPosition"] as? [NSNumber], v.count == 2 {
             config.widgetPosition = CGPoint(x: v[0].doubleValue, y: v[1].doubleValue)
         }

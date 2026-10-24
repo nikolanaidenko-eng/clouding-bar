@@ -77,6 +77,9 @@ struct BarModel: Equatable {
     var lines: String?
     var branch: String?
     var cost: String?
+    /// Arranged in Settings: the blocks' order and their dragged widths.
+    var order: [String] = []
+    var widths: [String: CGFloat] = [:]
 
     var current: Chat? { chats.count > 1 ? chats.first(where: \.current) : nil }
 }
@@ -170,6 +173,8 @@ final class BarView: NSView {
         }
         let view: NSView
         let width: Width
+        /// The block's name in Settings' arrangement ("meters", "chat", …).
+        var key: String?
     }
 
     override init(frame: NSRect) {
@@ -195,6 +200,11 @@ final class BarView: NSView {
         refreshValues()
     }
 
+    /// Where each named block is, after layout (Settings' arranging).
+    var blocks: [(key: String, frame: NSRect)] {
+        slots.compactMap { s in s.key.flatMap { s.view.isHidden ? nil : ($0, s.view.frame) } }
+    }
+
     // MARK: Building
 
     /// What decides the set of subviews; values change without a rebuild.
@@ -205,7 +215,8 @@ final class BarView: NSView {
         switch m.mode {
         case .normal:
             let info = [m.lines, m.branch, m.cost, m.chatName].map { $0 ?? "" }.joined(separator: "|")
-            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)|\(m.expanded)"
+            let arranged = m.order.joined(separator: ",") + "|" + m.widths.sorted { $0.key < $1.key }.map { "\($0.key)=\(Int($0.value))" }.joined(separator: ",")
+            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)|\(m.expanded)|\(arranged)"
         case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
         case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
@@ -234,6 +245,11 @@ final class BarView: NSView {
         switch model.mode {
         case .normal:
             let short = model.short
+            let shows = model.shows
+            // The blocks, each with its key (Settings arranges them by it):
+            // in their own order unless you dragged them, at their own width
+            // unless you dragged that too.
+            var blocks: [(key: String, view: NSView, width: Slot.Width, droppable: Bool)] = []
             // Short (owner, 24.10): the limits at least half the bar; the chat
             // line's frame with your commands in it (three at most, the rest
             // on the whole bar) but no room for words — and the chat's name
@@ -250,30 +266,27 @@ final class BarView: NSView {
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
                 let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
-                // A name that fits keeps its room (it stands still; what doesn't
-                // fit goes from the right instead); a longer one gives way and slides.
-                // A long name: a narrow button it slides through, not half
-                // the bar (owner, 24.10).
+                // A name that fits keeps its room (it stands still); a long one
+                // slides through a narrow button, not half the bar (owner, 24.10).
                 var cap: CGFloat = 130
                 if short {
                     // Room beside Cloud (60), half the bar, the commands and "whole bar" (40).
                     cap = min(cap, shortHalf - 60 - 40 - shortBoxWidth - Palette.gap * (shortBox == nil ? 2 : 3))
                 }
                 let fit = b.fittingWidth(padding: short ? 8 : 10)
-                if cap >= min(fit, 60) { add(b, fit <= cap ? .fixed(fit) : .shrinkable(cap)) }
+                if cap >= min(fit, 60) || model.widths["name"] != nil {
+                    blocks.append(("name", b, fit <= cap ? .fixed(fit) : .shrinkable(cap), false))
+                }
             }
-            // Short (beside Apple's buttons): everything, smaller; what
-            // still doesn't fit is left out from the right (layout()).
-            let shows = model.shows
             let session = shows.contains("session"), context = shows.contains("context")
             if session || context {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
-                add(pair, .flex(weight: 1, min: short ? shortHalf : session && context ? 120 : 80))
+                blocks.append(("meters", pair, .flex(weight: 1, min: short ? shortHalf : session && context ? 120 : 80), false))
             }
             if shows.contains("model"), let label = model.modelLabel {
                 let b = BarButton(label, fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
-                add(b, .shrinkable(min(short ? 120 : 190, b.fittingWidth(padding: short ? 8 : 12))), droppable: true)
+                blocks.append(("model", b, .shrinkable(min(short ? 120 : 190, b.fittingWidth(padding: short ? 8 : 12))), true))
             }
             if shows.contains("agents") {
                 let n = model.agents.count
@@ -281,7 +294,7 @@ final class BarView: NSView {
                                   symbol: ("person.2.fill", 0x40C8E0)) {
                     [weak self] in self?.onAction?(.agents)
                 }
-                add(b, .shrinkable(b.fittingWidth(padding: short ? 8 : 14)), droppable: true)
+                blocks.append(("agents", b, .shrinkable(b.fittingWidth(padding: short ? 8 : 14)), true))
             }
             // What the widget shows besides: lines, branch, cost.
             for (key, text, symbol) in [("lines", model.lines, ("chevron.left.forwardslash.chevron.right", UInt32(0x30D158))),
@@ -289,31 +302,36 @@ final class BarView: NSView {
                                         ("cost", model.cost, ("dollarsign.circle", UInt32(0xFFD60A)))] {
                 guard shows.contains(key), let text else { continue }
                 let b = BarButton(text, fontSize: short ? 11 : 12, symbol: symbol)
-                add(b, .shrinkable(min(short ? 100 : 150, b.fittingWidth(padding: short ? 8 : 12))), droppable: true)
+                blocks.append((key, b, .shrinkable(min(short ? 100 : 150, b.fittingWidth(padding: short ? 8 : 12))), true))
             }
+            var chatMin: CGFloat = 0
             if short {
-                if let shortBox { add(shortBox, .fixed(shortBoxWidth), droppable: true) }
+                if let shortBox {
+                    blocks.append(("chat", shortBox, .fixed(shortBoxWidth), true))
+                    chatMin = shortBoxWidth
+                }
             } else if shows.contains("chat") {
                 // The chat's name is on the bar already when there are several.
                 let placeholder = model.current != nil ? "Message…" : model.chatName.map { "Write to “\($0)”…" } ?? "Message…"
                 let field = ComposeFieldButton(placeholder: placeholder) {
                     [weak self] in self?.onAction?(.write)
                 }
-                // Your commands inside it, one whole (short: three at most).
-                let box = ChatBoxView(field: field, commands: commandButtons(limit: short ? 3 : nil), compact: short)
-                add(box, .flex(weight: 1.2, min: (short ? 100 : 150) + box.commandsWidth), droppable: true)
+                // Your commands inside it, one whole.
+                let box = ChatBoxView(field: field, commands: commandButtons(), compact: false)
+                blocks.append(("chat", box, .flex(weight: 1.2, min: 150 + box.commandsWidth), true))
+                chatMin = box.commandsWidth + 40
             }
             if shows.contains("templates"), !model.templates.isEmpty {
                 let b = BarButton(short ? "" : "Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
                     self?.onAction?(.templates)
                 }
-                add(b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), droppable: true)
+                blocks.append(("templates", b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), true))
             }
             // With the chat field, your buttons are inside it.
             if !short && shows.contains("buttons") && !shows.contains("chat") {
                 for (i, spec) in model.buttons.enumerated() {
                     let b = customButton(spec.label, compact: short) { [weak self] in self?.onAction?(.button(i)) }
-                    add(b.button, .shrinkable(b.width), droppable: true)
+                    blocks.append(("button:" + spec.label, b.button, .shrinkable(b.width), true))
                     animate(b.button) { $0.popIn() }
                 }
             }
@@ -321,13 +339,28 @@ final class BarView: NSView {
             // message box with its commands only; they're on the whole bar
             // (owner, 24.10).
             if !short, shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
-                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(48), droppable: true)
+                blocks.append(("shot", BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(48), true))
             }
             if !short, shows.contains("mic") {
-                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48), droppable: true)
+                blocks.append(("mic", BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48), true))
             }
-            // No meters: the rest stays at the left, after the character.
-            if meters == nil { add(NSView(), .flex(weight: 1, min: 0)) }
+            // Your order first, the rest after it as they come.
+            let rank = Dictionary(model.order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+            let ordered = blocks.enumerated().sorted {
+                (rank[$0.element.key] ?? model.order.count + $0.offset, $0.offset) < (rank[$1.element.key] ?? model.order.count + $1.offset, $1.offset)
+            }.map(\.element)
+            var flexible = false
+            for b in ordered {
+                var width = b.width
+                if let w = model.widths[b.key] {
+                    // Dragged: that width, never so narrow its commands don't fit.
+                    width = .fixed(max(w, b.key == "chat" ? chatMin : 24))
+                }
+                if case .flex = width { flexible = true }
+                add(b.view, width, droppable: b.droppable, key: b.key)
+            }
+            // No meters, or nothing that stretches: the rest stays at the left.
+            if meters == nil || !flexible { add(NSView(), .flex(weight: 1, min: 0)) }
             // Short: one button opens the whole bar; opened: one folds it back.
             if short || model.expanded,
                let icon = NSImage(systemSymbolName: short ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left",
@@ -559,9 +592,9 @@ final class BarView: NSView {
         return label
     }
 
-    private func add(_ view: NSView, _ width: Slot.Width, droppable: Bool = false) {
+    private func add(_ view: NSView, _ width: Slot.Width, droppable: Bool = false, key: String? = nil) {
         addSubview(view)
-        slots.append(Slot(droppable: droppable, view: view, width: width))
+        slots.append(Slot(droppable: droppable, view: view, width: width, key: key))
     }
 
     private func animate(_ view: NSView, _ animation: @escaping (CALayer) -> Void) {
