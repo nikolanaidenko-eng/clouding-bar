@@ -108,6 +108,9 @@ let connected = withUnsafePointer(to: &addr) {
     }
 }
 guard connected == 0 else { pass() }
+// The app on the other end runs as you — not a socket someone else made.
+var peerUID: uid_t = 0, peerGID: gid_t = 0
+guard getpeereid(fd, &peerUID, &peerGID) == 0, peerUID == getuid() else { pass() }
 
 /// Waits until fd is ready for `events`, or the deadline passes.
 func wait(_ events: Int16, until deadline: Date) -> Bool {

@@ -30,6 +30,7 @@ fi
 echo "Installing the app to $app"
 quit_running
 mkdir -p "$HOME/Applications" "$data"
+chmod 700 "$data" # yours alone: the queue, screenshots, the log, settings copies
 rm -rf "$app" "$HOME/Applications/ClaudeBar.app"
 cp -R "$built" "$app"
 
