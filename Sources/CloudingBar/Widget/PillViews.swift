@@ -743,8 +743,9 @@ struct PillBoard: View {
                     }
                     if !a.vertical && !rearrange.isDragging {
                         ForEach(a.ids, id: \.self) { id in
-                            // Not at the pill's own right edge: that pulls the whole pill.
-                            if let r = a.slots[id], r.maxX < a.board.width - 1 { edge(id, r) }
+                            // Not at the pill's own right edge: that pulls the whole pill
+                            // (unless it's the one being pulled, which keeps its edge).
+                            if let r = a.slots[id], r.maxX < a.board.width - 1 || state.itemResizing?.id == id { edge(id, r) }
                         }
                     }
                 }
