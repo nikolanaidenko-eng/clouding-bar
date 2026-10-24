@@ -122,6 +122,19 @@ final class BarButton: NSButton {
         if marquee && changed { needsLayout = true }
     }
 
+    /// Moved to another window (the bar going beside Apple's buttons and
+    /// back): the name drawn on the old layer can be lost — the button
+    /// stayed empty until its size changed. Drawn again.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if marquee, window != nil { updateMarquee() }
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        if marquee, window != nil { updateMarquee() }
+    }
+
     /// The dot and the name, drawn here: centred when the name fits, else
     /// from the left edge, sliding along to its end and starting over.
     private func updateMarquee() {

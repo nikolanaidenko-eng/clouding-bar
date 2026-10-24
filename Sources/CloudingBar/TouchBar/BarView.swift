@@ -296,11 +296,14 @@ final class BarView: NSView {
                     animate(b.button) { $0.popIn() }
                 }
             }
-            if shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
-                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(short ? 40 : 48), droppable: true)
+            // Short: no screenshot or mic — the chats, the limits and the
+            // message box with its commands only; they're on the whole bar
+            // (owner, 24.10).
+            if !short, shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
+                add(BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) }, .fixed(48), droppable: true)
             }
-            if shows.contains("mic") {
-                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(short ? 40 : 48), droppable: true)
+            if !short, shows.contains("mic") {
+                add(BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48), droppable: true)
             }
             // No meters: the rest stays at the left, after the character.
             if meters == nil { add(NSView(), .flex(weight: 1, min: 0)) }
