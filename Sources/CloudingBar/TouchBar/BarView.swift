@@ -252,7 +252,9 @@ final class BarView: NSView {
                 let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
                 // A name that fits keeps its room (it stands still; what doesn't
                 // fit goes from the right instead); a longer one gives way and slides.
-                var cap: CGFloat = short ? 130 : 220
+                // A long name: a narrow button it slides through, not half
+                // the bar (owner, 24.10).
+                var cap: CGFloat = 130
                 if short {
                     // Room beside Cloud (60), half the bar, the commands and "whole bar" (40).
                     cap = min(cap, shortHalf - 60 - 40 - shortBoxWidth - Palette.gap * (shortBox == nil ? 2 : 3))

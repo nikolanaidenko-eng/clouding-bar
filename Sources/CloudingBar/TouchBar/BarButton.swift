@@ -111,18 +111,8 @@ final class BarButton: NSButton {
 
     override func layout() {
         super.layout()
-        if marquee {
-            Self.passes += 1 // for a while: how often the bar lays a sliding name out
-            if Date().timeIntervalSince(Self.passesSince) > 5 {
-                if Self.passes > 25 { DebugLog.note("touch bar: \(Self.passes) name layouts in 5 s") }
-                Self.passes = 0
-                Self.passesSince = Date()
-            }
-            updateMarquee()
-        }
+        if marquee { updateMarquee() }
     }
-    private static var passes = 0
-    private static var passesSince = Date()
 
     /// The name is drawn for the size the button has: a new size, a new
     /// drawing (else one made before the bar set the size stays — empty).
