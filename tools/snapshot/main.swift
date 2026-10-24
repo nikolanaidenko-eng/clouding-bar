@@ -301,6 +301,12 @@ widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
 }
 widget("w-pill-numbers", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "numbers" }
 widget("w-pill-icon", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillDensity = "icon" }
+widget("w-pill-sized", .pill, size: NSSize(width: 1000, height: 90)) { // items dragged wider by their edge
+    $0.config.pillWidth = 10_000
+    $0.config.taskQueue = true
+    $0.config.screenshot = true
+    $0.config.itemWidths = ["session": 170, "chat": 330, "mic": 44]
+}
 widget("w-pill-wide", .pill, size: NSSize(width: 1300, height: 90)) {
     $0.config.pillWidth = 10_000
     $0.config.metrics = ["model", "lines", "git", "agents"]

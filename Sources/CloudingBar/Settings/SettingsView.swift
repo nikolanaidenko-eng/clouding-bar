@@ -932,6 +932,7 @@ struct WidgetTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            WidgetPreview(model: model)
             if model.config.achievements.contains("claude-wave") {
                 // Unlocked when Claude first waved at Cloud with a ☁️.
                 SettingsSection(title: "Cloud", icon: "trophy.fill", tint: 0xFFD60A) {
@@ -1325,6 +1326,42 @@ struct LiveBar: NSViewRepresentable {
         view.layoutSubtreeIfNeeded()
         let found = view.blocks
         DispatchQueue.main.async { blocks(found) }
+    }
+}
+
+/// The widget itself, live, as it shows now — what's switched on below
+/// appears in it at once (owner, 24.10). Here only to look at: it's
+/// arranged in the widget (drag items to swap them, an item's right edge
+/// to size it, the outline for the whole).
+struct WidgetPreview: View {
+    @ObservedObject var model: AppModel
+    @StateObject private var state = WidgetState()
+    @State private var panel = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Text("Preview").font(.system(size: 12)).foregroundColor(.sSecondary)
+                SettingsSegments(options: [("pill", "Pill"), ("panel", "Panel")], selected: panel ? "panel" : "pill",
+                                 tint: 0x8E8E93) {
+                    panel = $0 == "panel"
+                    state.mode = panel ? .panel : .pill
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                WidgetView(model: model, state: state)
+                    .environment(\.colorScheme, .dark)
+                    .fixedSize()
+                    .padding(14)
+                    .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
+            Text("Drag items in the widget to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget.")
+                .font(.system(size: 11)).foregroundColor(.sMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { state.mode = panel ? .panel : .pill }
     }
 }
 

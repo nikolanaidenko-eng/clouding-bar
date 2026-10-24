@@ -8,6 +8,9 @@ enum WidgetMode { case strip, pill, panel, sessions }
 
 final class WidgetState: ObservableObject {
     @Published var mode: WidgetMode = .pill
+    /// While an item's right edge is dragged: the widths as they'd be on
+    /// letting go (the pill and its window follow at once).
+    @Published var itemWidthsLive: [String: Double]?
     /// What it collapses to: the pill, or the thin line.
     var rest: WidgetMode = .pill
     /// Set when collapsing means something else (the drawer slides away).
@@ -270,12 +273,19 @@ struct IconButtonStyle: ButtonStyle {
     var background = Color.clear
     var foreground = Color.cbSecondary
     var size: CGFloat = 44
+    /// Wider than tall when its slot was dragged wider.
+    var width: CGFloat?
+    /// In a frame, like a key on the Touch Bar (owner, 24.10): a rounded
+    /// square, filled faintly even when plain, with a hairline round it.
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let shape = RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
+        return configuration.label
             .foregroundColor(foreground)
-            .frame(width: size, height: size)
-            .background(Circle().fill(background.opacity(configuration.isPressed ? 0.6 : 1)))
-            .contentShape(Circle())
+            .frame(width: max(size, width ?? size), height: size)
+            .background(shape.fill((background == .clear ? Color.white.opacity(0.07) : background)
+                .opacity(configuration.isPressed ? 0.6 : 1)))
+            .overlay(shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+            .contentShape(shape)
     }
 }
 
@@ -1260,6 +1270,7 @@ struct MicButton: View {
     var size: CGFloat = 32
     /// Just the icon, no circle (the pill).
     var plain = false
+    var width: CGFloat?
     @Environment(\.clickGate) private var gate
 
     var body: some View {
@@ -1267,7 +1278,7 @@ struct MicButton: View {
             Icon(kind: .mic, size: size * 0.5, lineWidth: 1.8)
         }
         .buttonStyle(IconButtonStyle(background: model.listening ? .cbAction : plain ? .clear : Color.white.opacity(0.1),
-                                     foreground: model.listening ? .white : plain ? .cbSecondary : .cbText, size: size))
+                                     foreground: model.listening ? .white : plain ? .cbSecondary : .cbText, size: size, width: width))
         .help("Dictate")
         .accessibilityLabel("Dictate")
     }
@@ -1277,12 +1288,13 @@ struct ShotButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
     var plain = false
+    var width: CGFloat?
     @Environment(\.clickGate) private var gate
 
     var body: some View {
         Button { if gate() { model.takeScreenshot() } } label: { Image(systemName: "camera.viewfinder").font(.system(size: size * 0.44)) }
             .buttonStyle(IconButtonStyle(background: plain ? .clear : Color.white.opacity(0.1),
-                                         foreground: plain ? .cbSecondary : .cbText, size: size))
+                                         foreground: plain ? .cbSecondary : .cbText, size: size, width: width))
             .help("Screenshot an area; its path goes to Claude")
             .accessibilityLabel("Screenshot")
     }
@@ -1292,6 +1304,7 @@ struct TemplatesButton: View {
     @ObservedObject var model: AppModel
     var size: CGFloat = 32
     var plain = false
+    var width: CGFloat?
 
     var body: some View {
         Menu {
@@ -1304,8 +1317,11 @@ struct TemplatesButton: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .foregroundColor(plain ? .cbSecondary : .cbText)
-        .frame(width: size, height: size)
-        .background(Circle().fill(Color.white.opacity(plain ? 0 : 0.1)))
+        .frame(width: max(size, width ?? size), height: size)
+        .background(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
+            .fill(Color.white.opacity(plain ? 0.07 : 0.1)))
+        .overlay(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
+            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
         .help("Templates")
         .accessibilityLabel("Templates")
     }
