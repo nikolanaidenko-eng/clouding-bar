@@ -45,6 +45,11 @@ Linux)
   UserPromptSubmit|Stop) ;;
   *) exit 0 ;;
   esac
+  # Cowork only: not WSL, and a mnt/ folder as Cowork lays it out (the
+  # script checks the task's own folder too).
+  [ -n "${WSL_DISTRO_NAME:-}" ] && exit 0
+  [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] && exit 0
+  [ -d "$PWD/mnt" ] || [ -d "$HOME/mnt" ] || exit 0
   command -v python3 >/dev/null 2>&1 || exit 0
   exec python3 "$here/cowork.py"
   ;;
