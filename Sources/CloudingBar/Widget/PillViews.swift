@@ -234,10 +234,15 @@ struct PillLayout {
     let parts: [(part: Part, width: CGFloat, id: String)]
     private let model: AppModel?
 
+    /// Items dragged wider or narrower by their right edge.
+    private let widths: [String: Double]
+
     /// `order`: the items' ids in the order to show them (the owner's by
-    /// default; mid-drag, with the swap being previewed).
-    init(model: AppModel, order: [String]? = nil) {
+    /// default; mid-drag, with the swap being previewed). `widths`: mid-drag,
+    /// the sizes being pulled.
+    init(model: AppModel, order: [String]? = nil, widths: [String: Double]? = nil) {
         self.model = model
+        self.widths = widths ?? model.config.itemWidths
         let ids = order ?? model.itemIDs
         func rank(_ id: String) -> Int { ids.firstIndex(of: id) ?? .max }
         // A little over the measured width: SwiftUI's text runs a hair wider.
@@ -317,6 +322,8 @@ struct PillLayout {
             let owner: Part = bar.part == .sessionBar ? .session : .context
             if let i = list.firstIndex(where: { $0.part == owner }) { list[i].width += bar.width }
         }
+        // Dragged by its right edge (owner, 24.10): that width.
+        for i in list.indices { if let w = widths[list[i].id] { list[i].width = max(CGFloat(w), 20) } }
         return list
     }
 
@@ -675,7 +682,8 @@ struct PillBoard: View {
 
     var body: some View {
         let base = model.itemIDs
-        var a = PillLayout(model: model, order: rearrange.order(base)).arrange(width: budget.width, height: budget.height)
+        var a = PillLayout(model: model, order: rearrange.order(base), widths: state.itemWidthsLive)
+            .arrange(width: budget.width, height: budget.height)
         if camera > 0 {
             a = a.makingRoom(at: a.frame.width / 2 - a.inset.width, width: camera, above: state.notchHeight - a.inset.height)
         }
@@ -713,6 +721,11 @@ struct PillBoard: View {
                             item(part, shown: a.shown, vertical: a.vertical, slot: a.slots[id]?.size ?? .zero)
                         }
                     }
+                    if !a.vertical && !rearrange.isDragging {
+                        ForEach(a.ids, id: \.self) { id in
+                            if let r = a.slots[id] { edge(id, r) }
+                        }
+                    }
                 }
                 .lineLimit(1)
                 .padding(.leading, a.inset.width)
@@ -723,6 +736,32 @@ struct PillBoard: View {
         .clipShape(RoundedRectangle(cornerRadius: notched ? 0 : 22, style: .continuous))
         .animation(.cb(0.2), value: a.ids)
         .animation(.cb(0.28), value: a.vertical)
+    }
+
+    /// An item's right edge, in the gap after it: drag it to make the item
+    /// wider or narrower (owner, 24.10); a double-click, its own width again.
+    private func edge(_ id: String, _ r: CGRect) -> some View {
+        Color.clear
+            .frame(width: 8, height: r.height)
+            .contentShape(Rectangle())
+            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { v in
+                    var w = state.itemWidthsLive ?? model.config.itemWidths
+                    w[id] = Double(max(20, min(600, r.width + v.translation.width))).rounded()
+                    state.itemWidthsLive = w
+                }
+                .onEnded { _ in
+                    if let w = state.itemWidthsLive { model.setConfig("itemWidths", w) }
+                    state.itemWidthsLive = nil
+                })
+            .onTapGesture(count: 2) {
+                var w = model.config.itemWidths
+                w[id] = nil
+                model.setConfig("itemWidths", w)
+            }
+            .help("Drag to make it wider or narrower · double-click for its own width")
+            .offset(x: r.maxX + 1, y: r.minY)
     }
 
     /// Cloud, with the number of files waiting for Claude (or a "+" while
@@ -789,7 +828,7 @@ struct PillBoard: View {
             HStack(spacing: 8) {
                 if shown.contains(.sessionBar) {
                     MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.14))
-                        .frame(width: PillLayout.barWidth)
+                        .frame(minWidth: 10, idealWidth: PillLayout.barWidth, maxWidth: .infinity)
                 }
                 Text(PillLayout.percent(model.sessionPercent))
             }
@@ -799,7 +838,7 @@ struct PillBoard: View {
                 Text("ctx").font(.system(size: 11)).foregroundColor(.cbSecondary)
                 if shown.contains(.contextBar) {
                     MeterBar(percent: model.contextPercent, height: 3, track: .white.opacity(0.14), delay: 0.12)
-                        .frame(width: PillLayout.barWidth)
+                        .frame(minWidth: 10, idealWidth: PillLayout.barWidth, maxWidth: .infinity)
                 }
                 Text(PillLayout.percent(model.contextPercent))
             }
@@ -830,9 +869,9 @@ struct PillBoard: View {
                     .transition(.opacity)
             }
         case .chat: PillChat(model: model, state: state, rearrange: rearrange).transition(.opacity)
-        case .templates: TemplatesButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
-        case .shot: ShotButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
-        case .mic: MicButton(model: model, size: 26, plain: true).hoverReport(state).transition(.opacity)
+        case .templates: TemplatesButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
+        case .shot: ShotButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
+        case .mic: MicButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
         case .sessionBar, .contextBar: EmptyView()
         }
     }
@@ -878,7 +917,8 @@ struct PillChat: View {
                 .padding(5)
             } else {
                 HStack(spacing: 6) {
-                    field.frame(width: PillLayout.chatField, height: 26, alignment: .leading)
+                    field.frame(minWidth: 16, idealWidth: PillLayout.chatField, maxWidth: .infinity, minHeight: 26, maxHeight: 26,
+                                alignment: .leading)
                     buttons
                 }
                 .padding(.leading, 8)
