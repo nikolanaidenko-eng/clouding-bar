@@ -37,9 +37,9 @@ check(focus("● main.swift — claudebar (Workspace) — Visual Studio Code") =
 // Two chats in one project: told apart by their titles.
 event("a2", "/Users/me/Documents/GitHub")
 store.sessions["a"]?.title = "Status bar"
-store.sessions["a2"]?.title = "Сайт ordermeshop portfolio"
+store.sessions["a2"]?.title = "Portfolio site redesign"
 check(focus("Status bar — GitHub") == "a", "VS Code's chat tab: the chat by its title")
-check(focus("Сайт ordermeshop portfolio — GitHub — Visual Studio Code", ["a"]) == "a2", "the title beats the one followed")
+check(focus("Portfolio site redesign — GitHub — Visual Studio Code", ["a"]) == "a2", "the title beats the one followed")
 check(focus("README.md — GitHub — Visual Studio Code", ["a"]) == "a", "on a file: the chat followed before")
 check(focus("README.md — GitHub — Visual Studio Code") == "a2", "on a file, nothing followed: the latest of them")
 check(focus("⠂ Status bar") == "a", "a terminal's spinner before the title")
@@ -176,7 +176,7 @@ let coworkScript = Cowork.pluginSource!.appendingPathComponent("hooks/cowork.py"
 check(FileManager.default.fileExists(atPath: coworkScript), "the plugin has its Cowork script")
 do { // the hook writes into the connected folder itself: working, then done
     let task = pluginDir.appendingPathComponent("cowork-task")
-    let mac = task.appendingPathComponent("mnt/24H")
+    let mac = task.appendingPathComponent("mnt/Notes")
     try? FileManager.default.removeItem(at: task)
     try? FileManager.default.createDirectory(at: mac, withIntermediateDirectories: true)
     let transcript = task.appendingPathComponent("t.jsonl")
@@ -221,9 +221,9 @@ do { // the hook writes into the connected folder itself: working, then done
     }
     _ = hook("Stop", cwd: task)
     check(Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)?.title == "Bots landing", "…or by its title")
-    store.apply(cowork: Cowork.Status(session: "c1", project: "24H", contextTokens: 1000, contextWindow: 200_000,
+    store.apply(cowork: Cowork.Status(session: "c1", project: "Notes", contextTokens: 1000, contextWindow: 200_000,
                                       model: nil, time: Date(), title: "Bots landing"))
-    store.apply(cowork: Cowork.Status(session: "c2", project: "24H", contextTokens: 9000, contextWindow: 200_000,
+    store.apply(cowork: Cowork.Status(session: "c2", project: "Notes", contextTokens: 9000, contextWindow: 200_000,
                                       model: nil, time: Date().addingTimeInterval(-60), title: "Mail drafts"))
     check(store.sessions["cowork-c1"]?.displayName == "Bots landing" && store.sessions["cowork-c2"]?.displayName == "Mail drafts",
           "two Cowork tasks in one folder, told apart by name")
@@ -233,16 +233,16 @@ do { // the hook writes into the connected folder itself: working, then done
           && store.focus(windowTitle: "Claude", sticky: ["cowork-c2"], desktop: true)?.id == "cowork-c2"
           && store.focus(windowTitle: "Claude", sticky: ["a"], desktop: true)?.id == "cowork-c1",
           "Claude Desktop in front: its chats, the picked one or the latest")
-    check(SessionStore.sameTitle("⚡ Threads: поиск лидов", "threads: поиск лидов")
+    check(SessionStore.sameTitle("⚡ Блог: черновики постов", "блог: черновики постов")
           && SessionStore.sameTitle("Fix the landing page for the bots, and check", "Fix the landing page for the bots, and…")
           && !SessionStore.sameTitle("Bots", "Bots landing")
           && SessionStore.sameTitle("Cowork task summary", "Cowork task summary export")
-          && SessionStore.titleScore("Threads: сбор постов за неделю", "Сбор постов Threads") == 1,
+          && SessionStore.titleScore("Блог: сбор идей за неделю", "Сбор идей Блог") == 1,
           "titles: emoji, case and \"…\" aside; Claude Desktop's shorter name")
     check(store.focus(windowTitle: "⚡ Mail drafts", sticky: ["cowork-c1"], desktop: true)?.id == "cowork-c2",
           "Claude Desktop shows a chat by its title: that one, over the picked one")
-    store.link(store.sessions["cowork-c1"]!, desktopChat: "/chat/aaa", title: "⚡ Threads: поиск лидов")
-    check(store.sessions["cowork-c1"]?.displayName == "Threads: поиск лидов"
+    store.link(store.sessions["cowork-c1"]!, desktopChat: "/chat/aaa", title: "⚡ Блог: черновики постов")
+    check(store.sessions["cowork-c1"]?.displayName == "Блог: черновики постов"
           && store.focus(windowTitle: nil, sticky: ["cowork-c2"], desktop: true, desktopChat: "/chat/aaa")?.id == "cowork-c1",
           "a chat learned: named as Claude Desktop names it, followed by its page")
     store.link(store.sessions["cowork-c2"]!, desktopChat: "/chat/aaa", title: "Other")
