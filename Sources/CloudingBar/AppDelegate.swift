@@ -1778,6 +1778,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
         }
         model.removeFromQueue = { [weak self] id in
+            DebugLog.tap("queue: removed by hand")
             self?.queue.removeAll { $0.id == id }
             self?.saveQueue()
             self?.refresh()
@@ -1808,6 +1809,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let session = next.sessionId.flatMap({ store.sessions[$0] }) else {
             queue.removeFirst() // its session is gone
             saveQueue()
+            DebugLog.note("queue: dropped, its chat is gone (\(next.project ?? next.sessionId ?? "no chat"))")
             return
         }
         guard session.activity == .sleep, !session.waitingNotice,
