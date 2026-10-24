@@ -589,6 +589,7 @@ struct MetricChip: View {
 struct MainPanel: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    @Environment(\.cbPreview) private var preview
     @State private var queueDraft = ""
     @FocusState private var typing: Bool
     @StateObject private var metricsRearrange = Rearrange(space: "panel-metrics")
@@ -707,6 +708,7 @@ struct MainPanel: View {
                 .buttonStyle(IconButtonStyle(size: 30))
                 .accessibilityLabel("Collapse")
         }
+        .allowsHitTesting(!preview) // Settings' copy: the chats aren't opened from it
     }
 
     // MARK: Limits
@@ -786,8 +788,8 @@ struct MainPanel: View {
         let busy = typing || !queueDraft.isEmpty
         let sendable = !queueDraft.isEmpty || !model.attachments.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
-            if field && !model.queue.isEmpty { queueList }
-            if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field) }
+            if field && !model.queue.isEmpty { queueList.allowsHitTesting(!preview) }
+            if !model.attachments.isEmpty { attachmentRows(width: boxInner, field: field).allowsHitTesting(!preview) }
             ZStack(alignment: .topLeading) {
                 if field {
                     TextField(placeholder, text: $queueDraft)
@@ -797,6 +799,7 @@ struct MainPanel: View {
                         .focused($typing)
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
+                        .allowsHitTesting(!preview) // Settings' copy: nothing is sent from it
                 }
                 RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
                                rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
@@ -821,6 +824,7 @@ struct MainPanel: View {
                             .buttonStyle(IconButtonStyle(background: sendable ? .cbAction : Color.white.opacity(0.1),
                                                          foreground: .white, size: Self.tool))
                             .accessibilityLabel(model.activity == .work ? "Queue" : "Send")
+                            .allowsHitTesting(!preview)
                     }
                 }
                 .frame(height: 26)
@@ -1363,6 +1367,7 @@ struct EmptyPanel: View {
 struct RequestCardView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
+    @Environment(\.cbPreview) private var preview
     @FocusState private var otherFocused: Bool
     /// The card whose keys work: a moment after it came. You may have been
     /// typing when it took the panel's place — the next key must not answer
@@ -1371,6 +1376,7 @@ struct RequestCardView: View {
 
     var body: some View {
         cards
+            .allowsHitTesting(!preview) // Settings' copy never answers Claude
             .task(id: model.request?.id) {
                 armed = nil
                 do { try await Task.sleep(nanoseconds: 1_200_000_000) } catch { return } // another card came

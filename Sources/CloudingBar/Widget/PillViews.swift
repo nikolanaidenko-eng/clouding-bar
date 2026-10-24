@@ -50,6 +50,8 @@ final class Rearrange: ObservableObject {
     /// Whether swapping these two is allowed (on the pill: the dragged item
     /// must still fit).
     var accepts: (String, String) -> Bool = { _, _ in true }
+    /// In Settings' preview: arranging works, clicks do nothing.
+    var previewOnly = false
     private var grab: CGSize = .zero
     private var changedAt = Date.distantPast
     private var endedAt = Date.distantPast
@@ -70,7 +72,7 @@ final class Rearrange: ObservableObject {
     }
 
     /// A click that ends a drag isn't a click.
-    var clickAllowed: Bool { dragging == nil && Date().timeIntervalSince(endedAt) > 0.3 }
+    var clickAllowed: Bool { !previewOnly && dragging == nil && Date().timeIntervalSince(endedAt) > 0.3 }
 
     var isDragging: Bool { dragging != nil }
 
@@ -123,9 +125,11 @@ struct RearrangeBoard<Item: View>: View {
     @ObservedObject var rearrange: Rearrange
     let commit: (String, String) -> Void
     @ViewBuilder let item: (String) -> Item
+    @Environment(\.cbPreview) private var preview
 
     var body: some View {
         rearrange.slots = slots
+        rearrange.previewOnly = preview
         return ZStack(alignment: .topLeading) {
             ForEach(ids, id: \.self) { id in
                 if let r = slots[id] {
@@ -182,6 +186,8 @@ func flowSlots(_ items: [(id: String, width: CGFloat)], width: CGFloat, rowHeigh
 
 private struct ClickGateKey: EnvironmentKey { static let defaultValue: () -> Bool = { true } }
 private struct StillKey: EnvironmentKey { static let defaultValue = false }
+private struct PreviewKey: EnvironmentKey { static let defaultValue = false }
+private struct ScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
 
 extension EnvironmentValues {
     /// False just after a drag: the release isn't a click.
@@ -193,6 +199,16 @@ extension EnvironmentValues {
     var cbStill: Bool {
         get { self[StillKey.self] }
         set { self[StillKey.self] = newValue }
+    }
+    /// Settings' copy of the widget: to arrange, not to use.
+    var cbPreview: Bool {
+        get { self[PreviewKey.self] }
+        set { self[PreviewKey.self] = newValue }
+    }
+    /// How much that copy is scaled down (drags are measured on screen).
+    var cbScale: CGFloat {
+        get { self[ScaleKey.self] }
+        set { self[ScaleKey.self] = newValue }
     }
 }
 
@@ -674,6 +690,7 @@ struct PillBoard: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
     @ObservedObject var rearrange: Rearrange
+    @Environment(\.cbScale) private var scale
     let budget: CGSize
     /// In a real notch: the camera's width, kept clear in the middle.
     var camera: CGFloat = 0
@@ -748,7 +765,7 @@ struct PillBoard: View {
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { v in
                     var w = state.itemWidthsLive ?? model.config.itemWidths
-                    w[id] = Double(max(20, min(600, r.width + v.translation.width))).rounded()
+                    w[id] = Double(max(20, min(600, r.width + v.translation.width / scale))).rounded()
                     state.itemWidthsLive = w
                 }
                 .onEnded { _ in

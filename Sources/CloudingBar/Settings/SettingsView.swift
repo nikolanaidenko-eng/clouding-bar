@@ -1155,8 +1155,8 @@ struct TouchBarEditor: View {
 
     private var which: String { short ? "short" : "whole" }
     private var barWidth: CGFloat { short ? BarView.narrowWidth : BarView.preferredWidth }
-    /// The whole bar scrolls sideways a little rather than shrink to a strip.
-    private var scale: CGFloat { short ? 0.84 : 0.72 }
+    /// Fitted to the window: all of it in view (owner, 24.10).
+    private var scale: CGFloat { min(1, (SettingsView.width - 64 - 12) / barWidth) }
     private var savedOrder: [String] { model.config.touchBarOrder[which] ?? [] }
     private var savedWidths: [String: Double] { model.config.touchBarWidths[which] ?? [:] }
     private var arranged: Bool { !savedOrder.isEmpty || !savedWidths.isEmpty }
@@ -1176,7 +1176,7 @@ struct TouchBarEditor: View {
                         .help("Back to the bar's own order and widths")
                 }
             }
-            ScrollView(.horizontal, showsIndicators: !short) {
+            Group {
                 ZStack(alignment: .topLeading) {
                     LiveBar(bar: bar, width: barWidth, scale: scale) { found in
                         if found.map(\.key) != blocks.map(\.key) || found.map(\.frame) != blocks.map(\.frame) { blocks = found }
@@ -1330,38 +1330,59 @@ struct LiveBar: NSViewRepresentable {
 }
 
 /// The widget itself, live, as it shows now — what's switched on below
-/// appears in it at once (owner, 24.10). Here only to look at: it's
-/// arranged in the widget (drag items to swap them, an item's right edge
-/// to size it, the outline for the whole).
+/// appears in it at once — scaled to fit, to arrange right here as in the
+/// widget: drag an item onto another to swap them, an item's right edge to
+/// size it (owner, 24.10). Clicks do nothing here: nothing is sent from it.
 struct WidgetPreview: View {
     @ObservedObject var model: AppModel
     @StateObject private var state = WidgetState()
     @State private var panel = false
+    @State private var panelSize = CGSize(width: 480, height: 280)
+
+    /// The pill's size as the widget works it out; the panel's, measured.
+    private var natural: CGSize {
+        panel ? panelSize : PillLayout(model: model).arrange(width: model.pillBudget, height: model.pillHeightBudget).frame
+    }
 
     var body: some View {
+        let size = natural
+        let room = SettingsView.width - 64 - 24
+        let scale = min(1, room / max(size.width, 1), panel ? 300 / max(size.height, 1) : 1)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Text("Preview").font(.system(size: 12)).foregroundColor(.sSecondary)
+                Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
                 SettingsSegments(options: [("pill", "Pill"), ("panel", "Panel")], selected: panel ? "panel" : "pill",
                                  tint: 0x8E8E93) {
                     panel = $0 == "panel"
                     state.mode = panel ? .panel : .pill
+                    measure()
                 }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                WidgetView(model: model, state: state)
-                    .environment(\.colorScheme, .dark)
-                    .fixedSize()
-                    .padding(14)
-                    .allowsHitTesting(false)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
-            Text("Drag items in the widget to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget.")
+            WidgetView(model: model, state: state)
+                .environment(\.colorScheme, .dark)
+                .environment(\.cbPreview, true)
+                .environment(\.cbScale, scale)
+                .environment(\.clickGate, { false })
+                .frame(width: size.width, height: size.height, alignment: .topLeading)
+                .scaleEffect(scale, anchor: .topLeading)
+                .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
+            Text("Drag an item onto another to swap them, an item's right edge to make it wider or narrower — here or in the widget itself. Pull the widget's outline for its whole size.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { state.mode = panel ? .panel : .pill }
+        .onAppear { state.mode = panel ? .panel : .pill; measure() }
+        .onChange(of: model.config) { _ in measure() }
+    }
+
+    private func measure() {
+        guard panel else { return }
+        let s = WidgetState()
+        s.mode = .panel
+        let size = NSHostingView(rootView: WidgetView(model: model, state: s).fixedSize()).fittingSize
+        if size.width > 0, size.height > 0 { panelSize = size }
     }
 }
 
