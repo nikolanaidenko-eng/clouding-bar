@@ -190,9 +190,12 @@ final class BarButton: NSButton {
         belt.addSublayer(copy(at: 0))
         belt.addSublayer(copy(at: width + gap))
         clip.addSublayer(belt)
-        let slide = CABasicAnimation(keyPath: "position.x")
-        slide.fromValue = belt.position.x
-        slide.toValue = belt.position.x - (width + gap)
+        // Moved by a shift, not by its position: on the Touch Bar a slide
+        // by "position.x" left the button empty (fine in a window); the
+        // bar's own slide-ins move by a shift too.
+        let slide = CABasicAnimation(keyPath: "transform.translation.x")
+        slide.fromValue = 0
+        slide.toValue = -(width + gap)
         slide.duration = Double(width + gap) / 22
         slide.repeatCount = .infinity
         belt.add(slide, forKey: "marquee")
