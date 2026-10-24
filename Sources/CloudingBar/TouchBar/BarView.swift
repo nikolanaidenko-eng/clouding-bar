@@ -265,7 +265,14 @@ final class BarView: NSView {
             }
             // Several chats: which one this is; a tap lists them all.
             if let chat = model.current {
-                let b = BarButton(chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
+                // Short, or dragged narrow in Settings: its first letter, a
+                // capital (owner, 24.10); a tap lists the chats by name.
+                let initial = (model.widths["name"] ?? .infinity) < 70 || short
+                let letter = chat.name.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "•"
+                let b = BarButton(initial ? letter : chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) {
+                    [weak self] in self?.onAction?(.chats)
+                }
+                b.setAccessibilityLabel(chat.name)
                 // A name that fits keeps its room (it stands still); a long one
                 // slides through a narrow button, not half the bar (owner, 24.10).
                 var cap: CGFloat = 130
@@ -273,7 +280,7 @@ final class BarView: NSView {
                     // Room beside Cloud (60), half the bar, the commands and "whole bar" (40).
                     cap = min(cap, shortHalf - 60 - 40 - shortBoxWidth - Palette.gap * (shortBox == nil ? 2 : 3))
                 }
-                let fit = b.fittingWidth(padding: short ? 8 : 10)
+                let fit = max(b.fittingWidth(padding: short ? 8 : 10), 44)
                 if cap >= min(fit, 60) || model.widths["name"] != nil {
                     blocks.append(("name", b, fit <= cap ? .fixed(fit) : .shrinkable(cap), false))
                 }

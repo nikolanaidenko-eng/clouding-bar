@@ -1111,7 +1111,7 @@ struct TouchBarTab: View {
                                     hint: model.config.touchBarOutside == "whole"
                                         ? "The whole Touch Bar, as in Claude's apps; Apple's brightness and volume hidden"
                                         : "Short: the chat and the meters, beside Apple's brightness and volume") {
-                            SettingsSegments(options: [("short", "Short"), ("whole", "Whole bar")],
+                            SettingsSegments(options: [("short", "Short bar"), ("whole", "Whole bar")],
                                              selected: model.config.touchBarOutside, tint: 0xBF5AF2) {
                                 model.setConfig("touchBarOutside", $0)
                             }
@@ -1163,7 +1163,9 @@ struct TouchBarEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                SettingsSegments(options: [("whole", "Whole bar"), ("short", "Short")], selected: which, tint: 0xBF5AF2) {
+                // Which bar to arrange — not which one shows (that's "Outside Claude").
+                Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
+                SettingsSegments(options: [("whole", "Whole bar"), ("short", "Short bar")], selected: which, tint: 0x8E8E93) {
                     short = $0 == "short"
                 }
                 Spacer(minLength: 0)
@@ -1290,8 +1292,23 @@ struct LiveBar: NSViewRepresentable {
     let scale: CGFloat
     let blocks: ([(key: String, frame: NSRect)]) -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let holder = NSView(frame: NSRect(x: 0, y: 0, width: width * scale, height: Palette.height * scale))
+    /// Shows its bar at full size scaled into its own: whatever frame it's
+    /// given, the bar inside keeps its real width.
+    final class Holder: NSView {
+        var inner = NSSize(width: BarView.preferredWidth, height: Palette.height)
+        override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            setBoundsSize(inner)
+        }
+        override func layout() {
+            super.layout()
+            if bounds.size != inner { setBoundsSize(inner) }
+            subviews.first?.frame = NSRect(origin: .zero, size: inner)
+        }
+    }
+
+    func makeNSView(context: Context) -> Holder {
+        let holder = Holder(frame: NSRect(x: 0, y: 0, width: width * scale, height: Palette.height * scale))
         holder.wantsLayer = true
         let view = BarView(frame: NSRect(x: 0, y: 0, width: width, height: Palette.height))
         view.onAction = { _ in } // only to look at and arrange here
@@ -1299,10 +1316,11 @@ struct LiveBar: NSViewRepresentable {
         return holder
     }
 
-    func updateNSView(_ holder: NSView, context: Context) {
+    func updateNSView(_ holder: Holder, context: Context) {
         guard let view = holder.subviews.first as? BarView else { return }
-        holder.setBoundsSize(NSSize(width: width, height: Palette.height))
-        view.frame = NSRect(x: 0, y: 0, width: width, height: Palette.height)
+        holder.inner = NSSize(width: width, height: Palette.height)
+        holder.setBoundsSize(holder.inner)
+        view.frame = NSRect(origin: .zero, size: holder.inner)
         view.update(bar)
         view.layoutSubtreeIfNeeded()
         let found = view.blocks
@@ -1330,13 +1348,24 @@ struct ButtonsTab: View {
         profile.isEmpty ? model.config.effectiveButtons : (model.config.profiles[profile] ?? model.config.effectiveButtons)
     }
 
+    /// The whole bar with the buttons as they're being edited.
+    private var previewBar: BarModel {
+        var bar = model.barPreview(false)
+        bar.buttons = list + (editing && selected == nil
+            ? [ButtonSpec(label: draftName.isEmpty ? "New" : draftName, type: .phrase, value: "")] : [])
+        bar.shows.insert("buttons")
+        return bar
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Touch Bar preview · meters shrink as you add buttons").font(.system(size: 11)).foregroundColor(.sSecondary)
-                TouchBarPreview(model: model,
-                                labels: list.map(\.label) + (editing && selected == nil ? [draftName.isEmpty ? "New" : draftName] : []),
-                                highlightLast: editing && selected == nil)
+                Text("Touch Bar · your buttons in the message line, as on the bar").font(.system(size: 11)).foregroundColor(.sSecondary)
+                // The whole bar, fitted to the window: here it's only to look at.
+                LiveBar(bar: previewBar, width: BarView.preferredWidth, scale: 0.53) { _ in }
+                    .frame(width: BarView.preferredWidth * 0.53, height: Palette.height * 0.53)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black))
             }
             SettingsGroup {
                 ForEach(Array(list.enumerated()), id: \.offset) { i, b in
