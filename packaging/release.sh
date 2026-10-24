@@ -44,7 +44,10 @@ LOCAL_KEYCHAIN="$HOME/.cloudingbar/signing.keychain-db"
 # The Developer ID key, if it lives in its own keychain (made without Xcode:
 # a key and request with openssl, the certificate from developer.apple.com,
 # Apple's G2 CA beside it; on the search list, empty password).
-RELEASE_KEYCHAIN="$HOME/.cloudingbar/devid/release.keychain-db"
+# Outside ~/.cloudingbar (the app's data, which an uninstall removes);
+# the old place still works.
+RELEASE_KEYCHAIN="$HOME/.clouding-bar-release/release.keychain-db"
+[ -f "$RELEASE_KEYCHAIN" ] || RELEASE_KEYCHAIN="$HOME/.cloudingbar/devid/release.keychain-db"
 [ -f "$RELEASE_KEYCHAIN" ] && security unlock-keychain -p "" "$RELEASE_KEYCHAIN" 2>/dev/null || true
 KEYCHAIN=()
 IDENTITY=${DEVELOPER_ID:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')}
