@@ -118,7 +118,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
   `/hooks` in Codex). It's little tested yet — tell us what doesn't work.
 
 **And**
-- A **tour** on first launch (and behind the ? in Settings): twelve stops
+- A **tour** on first launch (and behind the ? in Settings): thirteen stops
   through the settings window — it dims but for one thing at a time, a card
   says what it is and what to try, and Cloud hops onto it.
 - **Everything is optional**: each number, detail and control has its own

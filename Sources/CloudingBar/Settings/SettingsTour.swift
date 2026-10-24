@@ -3,7 +3,7 @@ import SwiftUI
 /// The tour (owner's request, 20.10: the Spotlight direction of the
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is and what to
-/// try; Cloud hops onto it. Twelve stops across the tabs — the Stats tab in
+/// try; Cloud hops onto it. Thirteen stops across the tabs — the Stats tab in
 /// three — and two things to try.
 struct TourStop {
     let tab: String
@@ -23,7 +23,7 @@ struct TourStop {
 enum SettingsTour {
     static let stops: [TourStop] = [
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
-                 text: "Twelve stops, about two minutes. Everything here can be changed later, and you can skip any time."),
+                 text: "Thirteen stops, about two minutes. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "tabs", title: "Everything is in these tabs",
                  text: "The app, the widget, the Touch Bar, your buttons, Cowork and your week in numbers."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
@@ -33,8 +33,10 @@ enum SettingsTour {
         TourStop(tab: "widget", anchor: "widget.notch", title: "Live in the notch",
                  text: "The numbers sit around the camera and the panel drops out of it. Drag it out to put it anywhere.",
                  tryText: "Try it: flip the switch.", tried: .notch, fallback: "widget.show"),
+        TourStop(tab: "widget", anchor: "widget.preview", title: "Arrange it your way",
+                 text: "Your widget as it is now. Drag an item onto another to swap them, its right edge to make it wider; in the panel, move a block by its ≡ grip. It works in the widget itself too."),
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
-                 text: "Claude's questions and permission requests show up here too: answer with a tap."),
+                 text: "Your Touch Bar, live: the whole bar and the short one beside Apple's buttons. Drag a block to move it, its right edge to size it. Claude's questions and permission requests show up there too: answer with a tap."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
                  text: "A phrase, a /command, a key or a link — on the Touch Bar and in the widget. One tap sends it to the chat you're in; give it a shortcut to send it from anywhere."),
         TourStop(tab: "buttons", anchor: "buttons.templates", title: "Templates",
