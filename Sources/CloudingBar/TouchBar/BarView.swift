@@ -329,7 +329,7 @@ final class BarView: NSView {
                 chatMin = box.commandsWidth + 40
             }
             if shows.contains("templates"), !model.templates.isEmpty {
-                let b = BarButton(short ? "" : "Templates", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
+                let b = BarButton(short ? "" : "Menu", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
                     self?.onAction?(.templates)
                 }
                 blocks.append(("templates", b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), true))
@@ -500,7 +500,7 @@ final class BarView: NSView {
 
         case .templates:
             var group: [NSView] = []
-            let word = sectionLabel("Templates")
+            let word = sectionLabel("Menu")
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for (i, text) in model.templates.enumerated() {
                 let b = BarButton(text, fontSize: 12) { [weak self] in self?.onAction?(.pickTemplate(i)) }
@@ -563,8 +563,8 @@ final class BarView: NSView {
             if model.typingCommands && !model.short {
                 // Your commands right by the field, if the bar shows them.
                 if model.shows.contains("templates"), !model.templates.isEmpty,
-                   let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Templates") {
-                    add(BarButton("Templates", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
+                   let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Menu") {
+                    add(BarButton("Menu", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
                 }
             }
             add(mic, .fixed(48))

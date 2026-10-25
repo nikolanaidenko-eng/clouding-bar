@@ -3,8 +3,8 @@ import SwiftUI
 /// The tour (owner's request, 20.10: the Spotlight direction of the
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is and what to
-/// try; Cloud hops onto it. Thirteen stops across the tabs — the Stats tab in
-/// three — and two things to try.
+/// try; Cloud hops onto it. Seven stops across the tabs (cut down from
+/// thirteen, owner, 25.10).
 struct TourStop {
     let tab: String
     /// The `tourAnchor` it lights up.
@@ -23,33 +23,19 @@ struct TourStop {
 enum SettingsTour {
     static let stops: [TourStop] = [
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
-                 text: "Thirteen stops, about two minutes. Everything here can be changed later, and you can skip any time."),
-        TourStop(tab: "general", anchor: "tabs", title: "Everything is in these tabs",
-                 text: "The app, the widget, the Touch Bar, your buttons, Cowork and your week in numbers."),
+                 text: "Seven stops, about a minute. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
                  text: "Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first."),
         TourStop(tab: "widget", anchor: "widget.show", title: "The floating widget",
-                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Hover it for the panel."),
-        TourStop(tab: "widget", anchor: "widget.notch", title: "Live in the notch",
-                 text: "The numbers sit around the camera and the panel drops out of it. Drag it out to put it anywhere.",
-                 tryText: "Try it: flip the switch.", tried: .notch, fallback: "widget.show"),
+                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Hover it for the panel. It can live in the notch too; the rest is behind More."),
         TourStop(tab: "widget", anchor: "widget.preview", title: "Arrange it your way",
-                 text: "Your widget as it is now. Drag an item onto another to swap them, its right edge to make it wider; in the panel, move a block by its ≡ grip. It works in the widget itself too."),
+                 text: "Your widget as it is now. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. It works in the widget itself too."),
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
                  text: "Your Touch Bar, live: the whole bar and the short one beside Apple's buttons. Drag a block to move it, its right edge to size it. Claude's questions and permission requests show up there too: answer with a tap."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
-                 text: "A phrase, a /command, a key or a link — on the Touch Bar and in the widget. One tap sends it to the chat you're in; give it a shortcut to send it from anywhere."),
-        TourStop(tab: "buttons", anchor: "buttons.templates", title: "Templates",
-                 text: "Phrases you write again and again, typed into the chat without Enter so you can finish them. {project}, {branch}, {clipboard} and {date} are filled in. They live in the widget and the menu bar."),
-        TourStop(tab: "stats", anchor: "stats.limits", title: "Your two limits",
-                 text: "The 5-hour limit, with its last 24 hours as a line, and the weekly one, with how much Claude did each day. Blue is fine, orange from 70%, red from 90%."),
-        TourStop(tab: "stats", anchor: "stats.map", title: "Your Claude Code",
-                 text: "Sessions, time, tokens and days in a row, for the week, the month or everything. Each square is a day: the brighter, the longer Claude worked. Point at one to see that day."),
-        TourStop(tab: "stats", anchor: "stats.time", title: "Where the time went",
-                 text: "The projects Claude worked on longest. More has the week hour by hour (orange: at the limit), the models it used and the tools it reached for."),
-        TourStop(tab: "widget", anchor: "widget.more", title: "Everything else is folded away",
-                 text: "Behind More: when the widget opens, where it sits, what else it shows. Most people never need it.",
-                 tryText: "Open it to finish.", tried: .more, fallback: "widget.show"),
+                 text: "A phrase, a /command, a key or a link, on the Touch Bar and in the widget or tucked into its menu. A tap sends it to the chat you're in, or puts text in for you to finish."),
+        TourStop(tab: "stats", anchor: "stats.limits", title: "Your week in numbers",
+                 text: "The 5-hour limit and the weekly one, and below them your sessions, time and projects. Blue is fine, orange from 70%, red from 90%."),
     ]
 }
 

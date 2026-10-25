@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let updater = Updater()
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
-    private let templatesItem = NSMenuItem(title: "Templates", action: nil, keyEquivalent: "")
+    private let templatesItem = NSMenuItem(title: "Menu Buttons", action: nil, keyEquivalent: "")
 
     private var requests: [PendingRequest] = []
     /// The question whose "Other…" answer is being typed.
@@ -99,6 +99,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Yours alone: messages in the queue, screenshots, the log, copies of
         // your settings and the sockets live here (it was 755).
         chmod(Config.directory.path, 0o700)
+        Config.moveTemplates()
+        config = Config.load()
         MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
         setUpMainMenu()
         setUpMenuBarItem()
@@ -541,8 +543,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         text.count > n ? String(text.prefix(n - 1)) + "…" : text
     }
 
+    /// The buttons in the row.
     private func currentButtons(_ active: Session?) -> [ButtonSpec] {
-        config.buttons(for: active?.projectName)
+        config.buttons(for: active?.projectName).filter { !$0.menu }
+    }
+
+    /// The ones tucked into the menu button's list.
+    private func menuButtons(_ active: Session?) -> [ButtonSpec] {
+        config.buttons(for: active?.projectName).filter(\.menu)
     }
 
     /// The request the bar shows: the one being typed, else the active
@@ -582,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             BarModel.Chat(id: $0.id, name: ($0.current && model.chatDone ? "✓ " : "") + Self.barName($0.name, id: $0.id),
                           color: $0.color, current: $0.current, waiting: $0.waiting)
         }
-        bar.templates = config.templatesEnabled ? config.templates.map { Self.short($0, 28) } : []
+        bar.templates = menuButtons(active).map { Self.short($0.label, 28) }
         if let active, active.linesAdded + active.linesRemoved > 0 {
             bar.lines = "+\(active.linesAdded) −\(active.linesRemoved)"
         }
@@ -642,7 +650,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard buttons.indices.contains(i) else { return }
             let spec = buttons[i]
             DebugLog.tap("button \(spec.label)")
-            if composing {
+            if composing && spec.type == .text {
+                // Into the message being written.
+                let draft = typingText.trimmingCharacters(in: .whitespaces)
+                composeDraft = (draft.isEmpty ? "" : draft + " ") + expand(spec.value)
+                stopTyping()
+                perform(.write)
+            } else if composing {
                 // The keys go back to your editor first; the words wait.
                 composeDraft = typingText
                 stopTyping()
@@ -728,14 +742,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case let .pickTemplate(i):
             let intoDraft = templatesIntoDraft
             closeBarPicker()
-            guard config.templates.indices.contains(i) else { return }
-            if intoDraft {
+            let menu = menuButtons(active)
+            guard menu.indices.contains(i) else { return }
+            DebugLog.tap("menu \(menu[i].label)")
+            if intoDraft && menu[i].type == .text {
                 // Into the message being written, then back to it.
                 let draft = composeDraft.trimmingCharacters(in: .whitespaces)
-                composeDraft = (draft.isEmpty ? "" : draft + " ") + expand(config.templates[i])
+                composeDraft = (draft.isEmpty ? "" : draft + " ") + expand(menu[i].value)
                 perform(.write)
             } else {
-                insertTemplate(config.templates[i])
+                run(menu[i])
             }
 
         case .send where composing:
@@ -856,16 +872,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .screenshot:
             takeScreenshot()
         case .phrase, .command:
+            let text = spec.type == .phrase ? expand(spec.value) : spec.value
             if claudeAppInFront && safeToType(quiet: true) {
-                KeySender.type(spec.value, pressReturn: true)
+                KeySender.type(text, pressReturn: true)
             } else if let session = focusedSession {
                 // Another app in front (the bar shows everywhere), or Claude's
                 // permission menu open there: not typed — to the chat, like the
                 // widget's message (straight in, or queued until it's safe).
-                deliver(spec.value, to: session)
+                deliver(text, to: session)
             } else {
                 NSSound.beep()
             }
+        case .text:
+            // Into the app in front, to finish there — never into Claude's
+            // permission menu.
+            guard !claudeAppInFront || safeToType() else { return }
+            insertTemplate(spec.value)
         case .key:
             guard claudeAppInFront, safeToType() else { NSSound.beep(); return }
             if !KeySender.press(spec.value) { NSSound.beep() }
@@ -1074,22 +1096,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         touchBarPresent = TouchBarDetector.hasTouchBar
         touchBarStatusItem.title = touchBarPresent ? "Touch Bar: found" : "Touch Bar: not found"
         touchBarToggleItem.state = touchBarEnabled ? .on : .off
-        // Template phrases, typed into the app in front without Enter.
-        templatesItem.isHidden = !config.templatesEnabled || config.templates.isEmpty
+        // The menu button's list, here too.
+        let menu = menuButtons(focusedSession)
+        templatesItem.isHidden = menu.isEmpty
         let sub = NSMenu()
-        for t in config.templates {
-            let item = NSMenuItem(title: t, action: #selector(menuTemplate(_:)), keyEquivalent: "")
+        for spec in menu {
+            let item = NSMenuItem(title: spec.label, action: #selector(menuTemplate(_:)), keyEquivalent: "")
             item.target = self
-            item.representedObject = t
+            item.representedObject = spec
+            item.toolTip = spec.value
             sub.addItem(item)
         }
         templatesItem.submenu = sub
     }
 
     @objc private func menuTemplate(_ sender: NSMenuItem) {
-        guard let t = sender.representedObject as? String else { return }
+        // The one picked, even if the chat shown changes meanwhile.
+        guard let spec = sender.representedObject as? ButtonSpec else { return }
         // Let the menu close and focus return to the app in front first.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.insertTemplate(t) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            DebugLog.tap("menu \(spec.label)")
+            self.run(spec)
+        }
+    }
+
+    /// One of the menu button's list, picked in the widget.
+    private func runMenu(_ i: Int) {
+        let menu = menuButtons(focusedSession)
+        guard menu.indices.contains(i) else { return }
+        DebugLog.tap("menu \(menu[i].label)")
+        run(menu[i])
     }
 
     @objc private func toggleTouchBar() {
@@ -1340,6 +1376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.chatInFront, active != nil && store.session(inWindow: frontTitle, tty: frontTTY)?.id == active?.id)
         // The widget's buttons; the bar has its own switch for them.
         set(\.buttons, config.widgetHides.contains("buttons") ? [] : currentButtons(active))
+        set(\.menuButtons, config.widgetHides.contains("menu") ? [] : menuButtons(active))
         set(\.knownProjects, Array(Set(alive.compactMap(\.projectName))).sorted())
 
         let waitingIds = Set(requests.compactMap(\.sessionId))
@@ -1778,9 +1815,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Stage 3: hotkeys, templates, queue, auto-compact, screenshot
 
-    /// Global shortcuts for the buttons the bar shows now.
+    /// Global shortcuts for the buttons the bar shows now, and the menu's.
     private func updateHotKeys(_ active: Session?) {
-        let shortcuts = currentButtons(active).compactMap { spec -> (combo: String, action: () -> Void)? in
+        let shortcuts = config.buttons(for: active?.projectName).compactMap { spec -> (combo: String, action: () -> Void)? in
             guard let combo = spec.hotkey else { return nil }
             return (combo, { [weak self] in
                 DebugLog.tap("hotkey \(spec.label)")
@@ -1862,7 +1899,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.refresh()
         }
         model.sendQueuedNow = { [weak self] id in self?.sendQueuedNow(id) }
-        model.insertTemplate = { [weak self] in self?.insertTemplate($0) }
+        model.runMenuButton = { [weak self] in self?.runMenu($0) }
         model.takeScreenshot = { [weak self] in self?.takeScreenshot() }
         model.dropFiles = { [weak self] urls in self?.attach(urls) ?? false }
         model.removeAttachment = { [weak self] path in

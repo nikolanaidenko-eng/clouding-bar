@@ -289,7 +289,7 @@ struct PillLayout {
                 list.append((.button(i), Self.buttonWidth(b.label), "button:" + b.label))
             }
         }
-        if model.config.templatesEnabled && !model.config.templates.isEmpty { list.append((.templates, 26, "templates")) }
+        if !model.menuButtons.isEmpty { list.append((.templates, 26, "templates")) }
         if model.config.screenshot { list.append((.shot, 26, "shot")) }
         if !hides.contains("mic") { list.append((.mic, 26, "mic")) }
         list = list.enumerated().sorted { a, b in

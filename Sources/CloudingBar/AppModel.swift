@@ -85,6 +85,8 @@ final class AppModel: ObservableObject {
     @Published var tokensOut: Int?
     @Published var cost: Double?
     @Published var buttons: [ButtonSpec] = []
+    /// The ones in the menu button's list.
+    @Published var menuButtons: [ButtonSpec] = []
     @Published var sessions: [SessionRow] = []
     @Published var request: RequestCard?
     /// Projects seen in sessions, for the profile picker.
@@ -173,7 +175,7 @@ final class AppModel: ObservableObject {
     var removeFromQueue: (UUID) -> Void = { _ in }
     /// Send it now: its chat brought to the front and the words typed in.
     var sendQueuedNow: (UUID) -> Void = { _ in }
-    var insertTemplate: (String) -> Void = { _ in }
+    var runMenuButton: (Int) -> Void = { _ in }
     var takeScreenshot: () -> Void = {}
     /// Files dropped on the widget; false if there's no session to take them.
     var dropFiles: ([URL]) -> Bool = { _ in false }

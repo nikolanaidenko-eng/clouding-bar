@@ -584,6 +584,40 @@ let config = Config()
 check(config.effectiveButtons.map(\.label) == ["summary", "compact"], "default buttons")
 check(config.questionHoldSeconds == 15, "question hold defaults to 15 s")
 check(config.contextWarnPercent == 80, "context warning at 80%")
+check(ButtonSpec.label(for: "Проверь последние изменения в {project} на ошибки") == "Проверь последние…", "a long text's name: its first words")
+check(ButtonSpec.label(for: "Закоммить изменения в ветке {branch}") == "Закоммить изменения…", "a long text's name: not ending on a short word")
+
+do { // templates move into the menu once: the defaults when it had none of its own, every list, then the keys go
+    let saved = try? Data(contentsOf: Config.fileURL)
+    try? #"{"templatesEnabled":true,"buttons":[{"label":"go","type":"phrase","value":"Go"}],"profiles":{"app":[{"label":"x","type":"key","value":"esc"}]}}"#
+        .write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    Config.moveTemplates()
+    var c = Config.load()
+    check(c.buttons.map(\.label) == ["go"] + Config.oldTemplates.map(ButtonSpec.label(for:))
+          && c.buttons.dropFirst().allSatisfy { $0.menu && $0.type == .text } && !c.buttons[0].menu,
+          "templates: into the menu, after your own buttons")
+    check(c.profiles["app"]?.count == 4 && c.profiles["app"]?.last?.value == Config.oldTemplates.last, "templates: into each profile too")
+    Config.moveTemplates()
+    c = Config.load()
+    let raw = (try? JSONSerialization.jsonObject(with: Data(contentsOf: Config.fileURL))) as? [String: Any]
+    check(c.buttons.count == 4 && raw?["templatesEnabled"] == nil, "templates: moved once, the old keys gone")
+    try? #"{"templatesEnabled":false}"#.write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    Config.moveTemplates()
+    check(Config.load().effectiveButtons.map(\.label) == ["summary", "compact"], "templates off, none of its own: nothing added")
+    try? #"{"templatesEnabled":false,"templates":["Mine {branch}"],"touchBarShows":["session","templates"]}"#
+        .write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    Config.moveTemplates()
+    c = Config.load()
+    check(c.buttons.last?.value == "Mine {branch}" && c.widgetHides == ["menu"] && c.touchBarShows == ["session"],
+          "templates off but your own: kept in the menu, the menu hidden")
+    try? #"{"templatesEnabled":true,"buttons":[{"label":"broken"}]}"#.write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    Config.moveTemplates()
+    check(Config.load().buttons.filter { !$0.menu }.map(\.label) == ["summary", "compact"], "templates and only broken buttons: the defaults kept")
+    try? #"{"templatesEnabled":true,"templates":["Explain {clipboard}"]}"#.write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    Config.moveTemplates()
+    check(Config.load().buttons.map(\.label) == ["summary", "compact", "Explain {clipboard}"], "templates and no buttons: the defaults written out first")
+    if let saved { try? saved.write(to: Config.fileURL) } else { try? FileManager.default.removeItem(at: Config.fileURL) }
+}
 
 print(failures == 0 ? "\nall passed" : "\n\(failures) failed")
 exit(failures == 0 ? 0 : 1)
