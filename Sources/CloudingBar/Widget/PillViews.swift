@@ -273,11 +273,11 @@ struct PillLayout {
             list.append((.focus, Self.focusWidth(name), "focus"))
         }
         if !hides.contains("session") { list.append((.session, text(Self.percent(model.sessionPercent)), "session")) }
-        if shows.contains("context"), let c = model.contextPercent {
-            list.append((.context, text("ctx", 11) + 6 + text(Self.percent(c)), "context"))
+        if shows.contains("context") {
+            list.append((.context, text("ctx", 11) + 6 + text(Self.percent(model.contextPercent)), "context"))
         }
-        if shows.contains("reset"), let r = model.resetShort { list.append((.reset, 12 + 4 + text(r), "reset")) }
-        if shows.contains("cost"), let c = model.cost { list.append((.cost, text(String(format: "$%.2f", c)), "cost")) }
+        if shows.contains("reset") { list.append((.reset, 12 + 4 + text(model.resetShort ?? "—"), "reset")) }
+        if shows.contains("cost") { list.append((.cost, text(Self.cost(model.cost)), "cost")) }
         // Cost shown as a number already: not again as a metric.
         for m in Metric.list(model) where !(m.id == "cost" && shows.contains("cost")) {
             list.append((.metric(m.id), m.plainWidth, "metric:" + m.id))
@@ -289,7 +289,7 @@ struct PillLayout {
                 list.append((.button(i), Self.buttonWidth(b.label), "button:" + b.label))
             }
         }
-        if !model.menuButtons.isEmpty { list.append((.templates, 26, "templates")) }
+        if !hides.contains("menu") { list.append((.templates, 26, "templates")) }
         if model.config.screenshot { list.append((.shot, 26, "shot")) }
         if !hides.contains("mic") { list.append((.mic, 26, "mic")) }
         list = list.enumerated().sorted { a, b in
@@ -312,6 +312,7 @@ struct PillLayout {
     }
 
     static func percent(_ p: Double?) -> String { p.map { "\(Int($0.rounded()))%" } ?? "—" }
+    static func cost(_ c: Double?) -> String { c.map { String(format: "$%.2f", $0) } ?? "$—" }
 
     /// The chat's dot and its name, cut short.
     static let focusName: CGFloat = 110
@@ -591,7 +592,9 @@ struct PillView: View {
 
     var body: some View {
         let layout = PillLayout(model: model)
-        let special = (model.request != nil && !preview) || !model.hasSession
+        // No chat: the pill's items all the same, "—" where nothing's known
+        // yet (owner, 25.10: what you switch on shows, always).
+        let special = model.request != nil && !preview
         Group {
             if model.voiceShown && model.request == nil && !preview {
                 // Dictating, or the words to check: grows with them.
@@ -886,11 +889,12 @@ struct PillBoard: View {
             .opensPanel(state)
             .transition(.opacity)
         case .cost:
-            Text(String(format: "$%.2f", model.cost ?? 0)).foregroundColor(.cbFill)
+            Text(PillLayout.cost(model.cost)).foregroundColor(.cbFill)
                 .opensPanel(state).transition(.opacity)
         case let .metric(id):
             if let m = Metric.list(model).first(where: { $0.id == id }) {
-                MetricChip(metric: id == "model" || id == "agents" ? opensPanel(m) : m, plain: true)
+                // "—" (no model known, no chat): nothing to pick.
+                MetricChip(metric: (id == "model" || id == "agents") && m.action != nil ? opensPanel(m) : m, plain: true)
                     .hoverReport(state).transition(.opacity)
             }
         case let .button(i):
@@ -965,14 +969,15 @@ struct PillChat: View {
     }
 
     private var field: some View {
-        Text(state.pillDraft.isEmpty ? "Write…" : state.pillDraft)
+        Text(!model.hasSession ? "No chat" : state.pillDraft.isEmpty ? "Write…" : state.pillDraft)
             .font(.system(size: 12))
             .foregroundColor(state.pillDraft.isEmpty ? .cbMuted : .cbSecondary)
             .truncationMode(.head)
             .padding(.leading, column ? 4 : 0)
             .contentShape(Rectangle())
-            .onTapGesture { [weak state, weak rearrange] in
-                if rearrange?.clickAllowed ?? true { state?.startTyping?() }
+            .onTapGesture { [weak state, weak rearrange, weak model] in
+                // No chat to write to: nothing to start.
+                if model?.hasSession ?? false, rearrange?.clickAllowed ?? true { state?.startTyping?() }
             }
             .onHover { inside in if inside { NSCursor.iBeam.push() } else { NSCursor.pop() } }
             .hoverReport(state)
@@ -1028,6 +1033,8 @@ struct PillTyping: View {
     }
 
     private func send() {
+        // The chat went away meanwhile: the words stay, for when there's one.
+        guard model.hasSession else { NSSound.beep(); return }
         let text = state.pillDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty || !model.attachments.isEmpty { model.addToQueue(text) }
         state.pillDraft = ""

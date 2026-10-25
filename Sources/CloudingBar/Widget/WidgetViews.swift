@@ -342,7 +342,6 @@ struct WidgetView: View {
                 if state.notched { NotchView(model: model, state: state) } else { PillView(model: model, state: state) }
             case .panel:
                 if model.request != nil && !preview { RequestCardView(model: model, state: state) }
-                else if !model.hasSession { EmptyPanel(model: model) }
                 else { MainPanel(model: model, state: state) }
             case .sessions: SessionsPanel(model: model, state: state)
             }
@@ -534,23 +533,25 @@ struct Metric {
     static func list(_ model: AppModel) -> [Metric] {
         let on = Set(model.config.metrics)
         var items: [Metric] = []
-        if on.contains("model"), let name = model.modelName {
-            items.append(Metric(id: "model", icon: "cpu", text: name + (model.effort.map { " · \($0)" } ?? ""),
+        // Switched on, it shows: "—" until it's known (owner, 25.10).
+        if on.contains("model") {
+            let name = model.modelName
+            items.append(Metric(id: "model", icon: "cpu", text: name.map { $0 + (model.effort.map { " · \($0)" } ?? "") } ?? "—",
                                 // Codex switches models its own way: no Claude picker there.
-                                action: model.agentName != nil ? nil : { [weak model] in
+                                action: model.agentName != nil || name == nil ? nil : { [weak model] in
                                     withAnimation(.cb(0.24)) { model?.pickingModel.toggle(); model?.showingAgents = false }
                                 },
                                 help: "Switch the model or effort"))
         }
         // How long it's been at it — once under the chat's name (owner, 24.10).
-        if on.contains("time"), let t = model.chatTime {
-            items.append(Metric(id: "time", icon: "clock", text: t, help: "How long the chat has been working, or idle"))
+        if on.contains("time") {
+            items.append(Metric(id: "time", icon: "clock", text: model.chatTime ?? "—", help: "How long the chat has been working, or idle"))
         }
         if on.contains("lines") {
             items.append(Metric(id: "lines", icon: "plus.forwardslash.minus", text: "+\(model.linesAdded) −\(model.linesRemoved)"))
         }
-        if on.contains("git"), let b = model.branch {
-            items.append(Metric(id: "git", icon: "arrow.triangle.branch", text: b))
+        if on.contains("git") {
+            items.append(Metric(id: "git", icon: "arrow.triangle.branch", text: model.branch ?? "—"))
         }
         if on.contains("agents") {
             items.append(Metric(id: "agents", icon: "person.2", text: "\(model.agents) subagent\(model.agents == 1 ? "" : "s")",
@@ -559,8 +560,8 @@ struct Metric {
                                 },
                                 help: "Which subagents are working"))
         }
-        if on.contains("cost"), model.isAPI, let c = model.cost {
-            items.append(Metric(id: "cost", icon: "dollarsign.circle", text: String(format: "$%.2f", c)))
+        if on.contains("cost") {
+            items.append(Metric(id: "cost", icon: "dollarsign.circle", text: PillLayout.cost(model.cost)))
         }
         return items.sorted { model.rank("metric:" + $0.id) < model.rank("metric:" + $1.id) }
     }
@@ -636,7 +637,7 @@ struct MainPanel: View {
         return min(600, max(440, detailsRow, buttonsRow, fieldRow))
     }
 
-    private var showTemplates: Bool { !model.menuButtons.isEmpty }
+    private var showTemplates: Bool { !model.config.widgetHides.contains("menu") }
 
     /// Templates · screenshot · mic, at the end of the message box.
     private var tools: [String] {
@@ -844,10 +845,13 @@ struct MainPanel: View {
                 if several {
                     ChatTabs(model: model, state: state, width: inner - character - 30 - 8)
                 } else {
-                    Text(model.chatName ?? model.statusTitle)
+                    Text(model.hasSession ? model.chatName ?? model.statusTitle : "No chat open")
                         .font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText).lineLimit(1)
                 }
-                Text([model.chatPlace, model.chatStatus].compactMap { $0 }.joined(separator: " · "))
+                Text(model.hasSession ? [model.chatPlace, model.chatStatus].compactMap { $0 }.joined(separator: " · ")
+                     // A chat open since before the plugin came doesn't run its hooks.
+                     : model.pluginActive ? "Start Claude Code, or type /reload-plugins in a chat that's open"
+                     : "Start Claude Code in VS Code or Terminal")
                     .font(.system(size: 11)).foregroundColor(model.activity == .wait ? .cbWarningText : .cbSecondary)
                     .lineLimit(1)
                     .padding(.leading, several ? 2 : 0)
@@ -964,7 +968,8 @@ struct MainPanel: View {
                         .focused($typing)
                         .onSubmit(addToQueue)
                         .onExitCommand { typing = false }
-                        .disabled(preview) // Settings' copy: not even Tab reaches it, nothing is sent from it
+                        // Settings' copy: not even Tab reaches it, nothing is sent from it. No chat: nowhere to send.
+                        .disabled(preview || !model.hasSession)
                 }
                 RearrangeBoard(ids: items.map(\.id), slots: slots, size: CGSize(width: boxInner, height: height),
                                rearrange: buttonsRearrange, commit: { model.swapItems($0, $1) }) { id in
@@ -1000,6 +1005,7 @@ struct MainPanel: View {
 
     /// Says where the words go: "Write to “Status bar”".
     private var placeholder: String {
+        if !model.hasSession { return "No chat to write to" }
         if !model.attachments.isEmpty { return "Add a message, or just send" }
         let name = model.chatName.map { "“" + ($0.count > 20 ? String($0.prefix(19)) + "…" : $0) + "”" } ?? "Claude"
         return model.activity == .work ? "Queue for \(name)" : "Write to \(name)"
@@ -1067,6 +1073,8 @@ struct MainPanel: View {
     }
 
     private func addToQueue() {
+        // No chat (it went away while you wrote): the words stay.
+        guard model.hasSession else { NSSound.beep(); return }
         let text = queueDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || !model.attachments.isEmpty else { return }
         model.addToQueue(text)
@@ -1474,6 +1482,10 @@ struct TemplatesButton: View {
             ForEach(Array(model.menuButtons.enumerated()), id: \.offset) { i, b in
                 Button(b.label) { model.runMenuButton(i) }
             }
+            // Empty: where to put buttons in it.
+            if model.menuButtons.isEmpty {
+                Button("Put buttons in this menu…") { model.openSettingsTab("buttons") }
+            }
         } label: {
             Image(systemName: "text.bubble").font(.system(size: size * 0.44))
         }
@@ -1487,38 +1499,7 @@ struct TemplatesButton: View {
         .overlay(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
         .help("Your menu of buttons")
-        .accessibilityLabel("Templates")
-    }
-}
-
-struct EmptyPanel: View {
-    @ObservedObject var model: AppModel
-
-    var body: some View {
-        PanelChrome(padding: EdgeInsets(top: 20, leading: 16, bottom: 16, trailing: 16), spacing: 12) {
-            VStack(spacing: 12) {
-                MascotIcon(activity: .sleep, size: 56).frame(width: 56, height: 56)
-                VStack(spacing: 4) {
-                    Text("No Claude Code session").font(.system(size: 13, weight: .semibold))
-                    Text("Start Claude Code in VS Code or Terminal.").font(.system(size: 12)).foregroundColor(.cbSecondary)
-                }
-                .multilineTextAlignment(.center)
-                if let p = model.sessionPercent {
-                    VStack(spacing: 6) {
-                        HStack {
-                            Text("Session" + (model.limitAge.map { " · \($0)" } ?? "")).foregroundColor(.cbSecondary)
-                            Spacer()
-                            Text("\(Int(p.rounded()))%").monospacedDigit().foregroundColor(Color(hex: 0xC7C7CC))
-                        }
-                        .font(.system(size: 12))
-                        MeterBar(percent: p, color: .cbMuted)
-                    }
-                    .padding(.top, 12)
-                    .overlay(Rectangle().fill(Color.white.opacity(0.1)).frame(height: 0.5), alignment: .top)
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
+        .accessibilityLabel("Menu")
     }
 }
 

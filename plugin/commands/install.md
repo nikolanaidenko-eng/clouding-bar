@@ -9,4 +9,4 @@ Install the Clouding Bar Mac app. Run exactly this with the Bash tool, nothing e
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/install-app.sh"
 ```
 
-Then tell the user, in one or two short sentences and in their language, what it printed. If it installed the app, add that Clouding Bar opens with a question to connect to Claude Code (say Connect), and that macOS then asks for Accessibility — the one permission it needs. If it failed, say why in plain words. Don't run anything else.
+Then tell the user, in one or two short sentences and in their language, what it printed. If it installed the app, add that Clouding Bar opens with a question to connect to Claude Code (say Connect), that macOS then asks for Accessibility — the one permission it needs — and that other Claude chats that were already open show up after `/reload-plugins` in them (or in a new chat). If it failed, say why in plain words. Don't run anything else.

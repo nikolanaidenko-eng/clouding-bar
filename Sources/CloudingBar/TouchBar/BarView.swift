@@ -291,8 +291,9 @@ final class BarView: NSView {
                 meters = pair
                 blocks.append(("meters", pair, .flex(weight: 1, min: short ? shortHalf : session && context ? 120 : 80), false))
             }
-            if shows.contains("model"), let label = model.modelLabel {
-                let b = BarButton(label, fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
+            // Switched on, it shows: "—" until it's known (owner, 25.10).
+            if shows.contains("model") {
+                let b = BarButton(model.modelLabel ?? "—", fontSize: short ? 11 : 12, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
                 blocks.append(("model", b, .shrinkable(min(short ? 120 : 190, b.fittingWidth(padding: short ? 8 : 12))), true))
             }
             if shows.contains("agents") {
@@ -307,8 +308,8 @@ final class BarView: NSView {
             for (key, text, symbol) in [("lines", model.lines, ("chevron.left.forwardslash.chevron.right", UInt32(0x30D158))),
                                         ("branch", model.branch, ("arrow.triangle.branch", UInt32(0xFF9F0A))),
                                         ("cost", model.cost, ("dollarsign.circle", UInt32(0xFFD60A)))] {
-                guard shows.contains(key), let text else { continue }
-                let b = BarButton(text, fontSize: short ? 11 : 12, symbol: symbol)
+                guard shows.contains(key) else { continue }
+                let b = BarButton(text ?? "—", fontSize: short ? 11 : 12, symbol: symbol)
                 blocks.append((key, b, .shrinkable(min(short ? 100 : 150, b.fittingWidth(padding: short ? 8 : 12))), true))
             }
             var chatMin: CGFloat = 0
@@ -328,7 +329,7 @@ final class BarView: NSView {
                 blocks.append(("chat", box, .flex(weight: 1.2, min: 150 + box.commandsWidth), true))
                 chatMin = box.commandsWidth + 40
             }
-            if shows.contains("templates"), !model.templates.isEmpty {
+            if shows.contains("templates") {
                 let b = BarButton(short ? "" : "Menu", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
                     self?.onAction?(.templates)
                 }

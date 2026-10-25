@@ -166,16 +166,21 @@ In Claude Code — the terminal, VS Code or Claude Desktop's Code tab:
 ```
 /plugin marketplace add nikolanaidenko-eng/clouding-bar
 /plugin install clouding-bar@clouding-bar
+/reload-plugins
 /clouding-bar:install
 ```
 
-The plugin links Claude Code to the app (its hooks). `/clouding-bar:install`
+Type them inside Claude Code (after `claude` in a terminal), not in the
+shell. `/reload-plugins` makes the chat you're in report to Clouding Bar
+too. The plugin links Claude Code to the app (its hooks). `/clouding-bar:install`
 gets the newest release from GitHub, checks it — signed with Clouding Bar's
 Developer ID, notarized by Apple — and puts it in Applications. When the app
 opens, say **Connect**: it adds its status line to `~/.claude/settings.json`
 (the 5-hour limit and the context come that way, and a plugin can't bring a
-status line). Then allow Accessibility. From then on a new Claude session
-opens Clouding Bar if it's closed (Settings → General → Open with Claude).
+status line), and in VS Code a small wrapper for the same limit. Then allow
+Accessibility. Chats that were already open show up after `/reload-plugins`
+in them, or start a new one. From then on a new Claude session opens
+Clouding Bar if it's closed (Settings → General → Open with Claude).
 
 **Cowork, if you use it:** in Claude Desktop → Customize → Plugins, add the
 same marketplace (`nikolanaidenko-eng/clouding-bar`) and install
@@ -251,9 +256,10 @@ folder you connected to Cowork there is read by the app, so macOS asks once.)
 ### VS Code
 
 Claude's panel in VS Code doesn't run the status line, so the 5-hour limit
-reaches Clouding Bar through a small wrapper instead: **Settings → General
-→ VS Code: limit and sending → Set Up** (it sets
-`claudeCode.claudeProcessWrapper`, keeping your settings file as it is).
+reaches Clouding Bar through a small wrapper instead. **Connect** sets it up
+along with the rest, or later **Settings → General → VS Code: limit and
+sending → Set Up** (it sets `claudeCode.claudeProcessWrapper`, keeping your
+settings file as it is).
 New chats report the limit from then on — and take the widget's messages
 straight into Claude's input, beside the extension's own, so nothing is
 typed and no window comes forward.

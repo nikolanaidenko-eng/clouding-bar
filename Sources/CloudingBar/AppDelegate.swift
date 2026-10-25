@@ -728,6 +728,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if composing { composeDraft = "" }
             stopTyping()
 
+        case .templates where menuButtons(active).isEmpty:
+            // Nothing in it yet: where to put buttons in it.
+            DebugLog.tap("menu (bar): empty, to Settings → Buttons")
+            model.openSettingsTab("buttons")
+
         case .templates:
             DebugLog.tap("templates (bar)")
             if composing {
@@ -867,6 +872,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func run(_ spec: ButtonSpec) {
+        // No chat: words and keys would go to the shell or the file in front
+        // (the widget shows its buttons with no chat too, owner 25.10).
+        if focusedSession == nil, [.phrase, .command, .text, .key].contains(spec.type) {
+            NSSound.beep()
+            DebugLog.note("button held back: no chat")
+            return
+        }
         widget.releaseKey() // keystrokes go to your editor, not the widget
         switch spec.type {
         case .screenshot:
@@ -1156,8 +1168,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("connect to Claude Code")
             do {
                 try Setup.connect()
-                self?.model.setupMessage = nil
+                self?.model.setupFailed = false
+                // VS Code doesn't run the status line: its chats bring the
+                // 5-hour limit through the wrapper, set up with the rest
+                // (owner, 25.10: on a fresh install VS Code showed nothing).
+                let vscode = Setup.describe(Setup.wrapVSCodeIfFree())
+                self?.model.setupMessage = (["Connected: new chats show up here."]
+                    + (Setup.pluginActive ? ["A chat that was already open: type /reload-plugins in it, or start a new one."] : [])
+                    + [vscode].compactMap { $0 }).joined(separator: " ")
             } catch {
+                self?.model.setupFailed = true
                 self?.model.setupMessage = error.localizedDescription
             }
             self?.refreshSetupStatus()
@@ -1209,21 +1229,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The first launch of a download: ask before touching Claude Code's settings.
     private func offerSetup() {
+        let vscodeLine = Setup.hasVSCode && !Setup.vscodeWrapped
+            ? ", and in VS Code a small wrapper for the same limit (unless one of your own is set)" : ""
         let alert = NSAlert()
         alert.messageText = "Connect Clouding Bar to Claude Code?"
         alert.informativeText = Setup.pluginActive
-            ? "Clouding Bar's plugin already links it to Claude Code. For the 5-hour limit and the context it adds its status line to ~/.claude/settings.json (a plugin can't): your settings are merged, never replaced, and backed up first."
-            : "Clouding Bar adds a small hook and a status line to ~/.claude/settings.json, so Claude Code can tell it what it's doing and ask you through it. Your settings are merged, never replaced, and backed up first. Nothing leaves this Mac."
+            ? "Clouding Bar's plugin already links it to Claude Code. For the 5-hour limit and the context it adds its status line to ~/.claude/settings.json (a plugin can't)\(vscodeLine): your settings are merged, never replaced, and backed up first."
+            : "Clouding Bar adds a small hook and a status line to ~/.claude/settings.json\(vscodeLine), so Claude Code can tell it what it's doing and ask you through it. Your settings are merged, never replaced, and backed up first. Nothing leaves this Mac."
         alert.addButton(withTitle: "Connect")
         alert.addButton(withTitle: "Not Now")
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             model.connectClaude()
             if let message = model.setupMessage {
-                let failed = NSAlert()
-                failed.messageText = "Couldn't connect"
-                failed.informativeText = message
-                failed.runModal()
+                let done = NSAlert()
+                done.messageText = model.setupFailed ? "Couldn't connect" : "Connected"
+                done.informativeText = message
+                done.runModal()
             }
         } else {
             setConfig("setupDeclined", true)
@@ -1264,10 +1286,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.perform = { [weak self] in self?.perform($0) }
         model.answerText = { [weak self] in self?.answerTyped($0) }
         model.openSession = { [weak self] in self?.openSession($0) }
+        model.openSettingsTab = { [weak self] tab in
+            self?.model.settingsTabRequest = tab
+            self?.openSettings()
+        }
         model.barPreview = { [weak self] short in
             guard let self else { return BarModel() }
-            var bar = self.barModel(active: self.focusedSession, short: short)
+            let active = self.focusedSession
+            var bar = self.barModel(active: active, short: short)
             bar.expanded = false
+            if active == nil {
+                // No chat open: example numbers, so every switch shows what
+                // it does (owner, 25.10).
+                bar.sessionPercent = bar.sessionPercent ?? 42
+                bar.resetCountdown = bar.resetCountdown ?? "1:23"
+                bar.contextPercent = 31
+                bar.activity = .work
+                bar.modelLabel = ModelChoice.label(model: "Opus 5.5", effort: "high")
+                bar.agents = ["Explore · Find where the hooks are installed"]
+                bar.lines = "+120 −8"
+                bar.branch = "main"
+                bar.cost = "$1.20"
+                bar.chatName = "Example chat"
+                bar.chats = [BarModel.Chat(id: "example", name: "Example chat", color: 0x0A84FF, current: true, waiting: false)]
+            }
             return bar
         }
         model.focusSession = { [weak self] id in
@@ -1310,6 +1352,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setConfig(_ key: String, _ value: Any) {
+        // Something switched on in the widget: a pill sized by hand makes
+        // room for it (owner, 25.10) — not an upright one, not one that shows
+        // everything already.
+        if config.pillWidth > 0, config.pillWidth < 10_000, switchesOn(key, value),
+           !PillLayout.isVertical(width: CGFloat(config.pillWidth), height: model.pillHeightBudget) {
+            Config.save("pillWidth", 0)
+        }
         Config.save(key, value)
         config = Config.load()
         MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
@@ -1318,6 +1367,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         DebugLog.note("setting \(key) changed")
         refresh()
+    }
+
+    /// Whether this change switches something on in the widget.
+    private func switchesOn(_ key: String, _ value: Any) -> Bool {
+        switch key {
+        case "pillShows": return !Set(value as? [String] ?? []).isSubset(of: config.pillShows)
+        case "metrics": return !Set(value as? [String] ?? []).isSubset(of: config.metrics)
+        case "widgetHides": return !Set(config.widgetHides).isSubset(of: value as? [String] ?? [])
+        case "screenshot": return value as? Bool == true && !config.screenshot
+        case "taskQueue": return value as? Bool == true && !config.taskQueue
+        default: return false
+        }
     }
 
     /// Fills AppModel; only what changed is assigned, so SwiftUI redraws
@@ -2082,7 +2143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// command. Claude Code switches at once and notes it in the transcript.
     private func switchModel(_ command: String) {
         DebugLog.tap(command)
-        guard claudeAppInFront, safeToType() else {
+        // No chat: /model would go to the shell or the file in front.
+        guard focusedSession != nil, claudeAppInFront, safeToType() else {
             NSSound.beep()
             barPendingModel = nil
             barPendingEffort = nil
