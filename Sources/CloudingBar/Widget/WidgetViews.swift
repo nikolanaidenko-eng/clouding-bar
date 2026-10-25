@@ -608,6 +608,12 @@ struct MainPanel: View {
     @State private var moving: String?
     @State private var movedBy: CGFloat = 0
     @State private var blockFrames: [String: CGRect] = [:]
+    /// Where the blocks stood when the drag began, and the one it's over.
+    @State private var startFrames: [String: CGRect] = [:]
+    @State private var dropOn: String?
+    /// A block's grip shows only while the pointer is on it or its grip.
+    @State private var hoverBlock: String?
+    @State private var hoverGrip: String?
 
     private static let chrome: CGFloat = 12 + 12
     /// The text field never gets narrower than this.
@@ -732,41 +738,85 @@ struct MainPanel: View {
         }
     }
 
-    /// A block with its grip at the left: drag it up or down onto another
-    /// block to swap them (owner, 24.10).
+    /// A block with a grip over its top edge, shown while the pointer is on
+    /// it: drag it up or down onto another block to put it there (owner,
+    /// 24.10). The grip sits in the gap between blocks, never past the
+    /// panel's edge (owner, 25.10).
     private func movable<C: View>(_ id: String, @ViewBuilder _ content: () -> C) -> some View {
-        content()
+        let shown = moving == id || (moving == nil && (hoverBlock == id || hoverGrip == id))
+        return content()
             .background(GeometryReader { g in
                 Color.clear.preference(key: BlockFrames.self, value: [id: g.frame(in: .named("panel-blocks"))])
             })
-            .overlay(alignment: .leading) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.white.opacity(moving == id ? 0.6 : 0.22))
-                    .frame(width: 12, height: 24)
+            .onHover { inside in
+                if inside { hoverBlock = id } else if hoverBlock == id { hoverBlock = nil }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(dropOn == id ? 0.35 : 0), lineWidth: 1.5)
+                    .padding(-3)
+                    .allowsHitTesting(false)
+            )
+            .overlay(alignment: .top) {
+                Capsule()
+                    .fill(Color.white.opacity(moving == id ? 0.55 : shown ? 0.3 : 0))
+                    .frame(width: 28, height: 4)
+                    .frame(width: 64, height: 12)
                     .contentShape(Rectangle())
-                    .offset(x: -12)
-                    .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
+                    .offset(y: -12)
+                    .onHover { inside in
+                        if inside {
+                            hoverGrip = id
+                            NSCursor.openHand.push()
+                        } else {
+                            if hoverGrip == id { hoverGrip = nil }
+                            NSCursor.pop()
+                        }
+                    }
                     .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named("panel-blocks"))
-                        .onChanged { v in moving = id; movedBy = v.translation.height }
+                        .onChanged { v in drag(id, by: v.translation.height) }
                         .onEnded { v in drop(id, by: v.translation.height) })
                     .help("Drag up or down to move this block")
                     .accessibilityLabel("Move this block")
+                    .animation(.cb(0.18), value: shown)
             }
             .offset(y: moving == id ? movedBy : 0)
             .shadow(color: .black.opacity(moving == id ? 0.4 : 0), radius: moving == id ? 10 : 0, y: moving == id ? 5 : 0)
             .zIndex(moving == id ? 1 : 0)
     }
 
-    /// Let go over another block: the two trade places.
-    private func drop(_ id: String, by dy: CGFloat) {
-        defer { withAnimation(.cb(0.28)) { moving = nil; movedBy = 0 } }
-        guard let from = blockFrames[id] else { return }
+    /// The block under the dragged one's middle, from where the blocks stood
+    /// when the drag began: the dragged block's own frame moves with it.
+    private func target(_ id: String, by dy: CGFloat) -> String? {
+        guard let from = startFrames[id] else { return nil }
         let y = from.midY + dy
+        return startFrames.first { $0.key != id && $0.value.minY - 6 <= y && y <= $0.value.maxY + 6 }?.key
+    }
+
+    private func drag(_ id: String, by dy: CGFloat) {
+        if moving != id {
+            startFrames = blockFrames
+            moving = id
+        }
+        movedBy = dy
+        let over = target(id, by: dy)
+        if over != dropOn { withAnimation(.cb(0.18)) { dropOn = over } }
+    }
+
+    /// Let go over another block: the dragged one takes its place, the ones
+    /// between shift over.
+    private func drop(_ id: String, by dy: CGFloat) {
+        let over = target(id, by: dy)
+        withAnimation(.cb(0.28)) {
+            moving = nil
+            movedBy = 0
+            dropOn = nil
+        }
+        startFrames = [:]
         var order = blockOrder
-        guard let target = blockFrames.first(where: { $0.key != id && $0.value.minY - 6 <= y && y <= $0.value.maxY + 6 })?.key,
-              let i = order.firstIndex(of: id), let j = order.firstIndex(of: target) else { return }
-        order.swapAt(i, j)
+        guard let over, let i = order.firstIndex(of: id), let j = order.firstIndex(of: over) else { return }
+        order.remove(at: i)
+        order.insert(id, at: j)
         model.setConfig("panelOrder", order)
     }
 
