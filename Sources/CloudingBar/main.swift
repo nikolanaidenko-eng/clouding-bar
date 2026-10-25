@@ -8,6 +8,7 @@ if CommandLine.arguments.dropFirst().contains("--connect") {
     do {
         try Setup.connect()
         print("  Claude Code connected: hooks and status line in ~/.claude/settings.json")
+        if let vscode = Setup.describe(Setup.wrapVSCodeIfFree()) { print("  " + vscode) }
         exit(0)
     } catch {
         FileHandle.standardError.write(Data("  Couldn't connect Claude Code: \(error.localizedDescription)\n".utf8))

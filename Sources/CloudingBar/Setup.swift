@@ -135,9 +135,14 @@ enum Setup {
     }
 
     enum SetupError: LocalizedError {
-        case unreadable
+        case unreadable, vscodeUnreadable
         var errorDescription: String? {
-            "~/.claude/settings.json isn't plain JSON, so it was left alone. Add the hooks by hand (see the README)."
+            switch self {
+            case .unreadable:
+                return "~/.claude/settings.json isn't plain JSON, so it was left alone. Add the hooks by hand (see the README)."
+            case .vscodeUnreadable:
+                return "VS Code's settings.json isn't plain text in UTF-8, so it was left alone"
+            }
         }
     }
 
@@ -288,19 +293,53 @@ enum Setup {
 
     static var hasVSCode: Bool { FileManager.default.fileExists(atPath: vscodeSettings.deletingLastPathComponent().path) }
 
+    /// What Connect did about VS Code.
+    enum VSCodeStep { case none, done, already, others, failed(String) }
+
+    /// Connect's part in VS Code: our wrapper, unless one of your own is
+    /// set there — that stays, Set Up in Settings replaces it if you mean to.
+    static func wrapVSCodeIfFree() -> VSCodeStep {
+        guard hasVSCode else { return .none }
+        if vscodeWrapped { return .already }
+        let text = (try? String(contentsOf: vscodeSettings, encoding: .utf8)) ?? ""
+        if let r = text.range(of: "\"claudeCode.claudeProcessWrapper\"\\s*:\\s*\"[^\"]*\"", options: .regularExpression),
+           !text[r].contains("claudebar-wrapper.sh") && !text[r].contains("cloudingbar-wrapper.sh") {
+            return .others
+        }
+        do {
+            try wrapVSCode()
+            return .done
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// One line for the person: what Connect did in VS Code.
+    static func describe(_ step: VSCodeStep) -> String? {
+        switch step {
+        case .none, .already: return nil
+        case .done: return "In VS Code, new chats bring the 5-hour limit too."
+        case .others: return "VS Code runs Claude through a wrapper of your own, so it was left as it is: Settings → General → VS Code → Set Up puts Clouding Bar's in its place."
+        case let .failed(why): return "VS Code's settings couldn't be changed (\(why)): Settings → General → VS Code → Set Up."
+        }
+    }
+
     /// Sets claudeCode.claudeProcessWrapper in VS Code's settings by editing
     /// the text, so its comments and layout stay as they are. Backed up first.
     static func wrapVSCode() throws {
         let fm = FileManager.default
         let url = vscodeSettings
-        var text = (try? String(contentsOf: url, encoding: .utf8)) ?? "{\n}\n"
+        var text = "{\n}\n"
         if fm.fileExists(atPath: url.path) {
+            // Backed up byte for byte; one that doesn't read as text stays as it is.
+            let data = try Data(contentsOf: url)
+            guard let read = String(data: data, encoding: .utf8) else { throw SetupError.vscodeUnreadable }
+            text = read
             let backups = dir.appendingPathComponent("backups", isDirectory: true)
             try fm.createDirectory(at: backups, withIntermediateDirectories: true)
             let stamp = DateFormatter()
             stamp.dateFormat = "yyyyMMdd-HHmmss"
-            try text.write(to: backups.appendingPathComponent("vscode-settings-\(stamp.string(from: Date())).json"),
-                           atomically: true, encoding: .utf8)
+            try data.write(to: backups.appendingPathComponent("vscode-settings-\(stamp.string(from: Date())).json"))
         }
         let entry = "\"claudeCode.claudeProcessWrapper\": \"\(wrapper)\""
         if let r = text.range(of: "\"claudeCode.claudeProcessWrapper\"\\s*:\\s*\"[^\"]*\"", options: .regularExpression) {

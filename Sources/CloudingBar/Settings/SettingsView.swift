@@ -800,8 +800,8 @@ struct GeneralTab: View {
                             hint: model.claudeConnected
                                 ? (model.pluginActive ? "Claude Code reports here, through Clouding Bar's plugin" : "Claude Code reports here")
                                 : model.pluginActive
-                                    ? "The plugin is in. Connect adds the status line, for the 5-hour limit (settings.json backed up first)."
-                                    : "Not connected yet: Clouding Bar can't see Claude Code. Your settings.json is backed up first.",
+                                    ? "The plugin is in. Connect adds the status line, for the 5-hour limit, and VS Code's wrapper (settings backed up first)."
+                                    : "Not connected yet: Clouding Bar can't see Claude Code. Connect sets it up, VS Code too; your settings are backed up first.",
                             divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
                     if model.claudeConnected {
                         Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1172,6 +1172,9 @@ struct TouchBarEditor: View {
                     short = $0 == "short"
                 }
                 Spacer(minLength: 0)
+                if !model.hasSession {
+                    Text("No chat open · example numbers").font(.system(size: 11)).foregroundColor(.sMuted)
+                }
                 if arranged {
                     Button("Reset") { reset() }
                         .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1341,12 +1344,16 @@ struct LiveBar: NSViewRepresentable {
 struct WidgetPreview: View {
     @ObservedObject var model: AppModel
     @StateObject private var state = WidgetState()
+    /// With no chat open: the widget with example numbers.
+    @StateObject private var example = AppModel()
     @State private var panel = false
     @State private var panelSize = CGSize(width: 480, height: 280)
 
+    private var shown: AppModel { model.hasSession ? model : example }
+
     /// The pill's size as the widget works it out; the panel's, measured.
     private var natural: CGSize {
-        panel ? panelSize : PillLayout(model: model).arrange(width: model.pillBudget, height: model.pillHeightBudget).frame
+        panel ? panelSize : PillLayout(model: shown).arrange(width: shown.pillBudget, height: shown.pillHeightBudget).frame
     }
 
     var body: some View {
@@ -1362,8 +1369,12 @@ struct WidgetPreview: View {
                     state.mode = panel ? .panel : .pill
                     measure()
                 }
+                if !model.hasSession {
+                    Spacer(minLength: 0)
+                    Text("No chat open · example numbers").font(.system(size: 11)).foregroundColor(.sMuted)
+                }
             }
-            WidgetView(model: model, state: state)
+            WidgetView(model: shown, state: state)
                 .environment(\.colorScheme, .dark)
                 .environment(\.cbPreview, true)
                 .environment(\.cbScale, scale)
@@ -1378,15 +1389,20 @@ struct WidgetPreview: View {
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { state.mode = panel ? .panel : .pill; measure() }
-        .onChange(of: model.config) { _ in measure() }
+        .onAppear { sync(); state.mode = panel ? .panel : .pill; measure() }
+        .onChange(of: model.config) { _ in sync(); measure() }
+        .onChange(of: model.buttons) { _ in sync(); measure() }
+        .onChange(of: model.menuButtons) { _ in sync(); measure() }
+        .onChange(of: model.hasSession) { _ in measure() }
     }
+
+    private func sync() { example.fillExample(from: model) }
 
     private func measure() {
         guard panel else { return }
         let s = WidgetState()
         s.mode = .panel
-        let size = NSHostingView(rootView: WidgetView(model: model, state: s).fixedSize()).fittingSize
+        let size = NSHostingView(rootView: WidgetView(model: shown, state: s).fixedSize()).fittingSize
         if size.width > 0, size.height > 0 { panelSize = size }
     }
 }

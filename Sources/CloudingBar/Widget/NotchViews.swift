@@ -67,7 +67,7 @@ struct NotchView: View {
                 typing
             } else if model.voiceShown {
                 listening
-            } else if let b = wideBudget, model.hasSession {
+            } else if let b = wideBudget {
                 wide(b)
             } else {
                 compact
@@ -133,7 +133,7 @@ struct NotchView: View {
             }
             if model.listening {
                 Icon(kind: .mic, size: 13, lineWidth: 1.8).foregroundColor(.cbAction)
-            } else if model.hasSession && !model.config.widgetHides.contains("session") {
+            } else if !model.config.widgetHides.contains("session") {
                 MeterBar(percent: model.sessionPercent, height: 3, track: .white.opacity(0.2))
                     .frame(width: 26)
                 Text(PillLayout.percent(model.sessionPercent))
@@ -159,14 +159,12 @@ struct NotchView: View {
                 Text(name).font(.system(size: 12)).frame(maxWidth: 150, alignment: .trailing)
             }
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
-        } else if model.hasSession && model.config.pillShows.contains("context") {
+        } else if model.config.pillShows.contains("context") {
             HStack(spacing: 8) {
                 Text(PillLayout.percent(model.contextPercent))
                 MeterBar(percent: model.contextPercent, height: 3, track: .white.opacity(0.2), delay: 0.12)
                     .frame(width: 26)
             }
-        } else if !model.hasSession {
-            Text(PillLayout.percent(model.sessionPercent)).foregroundColor(.cbSecondary)
         }
     }
 

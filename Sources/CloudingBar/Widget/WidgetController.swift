@@ -391,7 +391,7 @@ final class WidgetController: NSObject {
         if state.pillTyping || model.dictated != nil { return }
         openWork?.cancel() // holding it: don't open the panel underneath
         let mouse = NSEvent.mouseLocation
-        if state.mode == .pill, model.hasSession, model.request == nil, !model.listening,
+        if state.mode == .pill, model.request == nil, !model.listening,
            var rim = WidgetState.pillRim(event.locationInWindow, in: panel.frame.size) {
             let frame = panel.frame
             // In the notch it hangs from the top: its ends and bottom pull.

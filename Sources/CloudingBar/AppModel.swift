@@ -192,6 +192,8 @@ final class AppModel: ObservableObject {
     var removeLiveKey: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
     var showTour: () -> Void = {}
+    /// Settings, at one of its tabs.
+    var openSettingsTab: (String) -> Void = { _ in }
     /// The tour in the settings window: the stop it's at, nil when off.
     @Published var tourStep: Int?
 
@@ -200,6 +202,8 @@ final class AppModel: ObservableObject {
     @Published var hasVSCode = false
     @Published var vscodeWrapped = false
     @Published var setupMessage: String?
+    /// The last Connect failed (`setupMessage` says why).
+    var setupFailed = false
     var connectClaude: () -> Void = {}
     @Published var hasCodex = false
     @Published var codexConnected = false
@@ -219,19 +223,60 @@ final class AppModel: ObservableObject {
     var checkForUpdates: () -> Void = {}
     var installUpdate: () -> Void = {}
 
+    /// Settings' copy of the widget with no chat open: your settings and
+    /// buttons with example numbers, so every switch shows what it does
+    /// (owner, 25.10: on a fresh install nothing seemed to change). What you
+    /// arrange there is saved through the live model.
+    func fillExample(from live: AppModel) {
+        config = live.config
+        buttons = live.buttons
+        menuButtons = live.menuButtons
+        hasNotch = live.hasNotch
+        setConfig = live.setConfig
+        hasSession = true
+        activity = .work
+        project = "my-app"
+        chatName = "Example chat"
+        chatColor = 0x0A84FF
+        chatPlace = "my-app · VS Code"
+        chatStatus = "Working"
+        chatTime = "3 min"
+        sessionPercent = live.sessionPercent ?? 42
+        resetShort = live.resetShort ?? "1:23"
+        resetLong = live.resetLong ?? "1 h 23 min"
+        contextPercent = 31
+        contextTokens = 62_000
+        contextWindow = 200_000
+        modelName = "Opus 5.5"
+        effort = "high"
+        linesAdded = 120
+        linesRemoved = 8
+        branch = "main"
+        agents = 1
+        cost = 1.2
+        sessions = [SessionRow(id: "example", name: "Example chat", status: "Working · 3 min", activity: .work,
+                               context: 31, waiting: false, place: "my-app · VS Code", current: true)]
+    }
+
     /// The pill's height budget: what was set by pulling its top or bottom.
     var pillHeightBudget: CGFloat {
         config.pillHeight > 0 ? CGFloat(config.pillHeight) : PillLayout.height(rows: max(1, config.pillRows))
     }
 
     /// The pill's width budget: what was set by pulling its edge, or what
-    /// the old density setting showed.
+    /// the old density setting showed; else room for everything switched
+    /// on, as wide as the screen allows (owner, 25.10: what you switch on
+    /// shows).
     var pillBudget: CGFloat {
         if config.pillWidth > 0 { return CGFloat(config.pillWidth) }
         switch config.pillDensity {
         case "icon": return 0
         case "numbers": return 260
-        default: return 370
+        default:
+            // The screen the pill is on: where it was put, else the first.
+            let screen = config.widgetPosition.flatMap { p in NSScreen.screens.first { $0.frame.contains(p) } }
+                ?? NSScreen.screens.first
+            return max(370, (screen?.visibleFrame.width ?? 1440) - 80)
         }
     }
 

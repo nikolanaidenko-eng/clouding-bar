@@ -24,6 +24,10 @@ func add(_ name: String, width: CGFloat = BarView.preferredWidth, _ edit: (inout
 }
 add("normal-3") { _ in }
 add("normal-0") { $0.buttons = [] }
+add("normal-unknown") { // a chat whose model, lines, branch and cost aren't known yet (VS Code has no cost): "—", the menu empty
+    $0.shows = ["session", "context", "model", "lines", "branch", "cost", "templates", "shot", "mic"]
+    $0.chatName = "Status bar"; $0.chats = [BarModel.Chat(id: "1", name: "Status bar", color: Session.colors[0], current: true, waiting: false)]
+}
 add("normal-5") { $0.buttons = Array(seven.prefix(5)) }
 add("normal-7") { $0.buttons = seven }
 add("normal-pick-context-mic") { $0.shows = ["context", "buttons", "mic", "shot"] }
@@ -463,6 +467,28 @@ widget("w-sessions", .sessions)
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }
+// A fresh install with no chat seen yet: what's switched on shows, "—" where nothing's known.
+func noChat(_ m: AppModel) -> AppModel {
+    let fresh = AppModel()
+    fresh.config = m.config
+    fresh.config.metrics = ["git", "lines", "time", "model", "agents"]
+    fresh.config.pillShows = ["context", "reset", "cost"]
+    fresh.config.screenshot = true
+    fresh.config.taskQueue = true
+    fresh.config.pillWidth = 700
+    fresh.buttons = Config().effectiveButtons
+    fresh.sessionPercent = 6
+    fresh.pluginActive = true
+    return fresh
+}
+for (name, mode, size) in [("w-nochat-pill", WidgetMode.pill, NSSize(width: 760, height: 120)),
+                           ("w-nochat-panel", .panel, NSSize(width: 720, height: 360))] {
+    let m = noChat(sampleModel())
+    let state = WidgetState()
+    state.mode = mode
+    renderView(NSHostingView(rootView: VStack { WidgetView(model: m, state: state); Spacer() }
+        .frame(width: size.width, height: size.height).padding(.top, 20)), size: size, name: name)
+}
 widget("w-panel-model", .panel, size: NSSize(width: 720, height: 300)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]
     $0.config.taskQueue = true
@@ -529,6 +555,15 @@ do { // Settings' copy of the widget while Claude asks: the widget, never the re
     m.request = .init(id: UUID(), kind: .permission, project: "DiaRoute", verb: "Run", detail: "rm -rf build")
     let host = NSHostingView(rootView: SettingsView(model: m, tab: "widget"))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-request")
+}
+do { // a fresh install, no chat open: the widget's copy in Settings shows example numbers, every item switched on
+    let m = AppModel()
+    m.config.metrics = ["model", "time", "lines", "git", "agents"]
+    m.config.pillShows = ["context", "reset", "cost"]
+    m.config.screenshot = true
+    m.buttons = Config().effectiveButtons
+    let host = NSHostingView(rootView: SettingsView(model: m, tab: "widget"))
+    renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-nochat")
 }
 for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
     let m = sampleModel()

@@ -578,6 +578,30 @@ do { // a Cowork status file with absurd numbers (anyone's repo could bring one)
     check(st?.contextTokens == 10_000_000 && st?.contextWindow == 1_000, "Cowork file with absurd numbers: kept in bounds")
 }
 
+do { // Connect sets VS Code's wrapper only where none of your own is: absent → ours, ours from before → ours, yours → left
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("vscode-user")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("settings.json")
+    setenv("CLOUDINGBAR_VSCODE_SETTINGS", file.path, 1)
+    try? "{\n    \"editor.fontSize\": 13\n}\n".write(to: file, atomically: true, encoding: .utf8)
+    if case .done = Setup.wrapVSCodeIfFree() {} else { check(false, "VS Code: no wrapper yet → ours") }
+    check(Setup.vscodeWrapped && ((try? String(contentsOf: file, encoding: .utf8)) ?? "").contains("editor.fontSize"),
+          "VS Code: ours set, the rest kept")
+    if case .already = Setup.wrapVSCodeIfFree() {} else { check(false, "VS Code: ours already → nothing to do") }
+    let own = "{\n    \"claudeCode.claudeProcessWrapper\": \"/Users/me/bin/claude-proxy.sh\"\n}\n"
+    try? own.write(to: file, atomically: true, encoding: .utf8)
+    if case .others = Setup.wrapVSCodeIfFree() {} else { check(false, "VS Code: your own wrapper → reported") }
+    check((try? String(contentsOf: file, encoding: .utf8)) == own, "VS Code: your own wrapper left as it is")
+    try? "{\"claudeCode.claudeProcessWrapper\": \"/Users/x/.claudebar/claudebar-wrapper.sh\"}".write(to: file, atomically: true, encoding: .utf8)
+    if case .done = Setup.wrapVSCodeIfFree() {} else { check(false, "VS Code: ours from before → replaced") }
+    check(Setup.vscodeWrapped, "VS Code: the old wrapper replaced by ours")
+    let latin = Data("{\n    // caf\u{E9}\n}\n".data(using: .isoLatin1)!)
+    try? latin.write(to: file)
+    if case .failed = Setup.wrapVSCodeIfFree() {} else { check(false, "VS Code: settings not in UTF-8 → reported") }
+    check((try? Data(contentsOf: file)) == latin, "VS Code: settings not in UTF-8 left as they are")
+    unsetenv("CLOUDINGBAR_VSCODE_SETTINGS")
+}
+
 // MARK: Config
 
 let config = Config()
