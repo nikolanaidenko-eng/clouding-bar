@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="PolyForm Shield license" src="https://img.shields.io/badge/license-PolyForm%20Shield-30D158"></a>
 </p>
 
-https://github.com/user-attachments/assets/3f0a6442-497e-434e-b389-f8c7f2931a65
+https://github.com/user-attachments/assets/ac4b3e46-2d3a-4ece-a3a6-631e319ae3c9
 
 <sub>1½ minutes: the Touch Bar, the notch, the pill and the panel, answering Claude, Cowork, dictation, stats.</sub>
 
@@ -60,17 +60,18 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **The panel** opens from the pill (hover for 2 seconds, or click): your
   chats as tabs; the 5-hour limit and the context as two lines (the context
   as "312k of 1M"); the model, the time, lines, branch and subagents; and a
-  message box that says which chat it writes to. Its blocks move up or down
-  by their ≡ grips; its buttons, the mic, the screenshot and Send swap places
-  like the pill's items.
+  message box that says which chat it writes to, the menu, the screenshot,
+  the mic and Send on its line and your buttons under it. Its blocks move up
+  or down by the bar that shows over each; the buttons swap places like the
+  pill's items.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
   is in front — or in every app, if you like (there short, beside Apple's
   brightness and volume: the limits, your first three buttons, the chat as
   one letter if there's room, and a button that opens the whole bar): which
   chat (tap it for the others; a long name slides), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
-  or dictated, your buttons inside it), **Templates**, the mic — each one
-  optional.
+  or dictated, your buttons inside it), **the menu** with the rest of your
+  buttons, the mic — each one optional.
 - **Arrange them your way.** Settings shows the widget and the Touch Bar
   themselves, live — the whole bar and the short one each its own way: drag
   a block to move it, its right edge to make it wider or narrower.
@@ -100,8 +101,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **Drop files** on the widget: they go to that project's chat with your
   next message.
 - **Buttons** for your own phrases, slash commands, key presses and links,
-  with global shortcuts and a set per project. **Templates** with
-  `{project}`, `{branch}`, `{clipboard}`, `{date}`.
+  with global shortcuts and a set per project — in the row, or tucked into
+  a menu. A **text** button puts its words in the message for you to
+  finish; `{project}`, `{branch}`, `{clipboard}` and `{date}` are filled in.
 - **Dictation**: hold the right ⌥ key, or tap the mic. On macOS 26 and later
   it's the system's own dictation model, on this Mac: English gets its
   commas and full stops by itself; in Russian (whose model doesn't add
@@ -126,7 +128,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
   `/hooks` in Codex). It's little tested yet — tell us what doesn't work.
 
 **And**
-- A **tour** on first launch (and behind the ? in Settings): thirteen stops
+- A **tour** on first launch (and behind the ? in Settings): seven stops
   through the settings window — it dims but for one thing at a time, a card
   says what it is and what to try, and Cloud hops onto it.
 - **Everything is optional**: each number, detail and control has its own
@@ -237,7 +239,7 @@ and only once — updates keep them.
 
 | Permission | Why | |
 |---|---|---|
-| Accessibility | to type your buttons, templates and chat lines into Claude's chat, and to read window titles | needed |
+| Accessibility | to type your buttons and chat lines into Claude's chat, and to read window titles | needed |
 | Automation (Terminal, iTerm) | to tell which tab is in front, and bring a chat's tab forward | only for chats in a terminal |
 | Microphone, Speech Recognition | dictation | only if you dictate |
 | Screen Recording | the screenshot button | only if you use it |
@@ -276,7 +278,7 @@ Claude Code ──hooks──▶ cloudingbar-hook ──unix socket──▶ Clo
 - The chat shown is the one in front: by its title in the window (VS Code's
   chat tab, the terminal's title), by its terminal tab (Terminal, iTerm),
   else the one you picked or followed last.
-- Buttons, templates and chat lines are typed into the chat in front, the
+- Buttons and chat lines are typed into the chat in front, the
   way you would.
 
 The protocol is written down in [docs/protocol.md](docs/protocol.md).
@@ -313,9 +315,9 @@ as you move the pointer, and walks along the tabs.
 - **Touch Bar** — the bar itself on top, the whole one and the short one, to
   arrange (drag a block, or its right edge); on or off, in every app or only
   Claude's, short or whole outside Claude, what it shows (everything the
-  widget can, and Write and Templates).
+  widget can, and Write and the menu).
 - **Buttons** — your buttons and their shortcuts, a set per project, shown
-  on the Touch Bar as you edit them; templates.
+  on the Touch Bar as you edit them, in the row or in the menu.
 - **Cowork** — how often it reports, the plugin (or its zip, to upload)
   and its folders; behind More, the claude.ai limit.
 - **Stats** — see above.

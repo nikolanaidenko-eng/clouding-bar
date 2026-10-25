@@ -3,17 +3,22 @@ import CoreGraphics
 
 /// One button on the bar. The type says what a tap does:
 ///   phrase  — types the text into Claude and presses Return
-///   command — the same, for slash commands ("/compact")
+///   text    — types the text without Return, to finish it (once templates)
+///   command — the same as phrase, for slash commands ("/compact")
 ///   key     — presses a key or shortcut ("esc", "cmd+k", "shift+tab")
 ///   link    — opens a URL ("vscode://…", "https://…")
 ///   screenshot — pick an area of the screen; its file path goes to Claude
+/// In a phrase or a text, {project}, {branch}, {clipboard} and {date} are
+/// filled in.
 struct ButtonSpec: Codable, Equatable {
-    enum Kind: String, Codable, CaseIterable { case phrase, command, key, link, screenshot }
+    enum Kind: String, Codable, CaseIterable { case phrase, text, command, key, link, screenshot }
     var label: String
     var type: Kind
     var value: String
     /// A global shortcut for it, like "ctrl+opt+c".
     var hotkey: String? = nil
+    /// Tucked into the menu button's list instead of the row (owner, 25.10).
+    var menu = false
 }
 
 extension ButtonSpec {
@@ -37,14 +42,29 @@ extension ButtonSpec {
             guard let label = b["label"] as? String, let value = b["value"] as? String else { return nil }
             let kind = (b["type"] as? String).flatMap(Kind.init) ?? guessType(value)
             let hotkey = (b["hotkey"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            return ButtonSpec(label: label, type: kind, value: value, hotkey: hotkey)
+            return ButtonSpec(label: label, type: kind, value: value, hotkey: hotkey, menu: b["menu"] as? Bool ?? false)
         }
     }
 
-    var dictionary: [String: String] {
-        var d = ["label": label, "type": type.rawValue, "value": value]
+    var dictionary: [String: Any] {
+        var d: [String: Any] = ["label": label, "type": type.rawValue, "value": value]
         if let hotkey { d["hotkey"] = hotkey }
+        if menu { d["menu"] = true }
         return d
+    }
+
+    /// A name for a long text: its first words, up to 24 characters.
+    static func label(for text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.count > 24 else { return t }
+        var words: [Substring] = []
+        for word in t.split(separator: " ") {
+            guard words.map(\.count).reduce(words.count, +) + word.count <= 23 else { break }
+            words.append(word)
+        }
+        // Not ending on "в", "to" or "a".
+        if words.count > 1, let last = words.last, last.count <= 2 { words.removeLast() }
+        return (words.isEmpty ? String(t.prefix(23)) : words.joined(separator: " ")) + "…"
     }
 }
 
@@ -191,9 +211,9 @@ struct Config: Equatable {
     var autoCompact = false
     /// Requests queued in the widget go out one by one after each reply.
     var taskQueue = false
-    /// Template phrases in the widget and the menu.
-    var templatesEnabled = false
-    var templates = [
+    /// The template phrases a config with templates on but none of its own
+    /// had; they move into the menu (`moveTemplates`).
+    static let oldTemplates = [
         "Продолжай",
         "Проверь последние изменения в {project} на ошибки",
         "Закоммить изменения в ветке {branch}",
@@ -310,8 +330,6 @@ struct Config: Equatable {
         if let v = obj["contextWarning"] as? Bool { config.contextWarning = v }
         if let v = obj["autoCompact"] as? Bool { config.autoCompact = v }
         if let v = obj["taskQueue"] as? Bool { config.taskQueue = v }
-        if let v = obj["templatesEnabled"] as? Bool { config.templatesEnabled = v }
-        if let v = obj["templates"] as? [String] { config.templates = v }
         if let v = obj["screenshot"] as? Bool { config.screenshot = v }
         if let v = obj["metrics"] as? [String] { config.metrics = v }
         if let v = obj["coworkMode"] as? String { config.coworkMode = v; config.coworkModeSet = true }
@@ -346,8 +364,41 @@ struct Config: Equatable {
             obj = existing
         }
         obj[key] = value is NSNull ? nil : value
+        write(obj)
+    }
+
+    private static func write(_ obj: [String: Any]) {
         if let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: fileURL, options: .atomic)
         }
+    }
+
+    /// Templates became buttons in the menu (owner, 25.10): a text put in
+    /// the message to finish, not sent. Once, when the app starts: the
+    /// phrases join the end of every list of buttons, the old keys go.
+    /// Your own phrases with templates off move too, the menu hidden.
+    static func moveTemplates() {
+        guard let data = try? Data(contentsOf: fileURL),
+              var obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              obj["templates"] != nil || obj["templatesEnabled"] != nil else { return }
+        let on = obj["templatesEnabled"] as? Bool == true
+        let phrases = obj["templates"] as? [String] ?? (on ? oldTemplates : [])
+        let items = phrases.map { ButtonSpec(label: ButtonSpec.label(for: $0), type: .text, value: $0, menu: true).dictionary }
+        if !items.isEmpty {
+            // No list of its own (or none that reads): the defaults, written
+            // out, come first.
+            let own = obj["buttons"] as? [[String: Any]] ?? []
+            obj["buttons"] = (ButtonSpec.list(own).isEmpty ? load().effectiveButtons.map(\.dictionary) : own) + items
+            if let profiles = obj["profiles"] as? [String: [[String: Any]]] {
+                obj["profiles"] = profiles.mapValues { $0 + items }
+            }
+        }
+        if !on && !items.isEmpty {
+            obj["widgetHides"] = (obj["widgetHides"] as? [String] ?? []) + ["menu"]
+            if let shows = obj["touchBarShows"] as? [String] { obj["touchBarShows"] = shows.filter { $0 != "templates" } }
+        }
+        obj["templates"] = nil
+        obj["templatesEnabled"] = nil
+        write(obj)
     }
 }

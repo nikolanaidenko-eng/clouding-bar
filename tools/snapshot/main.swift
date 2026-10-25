@@ -285,7 +285,7 @@ widget("w-question", .panel) {
 }
 widget("w-panel-extras", .panel, size: NSSize(width: 720, height: 330)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]
-    $0.config.templatesEnabled = true
+    $0.menuButtons = [ButtonSpec(label: "Continue", type: .text, value: "Continue", menu: true)]
     $0.config.screenshot = true
     $0.config.taskQueue = true
     $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"
@@ -304,7 +304,7 @@ widget("w-panel-arranged", .panel, size: NSSize(width: 720, height: 360)) { // b
 }
 widget("w-panel-all", .panel, size: NSSize(width: 720, height: 360)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]
-    $0.config.templatesEnabled = true
+    $0.menuButtons = [ButtonSpec(label: "Continue", type: .text, value: "Continue", menu: true)]
     $0.config.screenshot = true
     $0.config.taskQueue = true
     $0.config.sessionsList = true
@@ -470,7 +470,7 @@ widget("w-panel-model", .panel, size: NSSize(width: 720, height: 300)) {
     $0.linesAdded = 214; $0.linesRemoved = 37; $0.branch = "clouding-bar"; $0.agents = 2
     $0.pickingModel = true
 }
-widget("w-panel-agents", .panel, size: NSSize(width: 720, height: 360)) {
+widget("w-panel-agents", .panel, size: NSSize(width: 720, height: 450)) {
     $0.config.metrics = ["model", "agents"]
     $0.config.taskQueue = true
     $0.modelName = "Opus 5.5 1M"; $0.effort = "xhigh"; $0.agents = 3
@@ -564,14 +564,14 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
 }
 
 // The tour in the settings window, at a few of its stops.
-for step in [0, 4, 5, 6, 8, 9, 10, 11, 12] {
+for step in SettingsTour.stops.indices {
     let m = sampleModel()
     m.touchBarPresent = true
     m.hasNotch = true
     m.tourStep = step
     let host = NSHostingView(rootView: SettingsView(model: m, tab: SettingsTour.stops[step].tab))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560),
-               name: [9, 10, 11].contains(step) ? "s-stats-tour-\(step)" : "tour-\(step)")
+               name: SettingsTour.stops[step].tab == "stats" ? "s-stats-tour-\(step)" : "tour-\(step)")
 }
 
 do { // Cloud's faces: awake, happy, dizzy, shy

@@ -628,13 +628,15 @@ struct MainPanel: View {
         let metrics = metricWidths
         let detailsRow = metrics.reduce(0, +) + 14 * CGFloat(max(0, metrics.count - 1)) + Self.chrome
         let buttons = buttonWidths
-        let field = model.config.taskQueue ? Self.fieldMin + 6 : 0
-        let buttonsRow = field + buttons.reduce(0, +) + 6 * CGFloat(buttons.count) + toolsWidth
+        let field = model.config.taskQueue
+        // With the field the buttons have a line of their own, under it.
+        let buttonsRow = buttons.reduce(0, +) + 6 * CGFloat(max(0, buttons.count - 1)) + (field ? 0 : toolsWidth)
             + Self.chrome + Self.boxPad * 2
-        return min(600, max(440, detailsRow, buttonsRow))
+        let fieldRow = field ? Self.fieldMin + toolsWidth + Self.chrome + Self.boxPad * 2 : 0
+        return min(600, max(440, detailsRow, buttonsRow, fieldRow))
     }
 
-    private var showTemplates: Bool { model.config.templatesEnabled && !model.config.templates.isEmpty }
+    private var showTemplates: Bool { !model.menuButtons.isEmpty }
 
     /// Templates · screenshot · mic, at the end of the message box.
     private var tools: [String] {
@@ -644,7 +646,7 @@ struct MainPanel: View {
     /// The tools and Send at the end of the first line, with their gaps.
     private var toolsWidth: CGFloat {
         let n = CGFloat(tools.count + (model.config.taskQueue ? 1 : 0))
-        return n == 0 ? 0 : n * Self.tool + 4 * (n - 1) + 6
+        return n == 0 ? 0 : n * Self.tool + 6 * (n - 1) + 6
     }
 
     private func metrics(_ order: [String]) -> [(id: String, width: CGFloat)] {
@@ -905,37 +907,49 @@ struct MainPanel: View {
 
     // MARK: Message box
 
-    /// The text field — saying which chat it writes to — then the buttons,
-    /// the tools and Send. While you type, the buttons step back and can't
-    /// be clicked by accident. Drag a button onto another to swap them.
+    /// The text field — saying which chat it writes to — with the tools and
+    /// Send at the end of its line, the buttons under it (owner, 25.10: not
+    /// the mic and Send left alone on a line of their own). While you type,
+    /// the buttons step back and can't be clicked by accident. Drag a button
+    /// onto another, or a tool onto a tool, to swap them.
     private func messageBox(inner: CGFloat) -> some View {
         let boxInner = inner - Self.boxPad * 2
         let field = model.config.taskQueue
-        // The buttons, the tools and Send: one row of things to swap about
-        // (owner, 24.10), in the owner's order.
         let items = boxItems(buttonsRearrange.order(model.itemIDs), field: field)
         let index = Dictionary(buttons(model.itemIDs).map { ($0.id, $0.index) }, uniquingKeysWith: { a, _ in a })
-        // As many as fit after the field go on its line; the rest wrap below.
-        let room = boxInner - (field ? Self.fieldMin + 6 : 0)
+        buttonsRearrange.accepts = { a, b in (index[a] == nil) == (index[b] == nil) }
+        let tools = items.filter { index[$0.id] == nil }
+        let row = items.filter { index[$0.id] != nil }
+        let toolsWidth = tools.map(\.width).reduce(0, +) + 6 * CGFloat(max(0, tools.count - 1))
+        let toolsAt = boxInner - toolsWidth
+        var slots: [String: CGRect] = [:]
+        var x = toolsAt
+        for t in tools {
+            slots[t.id] = CGRect(x: x, y: 0, width: t.width, height: 26)
+            x += t.width + 6
+        }
+        // No field: as many buttons as fit go before the tools.
+        let room = toolsAt - (tools.isEmpty ? 0 : 6)
         var firstCount = 0
         var used: CGFloat = 0
-        for b in items {
-            let add = (firstCount == 0 ? 0 : 6) + b.width
-            guard used + add <= room else { break }
-            used += add
-            firstCount += 1
+        if !field {
+            for b in row {
+                let add = (firstCount == 0 ? 0 : 6) + b.width
+                guard used + add <= room else { break }
+                used += add
+                firstCount += 1
+            }
         }
-        let fieldWidth = field ? boxInner - used - (firstCount > 0 ? 6 : 0) : 0
-        var slots: [String: CGRect] = [:]
-        var x = field ? fieldWidth + 6 : 0
-        for b in items.prefix(firstCount) {
+        x = 0
+        for b in row.prefix(firstCount) {
             slots[b.id] = CGRect(x: x, y: 0, width: b.width, height: 26)
             x += b.width + 6
         }
-        let rest = flowSlots(items.dropFirst(firstCount).map { (id: $0.id, width: $0.width) },
+        let fieldWidth = field ? room : 0
+        let rest = flowSlots(row.dropFirst(firstCount).map { (id: $0.id, width: $0.width) },
                              width: boxInner, rowHeight: 26, gap: 6, rowGap: 6)
         for (id, r) in rest.slots { slots[id] = r.offsetBy(dx: 0, dy: 32) }
-        let height = items.count > firstCount ? 32 + rest.size.height : 26
+        let height = row.count > firstCount ? 32 + rest.size.height : 26
         let busy = typing || !queueDraft.isEmpty
         let sendable = !queueDraft.isEmpty || !model.attachments.isEmpty
         return VStack(alignment: .leading, spacing: 8) {
@@ -1457,8 +1471,8 @@ struct TemplatesButton: View {
 
     var body: some View {
         Menu {
-            ForEach(model.config.templates, id: \.self) { t in
-                Button(t) { model.insertTemplate(t) }
+            ForEach(Array(model.menuButtons.enumerated()), id: \.offset) { i, b in
+                Button(b.label) { model.runMenuButton(i) }
             }
         } label: {
             Image(systemName: "text.bubble").font(.system(size: size * 0.44))
@@ -1472,7 +1486,7 @@ struct TemplatesButton: View {
             .fill(Color.white.opacity(plain ? 0.07 : 0.1)))
         .overlay(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        .help("Templates")
+        .help("Your menu of buttons")
         .accessibilityLabel("Templates")
     }
 }

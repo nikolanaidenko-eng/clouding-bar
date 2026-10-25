@@ -1015,7 +1015,7 @@ struct WidgetTab: View {
                         }
                         SettingsRow(title: "Controls") {
                             ToggleChips(items: [hideChip("Buttons", "buttons"), boolChip("Chat", "taskQueue") { $0.taskQueue },
-                                                boolChip("Templates", "templatesEnabled") { $0.templatesEnabled },
+                                                hideChip("Menu", "menu"),
                                                 boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
                         }
                         Text("Pull the pill's outline to resize it; drag one item onto another to swap them. Chat sends to the chat the widget shows, once Claude is free.")
@@ -1127,7 +1127,7 @@ struct TouchBarTab: View {
                             options: [("session", "Session"), ("reset", "Reset"), ("context", "Context"),
                                       ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
                                       ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
-                                      ("templates", "Templates"), ("buttons", "Buttons"),
+                                      ("templates", "Menu"), ("buttons", "Buttons"),
                                       ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 8)
                 }
                 .padding(12)
@@ -1405,18 +1405,22 @@ struct ButtonsTab: View {
     /// The type follows the value until you pick one yourself.
     @State private var typePicked = false
     @State private var draftHotkey: String?
-    @State private var newTemplate = ""
+    @State private var draftMenu = false
 
     private var list: [ButtonSpec] {
         profile.isEmpty ? model.config.effectiveButtons : (model.config.profiles[profile] ?? model.config.effectiveButtons)
     }
 
-    /// The whole bar with the buttons as they're being edited.
+    /// The whole bar with the buttons as they're being edited: the row's
+    /// in the message line, the menu's behind its button.
     private var previewBar: BarModel {
         var bar = model.barPreview(false)
-        bar.buttons = list + (editing && selected == nil
-            ? [ButtonSpec(label: draftName.isEmpty ? "New" : draftName, type: .phrase, value: "")] : [])
+        let all = list + (editing && selected == nil
+            ? [ButtonSpec(label: draftName.isEmpty ? "New" : draftName, type: .phrase, value: "", menu: draftMenu)] : [])
+        bar.buttons = all.filter { !$0.menu }
+        bar.templates = all.filter(\.menu).map(\.label)
         bar.shows.insert("buttons")
+        if !bar.templates.isEmpty { bar.shows.insert("templates") }
         return bar
     }
 
@@ -1437,7 +1441,8 @@ struct ButtonsTab: View {
                             Text(b.label).font(.system(size: 13)).lineLimit(1).frame(width: 90, alignment: .leading)
                             Text(b.value).font(.system(size: 12)).foregroundColor(.sSecondary).lineLimit(1)
                             Spacer(minLength: 0)
-                            Text(b.type.rawValue + (b.hotkey.map { " · " + HotKeys.display($0) } ?? ""))
+                            Text(b.type.rawValue + (b.menu ? " · in the menu" : "")
+                                 + (b.hotkey.map { " · " + HotKeys.display($0) } ?? ""))
                                 .font(.system(size: 12)).foregroundColor(.sSecondary)
                         }
                         .padding(.horizontal, 12)
@@ -1467,7 +1472,9 @@ struct ButtonsTab: View {
                 .padding(.horizontal, 4).padding(.vertical, 2)
             }
             .tourAnchor("buttons.list")
-            templatesSection.tourAnchor("buttons.templates")
+            Text("In the menu: behind the menu button in the widget and on the Touch Bar, and in the menu bar. In a phrase or a text, {project}, {branch}, {clipboard} and {date} are filled in.")
+                .font(.system(size: 11)).foregroundColor(.sSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             if !profile.isEmpty {
                 Text(model.config.profiles[profile] == nil
                      ? "\(profile) uses the default buttons. Change one here to give it its own set."
@@ -1476,53 +1483,6 @@ struct ButtonsTab: View {
             }
         }
         .onChange(of: profile) { _ in editing = false; selected = nil }
-    }
-
-    /// Template phrases: typed into Claude without Enter, with {project},
-    /// {branch}, {clipboard} and {date} filled in.
-    /// Off: one line. On: the phrases and a field for a new one.
-    private var templatesSection: some View {
-        SettingsGroup {
-            SettingsRow(title: "Templates", hint: "Phrases typed without Enter · {project} {branch} {clipboard} {date}",
-                        divider: model.config.templatesEnabled) {
-                CBSwitch(title: "Templates", on: settingBinding(model, "templatesEnabled") { $0.templatesEnabled })
-            }
-            if model.config.templatesEnabled {
-                ForEach(Array(model.config.templates.enumerated()), id: \.offset) { i, t in
-                    HStack {
-                        Text(t).font(.system(size: 12)).lineLimit(1)
-                        Spacer(minLength: 0)
-                        Button("−") {
-                            var list = model.config.templates
-                            list.remove(at: i)
-                            model.setConfig("templates", list)
-                        }
-                        .buttonStyle(.plain).foregroundColor(.sSecondary)
-                        .accessibilityLabel("Remove template")
-                    }
-                    .padding(.horizontal, 12).frame(minHeight: 34)
-                    .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
-                }
-                HStack(spacing: 8) {
-                    TextField("New template", text: $newTemplate)
-                        .textFieldStyle(.plain).font(.system(size: 12))
-                        .padding(.horizontal, 8).frame(height: 28)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
-                        .onSubmit(addTemplate)
-                    Button("Add", action: addTemplate).buttonStyle(.plain).font(.system(size: 12))
-                        .disabled(newTemplate.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 6)
-            }
-        }
-        .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.templatesEnabled)
-    }
-
-    private func addTemplate() {
-        let t = newTemplate.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
-        model.setConfig("templates", model.config.templates + [t])
-        newTemplate = ""
     }
 
     private var editor: some View {
@@ -1539,6 +1499,16 @@ struct ButtonsTab: View {
             .labelsHidden().frame(width: 110)
             .accessibilityLabel("Type")
             ShortcutField(combo: $draftHotkey).frame(width: 120, height: 30)
+            Picker("", selection: Binding(get: { draftMenu }, set: { menu in
+                draftMenu = menu
+                // In the menu: words to finish, unless you picked otherwise.
+                if !typePicked { draftType = menu ? .text : ButtonSpec.guessType(draftValue) }
+            })) {
+                Text("In the row").tag(false)
+                Text("In the menu").tag(true)
+            }
+            .labelsHidden().frame(width: 120)
+            .accessibilityLabel("Where")
             Spacer(minLength: 0)
         }
         HStack(spacing: 8) {
@@ -1547,7 +1517,11 @@ struct ButtonsTab: View {
                 .padding(.horizontal, 8).frame(height: 30)
                 .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
                 .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
-                .onChange(of: draftValue) { v in if !typePicked { draftType = ButtonSpec.guessType(v) } }
+                .onChange(of: draftValue) { v in
+                    guard !typePicked else { return }
+                    let guess = ButtonSpec.guessType(v)
+                    draftType = draftMenu && guess == .phrase ? .text : guess
+                }
             Button(selected == nil ? "Add" : "Save") { commit() }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
                 .padding(.horizontal, 12).frame(height: 30)
@@ -1564,6 +1538,7 @@ struct ButtonsTab: View {
     private var placeholder: String {
         switch draftType {
         case .phrase: return "Text to send to Claude"
+        case .text: return "Text to put in the message, to finish there"
         case .command: return "/command"
         case .key: return "esc, cmd+k, shift+tab…"
         case .link: return "vscode://… or https://…"
@@ -1582,6 +1557,7 @@ struct ButtonsTab: View {
         draftType = .phrase
         typePicked = false
         draftHotkey = nil
+        draftMenu = false
         withAnimation(.easeOut(duration: 0.18)) { editing = true }
     }
 
@@ -1591,13 +1567,14 @@ struct ButtonsTab: View {
         draftValue = list[i].value
         draftType = list[i].type
         draftHotkey = list[i].hotkey
+        draftMenu = list[i].menu
         typePicked = true
         withAnimation(.easeOut(duration: 0.18)) { editing = true }
     }
 
     private func commit() {
         let spec = ButtonSpec(label: draftName.trimmingCharacters(in: .whitespaces), type: draftType,
-                              value: draftValue, hotkey: draftHotkey)
+                              value: draftValue, hotkey: draftHotkey, menu: draftMenu)
         var buttons = list
         if let i = selected, buttons.indices.contains(i) { buttons[i] = spec } else { buttons.append(spec) }
         save(buttons)
@@ -1659,7 +1636,7 @@ struct TouchBarPreview: View {
         let agentsWidth = agentsText.map { Self.text($0, 10) + 16 } ?? 0
         let icons = [shows.contains("shot") ? "camera.viewfinder" : nil, shows.contains("mic") ? "mic" : nil].compactMap { $0 }
         let extras = [("lines", "+120 −8"), ("branch", model.branch ?? "main"), ("cost", "$1.20"), ("chat", "Write"),
-                      ("templates", "Templates")].filter { shows.contains($0.0) }.map(\.1)
+                      ("templates", "Menu")].filter { shows.contains($0.0) }.map(\.1)
         let extraWidths = extras.map { Self.text($0, 10) + 16 }
         let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + (agentsText == nil ? 0 : 1) + icons.count
             + (session || context ? 1 : 0) + extras.count
