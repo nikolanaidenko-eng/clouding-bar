@@ -68,6 +68,8 @@ struct BarModel: Equatable {
     var chatName: String?
     /// The chat's project: its first letter is the short bar's chat button.
     var project: String?
+    /// The question as asked, when the bar shows it shorter.
+    var questionKey = ""
     /// Beside Apple's buttons: everything smaller, the rest left out — and a
     /// button that opens the whole bar (`expand`).
     var short = false
@@ -112,6 +114,9 @@ enum BarAction {
     case dismissDone
     /// Done: back from the picker or the subagents.
     case closePanel
+    /// A tap on a question or a command: the whole of it, in the widget's
+    /// panel or the island (owner, 26.10: the bar shows a question shorter).
+    case showRequest
 }
 
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
@@ -227,7 +232,8 @@ final class BarView: NSView {
         case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)"
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
         case let .question(text, options, multi, picked):
-            return "question|\(text)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
+            // The question as asked, not its short form: that swaps in place.
+            return "question|\(m.questionKey.isEmpty ? text : m.questionKey)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
         case .typing:
             return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)|\(m.listening)"
         }
@@ -238,6 +244,7 @@ final class BarView: NSView {
         slots = []
         meters = nil
         resetBlock = nil
+        questionMessage = nil
         mini = nil
         field = nil
         pendingAnimations = []
@@ -426,6 +433,7 @@ final class BarView: NSView {
         case let .permission(verb, detail):
             addRequestChat()
             let message = MessageView(verb: verb, detail: detail, monospaced: true, quiet: model.quiet)
+            message.onTap = { [weak self] in self?.onAction?(.showRequest) }
             add(message, .flex(weight: 1, min: model.short ? 100 : 120))
             animate(message) { $0.slideIn() }
             let allow = BarButton("Allow", style: .primary) { [weak self] in self?.onAction?(.allow) }
@@ -439,6 +447,8 @@ final class BarView: NSView {
         case let .question(text, options, multi, picked):
             addRequestChat()
             let message = MessageView(verb: nil, detail: text, monospaced: false, quiet: model.quiet)
+            message.onTap = { [weak self] in self?.onAction?(.showRequest) }
+            questionMessage = message
             add(message, .flex(weight: 1, min: 120))
             animate(message) { $0.slideIn() }
             var group: [NSView] = []
@@ -741,6 +751,8 @@ final class BarView: NSView {
 
     /// The reset block, its countdown set as it changes.
     private weak var resetBlock: BarButton?
+    /// The question's words, swapped for their short form in place.
+    private weak var questionMessage: MessageView?
 
     /// The short bar: Cloud and "Whole bar" at its ends, the chat line at
     /// the least room to tap and write.
@@ -820,6 +832,7 @@ final class BarView: NSView {
     private func refreshValues() {
         mascot.activity = model.activity
         mascot.awake = model.awake
+        if case let .question(text, _, _, _) = model.mode { questionMessage?.setDetail(text) }
         if let b = resetBlock {
             b.setTitle(model.resetCountdown ?? "—")
             b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
@@ -1073,9 +1086,27 @@ private final class MessageView: NSView {
         addSubview(detailLabel)
         setAccessibilityElement(true)
         setAccessibilityLabel([verb, detail].compactMap { $0 }.joined(separator: " "))
+        // A finger on the Touch Bar: direct touches only — asking for indirect
+        // ones too throws on macOS 27 ("only NSTouchTypeDirect is supported").
+        let tap = NSClickGestureRecognizer(target: self, action: #selector(tapped))
+        tap.allowedTouchTypes = .direct
+        addGestureRecognizer(tap)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// A tap: the whole question or command.
+    var onTap: (() -> Void)?
+
+    /// The words changed in place (the question's short form came): no rebuild.
+    func setDetail(_ text: String) {
+        guard detailLabel.stringValue != text else { return }
+        detailLabel.stringValue = text
+        setAccessibilityLabel([verbLabel?.stringValue, text].compactMap { $0 }.joined(separator: " "))
+        needsLayout = true
+    }
+
+    @objc private func tapped() { onTap?() }
 
     override func layout() {
         super.layout()

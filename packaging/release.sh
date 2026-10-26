@@ -82,7 +82,8 @@ universal() {
   rm "$OUT/$name-arm64" "$OUT/$name-x86_64"
 }
 echo "Building (arm64 + x86_64)…"
-universal CloudingBar Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift
+# Apple's on-device model (macOS 26) linked weakly: macOS 12-25 start without it.
+universal CloudingBar Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift -Xlinker -weak_framework -Xlinker FoundationModels
 universal cloudingbar-hook Sources/CloudingBarHook/*.swift Sources/CloudingBar/Core/Git.swift
 universal cloudingbar-tap Sources/CloudingBarTap/*.swift
 universal cloudingbar-key Sources/CloudingBarKey/*.swift

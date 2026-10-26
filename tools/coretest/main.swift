@@ -602,6 +602,28 @@ do { // Connect sets VS Code's wrapper only where none of your own is: absent �
     unsetenv("CLOUDINGBAR_VSCODE_SETTINGS")
 }
 
+do { // a question put shorter for the Touch Bar: only if it keeps what the asking part names
+    let repo = "Репозиторий сейчас закрытый. Установщик плагина и ссылка на файл приложения скачивают с GitHub без входа в аккаунт, а из закрытого репозитория так нельзя. Честно проверить установку «как у чужого человека» получится только после публикации. Как делаем?"
+    check(ShortQuestion.worth(repo) && !ShortQuestion.worth("Which storage?"), "short form: only for a long question")
+    check(ShortQuestion.accept("Публикуем репозиторий, чтобы проверить установку?", for: repo) != nil,
+          "short form: the question asked, kept (the quoted words were in the explanation, not the question)")
+    check(ShortQuestion.accept("«Публикуем репозиторий?»\n", for: repo) == "Публикуем репозиторий?", "short form: quotes and line ends tidied away")
+    check(ShortQuestion.accept("Публикуем репозиторий", for: repo) == nil, "short form: must end as a question")
+    check(ShortQuestion.accept("Here is a shorter version of the question you asked me to rewrite, keeping all of its meaning and its tone?", for: repo) == nil,
+          "short form: more than 14 words, not used")
+    let build = "Сборка падает на старом кэше. Удалить `build/cache` и пересобрать с флагом -O3? Это займёт около 5 минут."
+    check(ShortQuestion.keyTokens(in: build).contains("build/cache") && ShortQuestion.keyTokens(in: build).contains("-O3"),
+          "short form: code and a flag with a digit in the question are kept tokens")
+    check(ShortQuestion.accept("Пересобрать с нуля?", for: build) == nil, "short form: lost the folder and the flag, the original stays")
+    check(ShortQuestion.accept("Удалить build/cache и пересобрать с -O3?", for: build) != nil, "short form: keeps them, used")
+    let swap = "Should I delete Config.swift and keep only Settings.swift, or the other way round? It decides where the defaults live."
+    check(ShortQuestion.keyTokens(in: swap).contains("Config.swift") && ShortQuestion.keyTokens(in: swap).contains("Settings.swift"),
+          "short form: a file name's dot doesn't end the sentence")
+    check(ShortQuestion.accept("Delete Settings.swift and keep Config.swift?", for: swap) == nil, "short form: the names swapped round, not used")
+    check(ShortQuestion.accept("Delete Config.swift, keep Settings.swift?", for: swap) != nil, "short form: the names in their order, used")
+    check(ShortQuestion.accept("Should we make the repository public?", for: repo) == nil, "short form: another language than the question's, not used")
+}
+
 // MARK: Config
 
 let config = Config()

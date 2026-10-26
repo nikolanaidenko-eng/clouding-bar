@@ -59,6 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = AppModel()
     private lazy var widget = WidgetController(model: model)
     private lazy var settings = SettingsWindow(model: model)
+    /// Long questions put shorter for the Touch Bar (macOS 26, on this Mac).
+    private let shortener = QuestionShortener()
     private lazy var drawer = DrawerController(model: model)
     private let voice = VoiceInput()
     private let rightOption = RightOptionHold()
@@ -501,7 +503,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if typingFor === request {
                     bar.mode = .typing(text: typingText)
                 } else if let q = request.current {
-                    bar.mode = .question(text: q.text, options: q.options,
+                    // A long question shorter, marked ✦ (Apple's model on this
+                    // Mac); a tap shows it whole. The options stay word for word.
+                    let text = shortener.short(for: q.text).map { "✦ " + $0 } ?? q.text
+                    bar.questionKey = q.text
+                    bar.mode = .question(text: text, options: q.options,
                                          multiSelect: q.multiSelect, picked: request.picked)
                 }
             }
@@ -851,6 +857,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .dismissDone:
             DebugLog.tap("done elsewhere: OK")
             endDone()
+
+        case .showRequest:
+            // The whole question or command: in the widget's panel, else the island.
+            DebugLog.tap("whole request (bar)")
+            if config.widget {
+                widget.showPanel()
+            } else if !drawer.shown {
+                drawer.show()
+            }
+            setNeedsRefresh()
 
         case .closePanel:
             let backToDraft = templatesIntoDraft
@@ -1294,6 +1310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.answerText = { [weak self] in self?.answerTyped($0) }
         model.openSession = { [weak self] in self?.openSession($0) }
         model.barChanged = { [weak self] in self?.setNeedsRefresh() }
+        shortener.changed = { [weak self] in self?.setNeedsRefresh() }
         model.openSettingsTab = { [weak self] tab in
             self?.model.settingsTabRequest = tab
             self?.openSettings()
