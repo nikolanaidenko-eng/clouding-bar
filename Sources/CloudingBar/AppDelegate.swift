@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let updater = Updater()
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
-    private let templatesItem = NSMenuItem(title: "Menu Buttons", action: nil, keyEquivalent: "")
+    private let templatesItem = NSMenuItem(title: "Commands", action: nil, keyEquivalent: "")
 
     private var requests: [PendingRequest] = []
     /// The question whose "Other…" answer is being typed.
@@ -477,7 +477,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        var bar = barModel(active: active, short: !barFullWidth)
+        // Settings arranging the short bar: that one, live (in the whole
+        // bar's place: beside Apple's buttons macOS shows Settings' own).
+        var bar = barModel(active: active, short: !barFullWidth || (model.editingShortBar && settings.isKey))
         if let r = currentRequest(active: active), let s = r.sessionId.flatMap({ store.sessions[$0] }) {
             bar.requestChat = BarModel.Chat(id: s.id, name: Self.barName(s.displayName, id: s.id),
                                             color: Session.colors[s.colorIndex % Session.colors.count],
@@ -548,9 +550,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         config.buttons(for: active?.projectName).filter { !$0.menu }
     }
 
-    /// The ones tucked into the menu button's list.
+    /// The Commands button's list: all your buttons, the row's and the
+    /// ones kept only there (owner, 26.10: it opens the commands).
     private func menuButtons(_ active: Session?) -> [ButtonSpec] {
-        config.buttons(for: active?.projectName).filter(\.menu)
+        config.buttons(for: active?.projectName)
     }
 
     /// The request the bar shows: the one being typed, else the active
@@ -579,7 +582,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.activity = activity(of: active)
         bar.quiet = config.doNotDisturb
         bar.awake = config.widget ? widget.panelOpen : drawer.shown
-        bar.shows = Set(config.touchBarShows)
+        bar.shows = Set(short ? config.touchBarShortShows : config.touchBarShows)
         bar.modelLabel = ModelChoice.label(model: active?.modelName, effort: active?.effort)
         bar.modelAlias = barPendingModel ?? ModelChoice.alias(of: active?.model)
         bar.effort = barPendingEffort ?? active?.effort
@@ -597,12 +600,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.branch = active.flatMap(branch(of:))
         bar.cost = active?.costUSD.map { String(format: "$%.2f", $0) }
         bar.chatName = active.map { Self.short($0.displayName, 18) }
+        bar.project = active?.projectName
         bar.short = short // beside Apple's buttons: everything smaller
         bar.expanded = barExpanded
         bar.listening = voiceIntoBar && voice.isRunning
         let which = short ? "short" : "whole"
         bar.order = config.touchBarOrder[which] ?? []
-        bar.widths = (config.touchBarWidths[which] ?? [:]).mapValues { CGFloat($0) }
+        // The short bar's blocks have their own sizes, not dragged ones.
+        bar.widths = short ? [:] : (config.touchBarWidths[which] ?? [:]).mapValues { CGFloat($0) }
         return bar
     }
 
@@ -991,6 +996,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             setNeedsRefresh()
             return
         }
+        // Your words may need typing in Claude's window: not into the widget's field.
+        if own != nil { widget.releaseKey() }
         desktopChat.answer(prompt, choices: choices, own: own, in: app) { [weak self] done in
             DebugLog.note("desktop prompt: " + (done ? "answered in Claude's window" : "couldn't press the answer"))
             if !done { NSSound.beep() }
@@ -1286,6 +1293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.perform = { [weak self] in self?.perform($0) }
         model.answerText = { [weak self] in self?.answerTyped($0) }
         model.openSession = { [weak self] in self?.openSession($0) }
+        model.barChanged = { [weak self] in self?.setNeedsRefresh() }
         model.openSettingsTab = { [weak self] tab in
             self?.model.settingsTabRequest = tab
             self?.openSettings()
@@ -1308,6 +1316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 bar.branch = "main"
                 bar.cost = "$1.20"
                 bar.chatName = "Example chat"
+                bar.project = "my-app"
                 bar.chats = [BarModel.Chat(id: "example", name: "Example chat", color: 0x0A84FF, current: true, waiting: false)]
             }
             return bar

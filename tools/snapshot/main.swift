@@ -24,6 +24,52 @@ func add(_ name: String, width: CGFloat = BarView.preferredWidth, _ edit: (inout
 }
 add("normal-3") { _ in }
 add("normal-0") { $0.buttons = [] }
+do { // the short bar keeps every block Settings lets in, in every combination (owner, 26.10: "say when there's no room")
+    let options = ["name", "session", "context", "chat", "shot", "mic", "reset", "model", "agents", "lines", "branch", "cost", "templates"]
+    var checked = 0
+    for mask in 0..<(1 << options.count) {
+        let shows = Set(options.indices.filter { mask & (1 << $0) != 0 }.map { options[$0] })
+        guard BarView.shortFits(shows) else { continue }
+        var m = BarModel(mode: .normal, activity: .work, sessionPercent: 42, resetCountdown: "1:23", contextPercent: 31, buttons: three)
+        m.short = true; m.shows = shows; m.project = "DiaRoute"; m.lines = "+1 −1"
+        let bar = BarView(frame: NSRect(x: 0, y: 0, width: BarView.narrowWidth, height: Palette.height))
+        bar.update(m)
+        bar.layoutSubtreeIfNeeded()
+        let keys = Set(bar.blocks.map(\.key))
+        let expected = Set(shows.map { $0 == "session" || $0 == "context" ? "meters" : $0 })
+        if !expected.isSubset(of: keys) {
+            print("FAIL short bar: \(shows.sorted()) fits by Settings, but \(expected.subtracting(keys).sorted()) left out")
+            exit(1)
+        }
+        checked += 1
+    }
+    print("short bar: \(checked) sets that fit, every block shown")
+    // A bar a little narrower than measured (another Mac, another Control Strip): the chat line gives way first.
+    var m = BarModel(mode: .normal, activity: .work, sessionPercent: 42, resetCountdown: "1:23", contextPercent: 31, buttons: three)
+    m.short = true; m.shows = ["name", "session", "context", "chat", "shot", "mic"]; m.project = "DiaRoute"
+    let narrow = BarView(frame: NSRect(x: 0, y: 0, width: BarView.narrowWidth - 40, height: Palette.height))
+    narrow.update(m)
+    narrow.layoutSubtreeIfNeeded()
+    let keys = Set(narrow.blocks.map(\.key))
+    if !Set(["name", "meters", "chat", "shot", "mic"]).isSubset(of: keys) {
+        print("FAIL short bar 40 pt narrower: left out \(Set(["name", "meters", "chat", "shot", "mic"]).subtracting(keys).sorted())")
+        exit(1)
+    }
+}
+for (name, shows) in [("short-default", ["name", "session", "context", "chat", "shot", "mic"]),
+                      ("short-chat", ["name", "session", "context", "chat"]),
+                      ("short-many", ["name", "session", "context", "model", "lines", "cost", "templates", "shot", "mic"])] {
+    add(name, width: BarView.narrowWidth) { // the short bar's own set, fixed sizes; what doesn't fit is left for the whole bar
+        $0.short = true; $0.shows = Set(shows); $0.project = "DiaRoute"; $0.modelLabel = "Opus 5.5 · high"; $0.lines = "+120 −8"
+        $0.chats = [BarModel.Chat(id: "1", name: "Offline routes", color: Session.colors[0], current: true, waiting: false)]
+    }
+}
+add("question-long") { // the same question on the Touch Bar
+    $0.mode = .question(text: "Как поступим с музыкой? Трендовые песни из TikTok — чужие, в рекламе для всех площадок их брать нельзя без лицензии.",
+                        options: ["Новый трек в стиле трендов (Recommended)", "Лицензионный трек — пришлю файл", "Версия без музыки для TikTok"],
+                        multiSelect: false, picked: [])
+    $0.activity = .wait
+}
 add("normal-unknown") { // a chat whose model, lines, branch and cost aren't known yet (VS Code has no cost): "—", the menu empty
     $0.shows = ["session", "context", "model", "lines", "branch", "cost", "templates", "shot", "mic"]
     $0.chatName = "Status bar"; $0.chats = [BarModel.Chat(id: "1", name: "Status bar", color: Session.colors[0], current: true, waiting: false)]
@@ -98,8 +144,8 @@ add("normal-short-1", width: 628) { $0.short = true; $0.chats = chats; $0.button
 // The README's pictures of the bar: the whole one, and the short one beside Apple's buttons.
 add("readme-touchbar") { $0.chats = chats; $0.buttons = three; $0.modelLabel = "Opus 5.5 1M · xhigh"
     $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"] }
-add("readme-touchbar-short", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = three
-    $0.shows = ["session", "reset", "context", "chat", "buttons"] }
+add("readme-touchbar-short", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = three; $0.project = "Status bar"
+    $0.shows = ["name", "session", "context", "chat", "shot", "mic"] }
 add("normal-expanded") { $0.expanded = true; $0.chats = chats; $0.buttons = seven
     $0.shows = ["session", "reset", "context", "model", "chat", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
 add("permission-short", width: 628) { $0.short = true; $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
@@ -277,7 +323,7 @@ widget("w-panel-one", .panel, size: NSSize(width: 520, height: 260)) {
     $0.sessions = Array($0.sessions.prefix(1))
     $0.config.taskQueue = true
 }
-widget("w-question", .panel) {
+widget("w-question", .panel, size: NSSize(width: 520, height: 480)) {
     var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "DiaRoute")
     card.question = "Which storage should offline routes use?"
     card.options = ["SQLite (Recommended)", "MMKV", "AsyncStorage"]
@@ -286,6 +332,22 @@ widget("w-question", .panel) {
     card.count = 2
     $0.request = card
     $0.otherDraft = "WatermelonDB, sync later"
+}
+// The question that came out cut short (owner, 26.10): two questions, long words and long descriptions, from another chat.
+for (name, mode, size) in [("w-question-long", WidgetMode.panel, NSSize(width: 520, height: 640)),
+                           ("w-question-long-pill", WidgetMode.pill, NSSize(width: 760, height: 160))] {
+    widget(name, mode, size: size) {
+        var card = AppModel.RequestCard(id: UUID(), kind: .question, project: "clouding-bar-promo")
+        card.chat = "Промо-видео Remotion для автосервиса"; card.color = Session.colors[2]; card.elsewhere = true
+        card.question = "Как поступим с музыкой? Трендовые песни из TikTok — чужие, в рекламе для всех площадок их брать нельзя без лицензии."
+        card.options = ["Новый трек в стиле трендов (Recommended)", "Лицензионный трек — пришлю файл", "Версия без музыки для TikTok"]
+        card.descriptions = ["Синтезирую свой трек в духе того, что сейчас звучит в TikTok: смена ритма по главам, стопы, дропы, «вокальные» хуки. Без проблем с правами, синхронизирую с каждым событием.",
+                             "Вы берёте трек на Artlist, Epidemic или Uppbeat (с лицензией на все площадки) и кладёте мне файл. Я подгоню монтаж под его биты и дропы.",
+                             "Делаю ролик только со звуками интерфейса, а трендовый звук вы добавляете в самом TikTok при публикации (из библиотеки для бизнеса). Для других площадок — мой трек."]
+        card.index = 0
+        card.count = 2
+        $0.request = card
+    }
 }
 widget("w-panel-extras", .panel, size: NSSize(width: 720, height: 330)) {
     $0.config.metrics = ["model", "lines", "git", "agents"]

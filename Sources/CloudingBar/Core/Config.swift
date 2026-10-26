@@ -169,6 +169,9 @@ struct Config: Equatable {
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
+    /// The short bar's own (owner, 26.10): what you keep at hand everywhere,
+    /// beside Apple's buttons; the whole bar has the rest.
+    var touchBarShortShows: [String] = ["name", "session", "context", "chat", "shot", "mic"]
     /// The bar arranged by hand in Settings, per bar ("whole", "short"):
     /// the order of its blocks ("name", "meters", "chat", "model", …) and
     /// the width of each one dragged wider or narrower, in points.
@@ -309,6 +312,7 @@ struct Config: Equatable {
         if let v = obj["achievements"] as? [String] { config.achievements = v }
         if let v = obj["cloudColor"] as? String { config.cloudColor = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
+        if let v = obj["touchBarShortShows"] as? [String] { config.touchBarShortShows = v }
         if let v = obj["touchBarOrder"] as? [String: [String]] { config.touchBarOrder = v }
         if let v = obj["panelOrder"] as? [String] { config.panelOrder = v }
         if let v = obj["itemWidths"] as? [String: NSNumber] { config.itemWidths = v.mapValues { min(max($0.doubleValue, 20), 600) } }

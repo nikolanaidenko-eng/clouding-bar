@@ -18,8 +18,10 @@ Clouding Bar is a small macOS menu bar app for people who work with
 [Claude Code](https://code.claude.com). It shows what Claude is doing —
 your 5-hour limit, the context window, the model, the subagents at work —
 and lets you answer Claude's questions and permission requests without
-going back to the chat. Cloud, the little character, dozes while Claude is
-idle, hops while it works and waves when it needs you.
+going back to the chat. Showing Claude something takes one step: pick an
+area of the screen, or drop a file on the widget, and it goes to the chat —
+no screenshot to save, find and drag in. Cloud, the little character, dozes
+while Claude is idle, hops while it works and waves when it needs you.
 
 It works in the terminal, in the VS Code extension and with the desktop
 app, on any Mac with macOS 12 or later. A Touch Bar is a bonus, not a must.
@@ -60,21 +62,23 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - **The panel** opens from the pill (hover for 2 seconds, or click): your
   chats as tabs; the 5-hour limit and the context as two lines (the context
   as "312k of 1M"); the model, the time, lines, branch and subagents; and a
-  message box that says which chat it writes to, the menu, the screenshot,
+  message box that says which chat it writes to, Commands, the screenshot,
   the mic and Send on its line and your buttons under it. Its blocks move up
   or down by the bar that shows over each; the buttons swap places like the
   pill's items.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
-  is in front — or in every app, if you like (there short, beside Apple's
-  brightness and volume: the limits, your first three buttons, the chat as
-  one letter if there's room, and a button that opens the whole bar): which
+  is in front — or in every app, if you like (there the short bar, beside
+  Apple's brightness and volume: a bar of its own, by default the chat's
+  first letter, the limits, the chat line with your commands, the
+  screenshot and the mic, and a button that opens the whole bar): which
   chat (tap it for the others; a long name slides), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
-  or dictated, your buttons inside it), **the menu** with the rest of your
+  or dictated, your buttons inside it), **Commands** with all your
   buttons, the mic — each one optional.
 - **Arrange them your way.** Settings shows the widget and the Touch Bar
-  themselves, live — the whole bar and the short one each its own way: drag
-  a block to move it, its right edge to make it wider or narrower.
+  themselves, live: drag a block to move it, its right edge to make it
+  wider or narrower. The short bar has its own list and fixed sizes —
+  something in, something out; Settings says when there's no room.
 - Limits are blue, orange from 70%, red from 90% — everywhere.
 
 **Answer Claude**
@@ -93,16 +97,20 @@ A first version for **Windows** is in [windows/](windows/README.md).
   Claude Desktop on the screen you're on.
 
 **Talk to Claude**
+- **Screenshot an area** of the screen straight into the chat: no
+  ⌘⇧4, no file on the Desktop to find and drag in. Taken from another app,
+  it's attached to the chat shown and goes with your next message — in VS
+  Code as a picture.
+- **Drop files** on the widget: they go to that project's chat with your
+  next message.
 - **Chat line** in the pill and the panel. In VS Code (with Settings →
   General → VS Code → Set Up) the message goes straight into the chat's
   Claude — wherever you are, no window switched — screenshots as pictures,
   and the chat shows it as yours. Elsewhere it waits in the queue until
   Claude has finished its reply and its chat is in front (or tap Send now).
-- **Drop files** on the widget: they go to that project's chat with your
-  next message.
 - **Buttons** for your own phrases, slash commands, key presses and links,
-  with global shortcuts and a set per project — in the row, or tucked into
-  a menu. A **text** button puts its words in the message for you to
+  with global shortcuts and a set per project — in the row, and all of
+  them behind **Commands** (one can be kept only there). A **text** button puts its words in the message for you to
   finish; `{project}`, `{branch}`, `{clipboard}` and `{date}` are filled in.
 - **Dictation**: hold the right ⌥ key, or tap the mic. On macOS 26 and later
   it's the system's own dictation model, on this Mac: English gets its
@@ -111,9 +119,6 @@ A first version for **Windows** is in [windows/](windows/README.md).
   the widget shows the words as you speak, growing with them, then lets you
   check and edit them before you Send (or type them straight in, if you
   prefer — Settings → General → Voice).
-- **Screenshot** an area of the screen straight into the chat (taken from
-  another app, it's attached to the chat shown and goes with your next
-  message).
 
 **Steer it**
 - Switch the **model and effort** from the panel or the Touch Bar.
@@ -153,7 +158,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
 </p>
 <p align="center">
   <img src="docs/images/touchbar.png" width="860" alt="The Touch Bar">
-  <img src="docs/images/touchbar-short.png" width="538" alt="The short Touch Bar beside Apple's buttons: the limits, your buttons, the chat as one letter">
+  <img src="docs/images/touchbar-short.png" width="538" alt="The short Touch Bar beside Apple's buttons: the chat's letter, the limits, the chat line with your commands, the screenshot, the mic">
   <img src="docs/images/touchbar-permission.png" width="860" alt="The Touch Bar asking, with the chat it comes from">
 </p>
 
@@ -318,12 +323,14 @@ as you move the pointer, and walks along the tabs.
   right there; show it, in the notch; behind More: follow the chat at work,
   keep the pill visible, open on hover, its position; what it shows (a chip
   for each thing).
-- **Touch Bar** — the bar itself on top, the whole one and the short one, to
-  arrange (drag a block, or its right edge); on or off, in every app or only
-  Claude's, short or whole outside Claude, what it shows (everything the
-  widget can, and Write and the menu).
+- **Touch Bar** — the bar itself on top, the whole one and the short one,
+  each with what it shows (everything the widget can, and Write and
+  Commands): drag a block to move it, on the whole bar its right edge to
+  size it; on or off, in every app or only Claude's, short or whole outside
+  Claude.
 - **Buttons** — your buttons and their shortcuts, a set per project, shown
-  on the Touch Bar as you edit them, in the row or in the menu.
+  on the Touch Bar as you edit them; Commands lists them all, and one can
+  be kept only there, out of the row.
 - **Cowork** — how often it reports, the plugin (or its zip, to upload)
   and its folders; behind More, the claude.ai limit.
 - **Stats** — see above.

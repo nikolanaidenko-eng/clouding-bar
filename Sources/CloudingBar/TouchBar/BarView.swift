@@ -66,6 +66,8 @@ struct BarModel: Equatable {
     var listening = false
     /// The chat the bar shows, for the chat field: "Status bar".
     var chatName: String?
+    /// The chat's project: its first letter is the short bar's chat button.
+    var project: String?
     /// Beside Apple's buttons: everything smaller, the rest left out — and a
     /// button that opens the whole bar (`expand`).
     var short = false
@@ -214,7 +216,7 @@ final class BarView: NSView {
         let chat = (m.current.map { "\($0.id)|\($0.name)" } ?? "") + "|" + (m.requestChat?.id ?? "")
         switch m.mode {
         case .normal:
-            let info = [m.lines, m.branch, m.cost, m.chatName].map { $0 ?? "" }.joined(separator: "|")
+            let info = [m.lines, m.branch, m.cost, m.chatName, m.project].map { $0 ?? "" }.joined(separator: "|")
             let arranged = m.order.joined(separator: ",") + "|" + m.widths.sorted { $0.key < $1.key }.map { "\($0.key)=\(Int($0.value))" }.joined(separator: ",")
             return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)|\(m.expanded)|\(arranged)"
         case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
@@ -235,14 +237,19 @@ final class BarView: NSView {
         subviews.forEach { $0.removeFromSuperview() }
         slots = []
         meters = nil
+        shortReset = nil
         mini = nil
         field = nil
         pendingAnimations = []
         animatedViews = []
 
-        add(widgetButton, .fixed(60))
+        // Cloud: narrower on the short bar, for room (owner, 26.10).
+        add(widgetButton, .fixed(model.mode == .normal && model.short ? Self.shortCloud : 60))
 
         switch model.mode {
+        case .normal where model.short:
+            buildShort()
+
         case .normal:
             let short = model.short
             let shows = model.shows
@@ -330,7 +337,7 @@ final class BarView: NSView {
                 chatMin = box.commandsWidth + 40
             }
             if shows.contains("templates") {
-                let b = BarButton(short ? "" : "Menu", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
+                let b = BarButton(short ? "" : "Commands", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in
                     self?.onAction?(.templates)
                 }
                 blocks.append(("templates", b, short ? .fixed(40) : .shrinkable(b.fittingWidth(padding: 14)), true))
@@ -389,7 +396,9 @@ final class BarView: NSView {
             let ok = BarButton("OK") { [weak self] in self?.onAction?(.dismissDone) }
             add(open, .fixed(short ? 64 : 84))
             add(ok, .fixed(short ? 50 : 64))
-            [name, open, ok].forEach { b in animate(b) { $0.slideIn() } }
+            // The name slides (marquee): no slide-in for it, the two together
+            // left a name empty on the Touch Bar (owner, 26.10).
+            [open, ok].forEach { b in animate(b) { $0.slideIn() } }
             if !Palette.reduceMotion {
                 mascot.poke()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.mascot.poke() }
@@ -491,7 +500,10 @@ final class BarView: NSView {
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
                                   fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
-                group.append(b)
+                // No slide-in for the chats: a name that slides (too long, or
+                // squeezed among many) came out empty with both on the Touch
+                // Bar (owner, 26.10); the name button of the normal bar never
+                // slid in, and showed.
             }
             add(NSView(), .flex(weight: 1, min: 0))
             let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
@@ -501,7 +513,7 @@ final class BarView: NSView {
 
         case .templates:
             var group: [NSView] = []
-            let word = sectionLabel("Menu")
+            let word = sectionLabel("Commands")
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for (i, text) in model.templates.enumerated() {
                 let b = BarButton(text, fontSize: 12) { [weak self] in self?.onAction?(.pickTemplate(i)) }
@@ -564,8 +576,8 @@ final class BarView: NSView {
             if model.typingCommands && !model.short {
                 // Your commands right by the field, if the bar shows them.
                 if model.shows.contains("templates"), !model.templates.isEmpty,
-                   let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Menu") {
-                    add(BarButton("Menu", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
+                   let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Commands") {
+                    add(BarButton("Commands", icon: icon) { [weak self] in self?.onAction?(.templates) }, .fixed(48))
                 }
             }
             add(mic, .fixed(48))
@@ -577,8 +589,10 @@ final class BarView: NSView {
     }
 
     /// Your buttons, small, for inside the chat field (if the bar shows them).
-    private func commandButtons(limit: Int? = nil) -> [BarButton] {
-        guard model.shows.contains("buttons") else { return [] }
+    /// Your commands for the chat line; `always`: the short bar's chat line
+    /// has them whatever "Buttons" says (owner, 26.10: the chat with commands).
+    private func commandButtons(limit: Int? = nil, always: Bool = false) -> [BarButton] {
+        guard always || model.shows.contains("buttons") else { return [] }
         return model.buttons.enumerated().prefix(limit ?? .max).map { i, spec in
             BarButton(spec.label, fontSize: 11) { [weak self] in self?.onAction?(.button(i)) }
         }
@@ -598,6 +612,146 @@ final class BarView: NSView {
         label.textColor = Palette.secondary
         label.alignment = .right
         return label
+    }
+
+    /// Beside Apple's buttons (owner, 26.10): a bar of its own, apart from
+    /// the whole one — what you keep at hand everywhere, in your order, each
+    /// block at its own fixed size (none pulled wider). By default the chat's
+    /// letter, the limits, the chat line with your commands, the screenshot
+    /// and the mic; something else goes in when something comes out
+    /// (Settings says when there's no room).
+    private func buildShort() {
+        let shows = model.shows
+        var blocks: [(key: String, view: NSView, width: CGFloat, droppable: Bool)] = []
+        // The chat: its project's first letter, a capital, no dot (owner,
+        // 26.10); a tap lists the chats to switch.
+        if shows.contains("name") {
+            let chat = model.chats.first(where: \.current)
+            let source = model.project ?? chat?.name ?? ""
+            let letter = source.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "—"
+            let b = BarButton(letter, fontSize: 13) { [weak self] in self?.onAction?(.chats) }
+            b.setAccessibilityLabel(chat?.name ?? "Chats")
+            blocks.append(("name", b, Self.shortWidth("name", shows: shows), false))
+        }
+        let session = shows.contains("session"), context = shows.contains("context")
+        if session || context {
+            let pair = MetersPair(padding: 6, showSession: session, showContext: context)
+            meters = pair
+            blocks.append(("meters", pair, Self.shortWidth("meters", shows: shows), false))
+        }
+        if shows.contains("reset") {
+            let b = BarButton(model.resetCountdown ?? "—", fontSize: 11, symbol: ("clock", 0x8E8E93))
+            b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
+            shortReset = b // kept up to the minute by refreshValues
+            blocks.append(("reset", b, Self.shortWidth("reset", shows: shows), true))
+        }
+        if shows.contains("model") {
+            let b = BarButton(model.modelLabel ?? "—", fontSize: 11, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
+            blocks.append(("model", b, Self.shortWidth("model", shows: shows), true))
+        }
+        if shows.contains("agents") {
+            let n = model.agents.count
+            let b = BarButton(n == 0 ? "No agents" : "\(n) agent\(n == 1 ? "" : "s")", fontSize: 11,
+                              symbol: ("person.2.fill", 0x40C8E0)) { [weak self] in self?.onAction?(.agents) }
+            blocks.append(("agents", b, Self.shortWidth("agents", shows: shows), true))
+        }
+        for (key, text, symbol) in [("lines", model.lines, ("chevron.left.forwardslash.chevron.right", UInt32(0x30D158))),
+                                    ("branch", model.branch, ("arrow.triangle.branch", UInt32(0xFF9F0A))),
+                                    ("cost", model.cost, ("dollarsign.circle", UInt32(0xFFD60A)))] where shows.contains(key) {
+            blocks.append((key, BarButton(text ?? "—", fontSize: 11, symbol: symbol), Self.shortWidth(key, shows: shows), true))
+        }
+        // Your commands: in the chat line, or behind Commands.
+        let chat = shows.contains("chat")
+        if shows.contains("templates") {
+            let b = BarButton("", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in self?.onAction?(.templates) }
+            b.setAccessibilityLabel("Commands")
+            blocks.append(("templates", b, Self.shortWidth("templates", shows: shows), true))
+        }
+        if shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
+            blocks.append(("shot", BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) },
+                           Self.shortWidth("shot", shows: shows), true))
+        }
+        if shows.contains("mic") {
+            blocks.append(("mic", BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) },
+                           Self.shortWidth("mic", shows: shows), true))
+        }
+        // As many as fit (Settings keeps it to what fits), in the order
+        // shown; the chat line takes what's left, with as many commands as fit.
+        // A gap after Cloud and after each block, the chat line or the spacer.
+        var room = Self.shortRoom - Palette.gap * CGFloat(blocks.count + 2) - (chat ? Self.shortChatMin : 0)
+        var kept: [(key: String, view: NSView, width: CGFloat, droppable: Bool)] = []
+        for b in blocks where b.width <= room {
+            room -= b.width
+            kept.append(b)
+        }
+        if chat {
+            let width = room + Self.shortChatMin
+            var commands = commandButtons(limit: 3, always: true)
+            func box() -> ChatBoxView {
+                ChatBoxView(field: ComposeFieldButton(placeholder: "Write…") { [weak self] in self?.onAction?(.write) },
+                            commands: commands, compact: true)
+            }
+            var b = box()
+            while !commands.isEmpty && b.commandsWidth + 56 > width {
+                commands.removeLast()
+                b = box()
+            }
+            kept.append(("chat", b, width, true))
+        }
+        // Your order; else the chat line before the tools, as on the whole bar.
+        // The chat line gives way first where the bar is narrower than 628 pt.
+        let rank = Dictionary(model.order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        let natural = ["name", "meters", "reset", "model", "agents", "lines", "branch", "cost", "chat", "templates", "shot", "mic"]
+        func place(_ key: String) -> Int { rank[key] ?? model.order.count + (natural.firstIndex(of: key) ?? natural.count) }
+        for b in kept.enumerated().sorted(by: { (place($0.element.key), $0.offset) < (place($1.element.key), $1.offset) }).map(\.element) {
+            add(b.view, b.key == "chat" ? .flex(weight: 1, min: Self.shortChatMin) : .fixed(b.width), droppable: b.droppable, key: b.key)
+        }
+        if !chat { add(NSView(), .flex(weight: 1, min: 0)) }
+        if let icon = NSImage(systemSymbolName: "arrow.up.left.and.arrow.down.right", accessibilityDescription: "Whole bar") {
+            add(BarButton("Whole bar", icon: icon) { [weak self] in self?.onAction?(.expand) }, .fixed(Self.shortWhole))
+        }
+    }
+
+    /// The short bar's reset block, its countdown set as it changes.
+    private weak var shortReset: BarButton?
+
+    /// The short bar: Cloud and "Whole bar" at its ends, the chat line at
+    /// the least room to tap and write.
+    static let shortCloud: CGFloat = 44
+    static let shortWhole: CGFloat = 36
+    static let shortChatMin: CGFloat = 120
+    /// What the short bar has for its blocks, beside Cloud and "Whole bar".
+    static var shortRoom: CGFloat { narrowWidth - Palette.edge * 2 - shortCloud - shortWhole }
+
+    /// Each short-bar block's own size; the chat line takes what's left.
+    static func shortWidth(_ key: String, shows: Set<String>) -> CGFloat {
+        switch key {
+        case "name": return 34
+        case "meters": return shows.contains("session") && shows.contains("context") ? 180 : 90
+        case "reset": return 64
+        case "model": return 110
+        case "agents": return 96
+        case "lines": return 90
+        case "branch": return 100
+        case "cost": return 76
+        case "templates", "shot", "mic": return 40
+        case "chat": return shortChatMin
+        default: return 0
+        }
+    }
+
+    /// Whether these fit on the short bar, each block at its size: a gap
+    /// after Cloud and after each block, and after the spacer that takes the
+    /// chat line's place when there's none.
+    static func shortFits(_ shows: Set<String>) -> Bool {
+        var widths: [CGFloat] = []
+        if shows.contains("name") { widths.append(shortWidth("name", shows: shows)) }
+        if shows.contains("session") || shows.contains("context") { widths.append(shortWidth("meters", shows: shows)) }
+        for key in ["reset", "model", "agents", "lines", "branch", "cost", "chat", "templates", "shot", "mic"] where shows.contains(key) {
+            widths.append(shortWidth(key, shows: shows))
+        }
+        let gaps = CGFloat(widths.count + (shows.contains("chat") ? 1 : 2))
+        return widths.reduce(0, +) + Palette.gap * gaps <= shortRoom
     }
 
     private func add(_ view: NSView, _ width: Slot.Width, droppable: Bool = false, key: String? = nil) {
@@ -639,8 +793,13 @@ final class BarView: NSView {
     private func refreshValues() {
         mascot.activity = model.activity
         mascot.awake = model.awake
+        if let b = shortReset {
+            b.setTitle(model.resetCountdown ?? "—")
+            b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
+        }
         // The short bar: no countdown to the reset (owner, 24.10).
         meters?.set(session: model.sessionPercent,
+                    // The short bar has the reset as a block of its own.
                     countdown: model.mode == .normal && (!model.shows.contains("reset") || model.short) ? nil : model.resetCountdown,
                     context: model.contextPercent)
         mini?.set(session: model.sessionPercent, context: model.contextPercent)
