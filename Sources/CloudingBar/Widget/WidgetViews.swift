@@ -837,7 +837,8 @@ struct MainPanel: View {
     private func header(inner: CGFloat) -> some View {
         let several = model.sessions.count > 1
         let character: CGFloat = state.hidesHeaderCharacter ? 0 : 28 + 10
-        return HStack(alignment: .top, spacing: 10) {
+        // One line (a chat's name): centred on Cloud and the button.
+        return HStack(alignment: several || !model.hasSession ? .top : .center, spacing: 10) {
             if !state.hidesHeaderCharacter {
                 MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
             }
@@ -845,16 +846,20 @@ struct MainPanel: View {
                 if several {
                     ChatTabs(model: model, state: state, width: inner - character - 30 - 8)
                 } else {
+                    // Where it runs and what it's doing: on hover (owner, 26.10).
                     Text(model.hasSession ? model.chatName ?? model.statusTitle : "No chat open")
                         .font(.system(size: 13, weight: .semibold)).foregroundColor(.cbText).lineLimit(1)
+                        .help(model.hasSession ? [model.chatPlace, model.chatStatus].compactMap { $0 }.joined(separator: " · ") : "")
                 }
-                Text(model.hasSession ? [model.chatPlace, model.chatStatus].compactMap { $0 }.joined(separator: " · ")
-                     // A chat open since before the plugin came doesn't run its hooks.
-                     : model.pluginActive ? "Start Claude Code, or type /reload-plugins in a chat that's open"
-                     : "Start Claude Code in VS Code or Terminal")
-                    .font(.system(size: 11)).foregroundColor(model.activity == .wait ? .cbWarningText : .cbSecondary)
-                    .lineLimit(1)
-                    .padding(.leading, several ? 2 : 0)
+                // Where it runs and what it's doing: on hover, not a line of
+                // its own (owner, 26.10). With no chat, how to start one.
+                if !model.hasSession {
+                    Text(model.pluginActive ? "Start Claude Code, or type /reload-plugins in a chat that's open"
+                         // A chat open since before the plugin came doesn't run its hooks.
+                         : "Start Claude Code in VS Code or Terminal")
+                        .font(.system(size: 11)).foregroundColor(.cbSecondary)
+                        .lineLimit(1)
+                }
             }
             .layoutPriority(1)
             Spacer(minLength: 0)
