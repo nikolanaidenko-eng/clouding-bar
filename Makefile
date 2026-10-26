@@ -25,9 +25,12 @@ all: bundle $(TAP) $(HOOK)
 
 # swiftc straight, not SwiftPM: some Command Line Tools installs lack the
 # manifest module `swift build` needs (Package.swift is there for editors).
+# Apple's on-device model (macOS 26) linked weakly: macOS 12-25 start without it.
+WEAK = -Xlinker -weak_framework -Xlinker FoundationModels
+
 build: $(SOURCES)
 	@mkdir -p build
-	swiftc -O -target $(TARGET) $(SOURCES) -o $(BINARY)
+	swiftc -O -target $(TARGET) $(SOURCES) $(WEAK) -o $(BINARY)
 
 # The .app: macOS grants Accessibility to an app bundle (and keeps it across
 # rebuilds while the signature's identity stays the same), not a bare binary.

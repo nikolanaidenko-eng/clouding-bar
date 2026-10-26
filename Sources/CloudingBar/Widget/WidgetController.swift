@@ -246,6 +246,11 @@ final class WidgetController: NSObject {
     /// The panel is open.
     var panelOpen: Bool { state.mode == .panel }
 
+    /// The panel open (and staying), with what Claude asks in full.
+    func showPanel() {
+        if state.mode != .panel { togglePanel() }
+    }
+
     /// Cloud on the Touch Bar: opens the panel, which stays until Cloud is
     /// tapped again (or the pointer has been in and out); or folds it away.
     func togglePanel() {
