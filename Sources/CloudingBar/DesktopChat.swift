@@ -118,18 +118,77 @@ final class DesktopChat {
                 done = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success && done
             }
             if let own, let field = found.field {
-                _ = AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                DispatchQueue.main.async {
-                    app.activate(options: [])
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        KeySender.type(own, pressReturn: true)
-                        completion(true)
-                    }
-                }
+                self.answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, completion: completion)
                 return
             }
             DispatchQueue.main.async { completion(done) }
         }
+    }
+
+    /// Your own words for a question: written into its field and sent from
+    /// here, Claude's window left where it is (owner, 26.10: answering took
+    /// him to that window and nothing went). Only if that can't be done here,
+    /// the window comes forward for the words to be typed — never into
+    /// another app — and you're taken back. Never typed twice. Done when the
+    /// question is gone. On `queue`.
+    private func answerOwn(_ own: String, field: AXUIElement, prompt: Prompt, pid: pid_t, app: NSRunningApplication,
+                           completion: @escaping (Bool) -> Void) {
+        let set = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, own as CFString) == .success
+        queue.asyncAfter(deadline: .now() + 0.3) {
+            // Its send button shows once there are words in the field.
+            var sent = false
+            if set {
+                if let send = self.findPrompt(pid: pid).flatMap({ $0.prompt.key == prompt.key ? $0.send : nil }) {
+                    sent = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success
+                } else {
+                    sent = AXUIElementPerformAction(field, kAXConfirmAction as CFString) == .success
+                }
+            }
+            if sent {
+                // Sent from here: the card may stay a few seconds (it does for
+                // the bar's own answers); not typed again whatever happens.
+                self.waitGone(pid: pid, prompt: prompt, until: Date().addingTimeInterval(6)) { gone in
+                    DebugLog.note("desktop prompt: own answer sent from here" + (gone ? "" : ", but the question is still there"))
+                    DispatchQueue.main.async { completion(gone) }
+                }
+                return
+            }
+            DebugLog.note("desktop prompt: own answer couldn't be sent from here (value \(set ? "set" : "refused")): typed in Claude's window")
+            // What was set here goes, so the words aren't there twice.
+            if set { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
+            DispatchQueue.main.async {
+                let before = NSWorkspace.shared.frontmostApplication
+                app.activate(options: [])
+                self.queue.asyncAfter(deadline: .now() + 0.4) {
+                    // Keys only into Claude's own field, with its question still there.
+                    let focused = AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success
+                    let asking = self.findPrompt(pid: pid)?.prompt.key == prompt.key
+                    DispatchQueue.main.async {
+                        guard focused, asking, NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+                            DebugLog.note("desktop prompt: nothing typed (field \(focused ? "focused" : "not focused"), question \(asking ? "there" : "gone"))")
+                            completion(!asking)
+                            return
+                        }
+                        KeySender.type(own, pressReturn: true)
+                        self.queue.async {
+                            self.waitGone(pid: pid, prompt: prompt, until: Date().addingTimeInterval(6)) { gone in
+                                DispatchQueue.main.async {
+                                    if let before, before.processIdentifier != pid { before.activate(options: []) }
+                                    completion(gone)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Looks every half second until the question is gone or time's up. On `queue`.
+    private func waitGone(pid: pid_t, prompt: Prompt, until: Date, done: @escaping (Bool) -> Void) {
+        if findPrompt(pid: pid)?.prompt.key != prompt.key { done(true); return }
+        guard Date() < until else { done(false); return }
+        queue.asyncAfter(deadline: .now() + 0.5) { self.waitGone(pid: pid, prompt: prompt, until: until, done: done) }
     }
 
     private struct Found {

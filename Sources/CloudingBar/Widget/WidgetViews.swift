@@ -1127,9 +1127,9 @@ struct ChatTag: View {
     var body: some View {
         HStack(spacing: 5) {
             ChatDot(color: color)
+            // Gives way when the line is short of room, never pushes past it.
             Text(name).font(.system(size: 12)).foregroundColor(.cbText).lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: maxWidth, alignment: .leading)
-                .fixedSize(horizontal: true, vertical: false)
             if elsewhere {
                 Text("other chat").font(.system(size: 10, weight: .semibold)).foregroundColor(.cbWarningText)
                     .fixedSize()
@@ -1482,9 +1482,9 @@ struct TemplatesButton: View {
             ForEach(Array(model.menuButtons.enumerated()), id: \.offset) { i, b in
                 Button(b.label) { model.runMenuButton(i) }
             }
-            // Empty: where to put buttons in it.
+            // No buttons at all: where to make some.
             if model.menuButtons.isEmpty {
-                Button("Put buttons in this menu…") { model.openSettingsTab("buttons") }
+                Button("Add buttons…") { model.openSettingsTab("buttons") }
             }
         } label: {
             Image(systemName: "text.bubble").font(.system(size: size * 0.44))
@@ -1498,8 +1498,8 @@ struct TemplatesButton: View {
             .fill(Color.white.opacity(plain ? 0.07 : 0.1)))
         .overlay(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-        .help("Your menu of buttons")
-        .accessibilityLabel("Menu")
+        .help("Your commands")
+        .accessibilityLabel("Commands")
     }
 }
 
@@ -1533,7 +1533,10 @@ struct RequestCardView: View {
                     permission(r)
                 }
             } else {
-                PanelChrome(spacing: 14) { question(r) }
+                // As wide as the permission card: a long question, long
+                // descriptions and another chat's long name fit (owner, 26.10:
+                // a 320-pt card came out cut off at both sides).
+                PanelChrome(spacing: 14, width: 420) { question(r) }
             }
         }
     }

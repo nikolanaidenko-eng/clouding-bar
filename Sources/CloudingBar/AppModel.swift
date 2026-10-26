@@ -85,7 +85,7 @@ final class AppModel: ObservableObject {
     @Published var tokensOut: Int?
     @Published var cost: Double?
     @Published var buttons: [ButtonSpec] = []
-    /// The ones in the menu button's list.
+    /// The Commands button's list: all the buttons.
     @Published var menuButtons: [ButtonSpec] = []
     @Published var sessions: [SessionRow] = []
     @Published var request: RequestCard?
@@ -196,6 +196,9 @@ final class AppModel: ObservableObject {
     var openSettingsTab: (String) -> Void = { _ in }
     /// The tour in the settings window: the stop it's at, nil when off.
     @Published var tourStep: Int?
+    /// Settings is arranging the short bar: the Touch Bar shows that one.
+    @Published var editingShortBar = false { didSet { if editingShortBar != oldValue { barChanged() } } }
+    var barChanged: () -> Void = {}
 
     // Settings → General → Claude Code (Setup.swift)
     @Published var claudeConnected = true

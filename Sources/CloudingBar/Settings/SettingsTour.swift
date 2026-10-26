@@ -33,7 +33,7 @@ enum SettingsTour {
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
                  text: "Your Touch Bar, live: the whole bar and the short one beside Apple's buttons. Drag a block to move it, its right edge to size it. Claude's questions and permission requests show up there too: answer with a tap."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
-                 text: "A phrase, a /command, a key or a link, on the Touch Bar and in the widget or tucked into its menu. A tap sends it to the chat you're in, or puts text in for you to finish."),
+                 text: "A phrase, a /command, a key or a link, on the Touch Bar and in the widget, all of them behind Commands. A tap sends it to the chat you're in, or puts text in for you to finish."),
         TourStop(tab: "stats", anchor: "stats.limits", title: "Your week in numbers",
                  text: "The 5-hour limit and the weekly one, and below them your sessions, time and projects. Blue is fine, orange from 70%, red from 90%."),
     ]

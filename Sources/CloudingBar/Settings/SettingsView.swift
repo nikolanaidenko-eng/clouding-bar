@@ -66,7 +66,7 @@ struct SettingsView: View {
         .environment(\.settingsCloud, cloud)
         .environment(\.grayButtons, model.config.buttonColors == "gray")
         .foregroundColor(.sText)
-        .frame(width: Self.width, height: 560)
+        .frame(width: Self.width).frame(minHeight: 420, maxHeight: .infinity)
         .background(Color.sBackground)
         .onAppear {
             cloud.start()
@@ -709,6 +709,10 @@ struct ChipSet: View {
     var small = false
     /// A second row starts after this many chips.
     var wrapAfter: Int? = nil
+    /// Before one is switched on: whether the list with it is all right
+    /// (the short bar's room); if not, `refused` gets its label.
+    var accepts: (([String]) -> Bool)? = nil
+    var refused: ((String) -> Void)? = nil
 
     var body: some View {
         let rows = wrapAfter.map { [Array(options.prefix($0)), Array(options.dropFirst($0))] } ?? [options]
@@ -728,12 +732,17 @@ struct ChipSet: View {
         case "pillShows": return model.config.pillShows
         case "metrics": return model.config.metrics
         case "touchBarShows": return model.config.touchBarShows
+        case "touchBarShortShows": return model.config.touchBarShortShows
         default: return []
         }
     }
 
     private func toggle(_ id: String) {
         let on = !list(key).contains(id)
+        if on, let accepts, !accepts(list(key) + [id]) {
+            refused?(options.first { $0.id == id }?.label ?? id)
+            return
+        }
         for k in [key] + (mirror.map { [$0] } ?? []) {
             var l = list(k).filter { $0 != id }
             if on { l.append(id) }
@@ -1015,7 +1024,7 @@ struct WidgetTab: View {
                         }
                         SettingsRow(title: "Controls") {
                             ToggleChips(items: [hideChip("Buttons", "buttons"), boolChip("Chat", "taskQueue") { $0.taskQueue },
-                                                hideChip("Menu", "menu"),
+                                                hideChip("Commands", "menu"),
                                                 boolChip("Screenshot", "screenshot") { $0.screenshot }, hideChip("Mic", "mic")])
                         }
                         Text("Pull the pill's outline to resize it; drag one item onto another to swap them. Chat sends to the chat the widget shows, once Claude is free.")
@@ -1088,10 +1097,20 @@ struct ToggleChips: View {
 
 struct TouchBarTab: View {
     @ObservedObject var model: AppModel
+    /// Which bar is being set up: each has its own things on it (owner,
+    /// 26.10). Kept in the model, which the Touch Bar follows; Settings
+    /// closed or another tab: the whole bar again.
+    private var short: Bool {
+        get { model.editingShortBar }
+        nonmutating set { model.editingShortBar = newValue }
+    }
+    private var shortBinding: Binding<Bool> { Binding(get: { model.editingShortBar }, set: { model.editingShortBar = $0 }) }
+    /// Switched on with no room for it on the short bar.
+    @State private var noRoom: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TouchBarEditor(model: model)
+            TouchBarEditor(model: model, short: shortBinding)
                 .opacity(model.config.touchBar == "off" ? 0.4 : 1)
                 .tourAnchor("touchbar.preview")
             SettingsGroup {
@@ -1113,7 +1132,7 @@ struct TouchBarTab: View {
                         SettingsRow(title: "Outside Claude",
                                     hint: model.config.touchBarOutside == "whole"
                                         ? "The whole Touch Bar, as in Claude's apps; Apple's brightness and volume hidden"
-                                        : "Short: the chat and the meters, beside Apple's brightness and volume") {
+                                        : "Short: what you keep on it (below), beside Apple's brightness and volume") {
                             SettingsSegments(options: [("short", "Short bar"), ("whole", "Whole bar")],
                                              selected: model.config.touchBarOutside, tint: 0xBF5AF2) {
                                 model.setConfig("touchBarOutside", $0)
@@ -1122,22 +1141,44 @@ struct TouchBarTab: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("On the bar").font(.system(size: 13))
-                    ChipSet(model: model, key: "touchBarShows",
-                            options: [("session", "Session"), ("reset", "Reset"), ("context", "Context"),
-                                      ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
-                                      ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
-                                      ("templates", "Menu"), ("buttons", "Buttons"),
-                                      ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 8)
+                    Text(short ? "On the short bar — at hand everywhere, each block its own size" : "On the whole bar")
+                        .font(.system(size: 13))
+                    if short {
+                        // Its own list (owner, 26.10): something in, something out.
+                        ChipSet(model: model, key: "touchBarShortShows",
+                                options: [("name", "Chat button"), ("session", "Session"), ("context", "Context"),
+                                          ("chat", "Chat with commands"), ("shot", "Screenshot"), ("mic", "Mic"),
+                                          ("reset", "Reset"), ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
+                                          ("branch", "Branch"), ("cost", "Cost"), ("templates", "Commands")],
+                                small: true, wrapAfter: 6,
+                                accepts: { BarView.shortFits(Set($0)) },
+                                refused: { noRoom = $0 })
+                        if let noRoom {
+                            Text("No room for “\(noRoom)” on the short bar: switch something off first.")
+                                .font(.system(size: 11)).foregroundColor(Color(hex: 0xFF9F0A))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        ChipSet(model: model, key: "touchBarShows",
+                                options: [("session", "Session"), ("reset", "Reset"), ("context", "Context"),
+                                          ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
+                                          ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
+                                          ("templates", "Commands"), ("buttons", "Buttons"),
+                                          ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 8)
+                    }
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("Claude's questions and permission requests always show. Tap the message field (Write) to send Claude a message, typed or dictated; Templates to type one in; the model to switch it; the subagents to see who's working. Buttons and templates are set up in Buttons.")
+            Text("Claude's questions and permission requests always show. Tap the message field (Write) to send Claude a message, typed or dictated; Commands for all your buttons; the model to switch it; the subagents to see who's working. Buttons are set up in Buttons.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
         }
+        // Arranging the short bar: the Touch Bar shows that one meanwhile.
+        .onChange(of: model.editingShortBar) { _ in noRoom = nil }
+        .onChange(of: model.config.touchBarShortShows) { _ in noRoom = nil }
+        .onDisappear { model.editingShortBar = false }
     }
 }
 
@@ -1148,7 +1189,7 @@ struct TouchBarTab: View {
 /// Apple's buttons) each their own way (owner, 24.10).
 struct TouchBarEditor: View {
     @ObservedObject var model: AppModel
-    @State private var short = false
+    @Binding var short: Bool
     @State private var blocks: [(key: String, frame: NSRect)] = []
     /// While dragging: the order and widths as they'd be on letting go.
     @State private var order: [String]?
@@ -1161,7 +1202,7 @@ struct TouchBarEditor: View {
     private var scale: CGFloat { min(1, (SettingsView.width - 64 - 12) / barWidth) }
     private var savedOrder: [String] { model.config.touchBarOrder[which] ?? [] }
     private var savedWidths: [String: Double] { model.config.touchBarWidths[which] ?? [:] }
-    private var arranged: Bool { !savedOrder.isEmpty || !savedWidths.isEmpty }
+    private var arranged: Bool { !savedOrder.isEmpty || (!short && !savedWidths.isEmpty) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1193,7 +1234,8 @@ struct TouchBarEditor: View {
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black))
             }
-            Text("Drag a block to move it, its right edge to make it wider or narrower. Double-click a block for its own width again.")
+            Text(short ? "Drag a block to move it. Here each block has its own size; what doesn't fit waits on the whole bar."
+                 : "Drag a block to move it, its right edge to make it wider or narrower. Double-click a block for its own width again.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1216,14 +1258,17 @@ struct TouchBarEditor: View {
                 .gesture(DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { move(block.key, by: $0.translation.width / scale) }
                     .onEnded { _ in finish() })
-                .onTapGesture(count: 2) { resetWidth(block.key) }
-            Rectangle().fill(Color.white.opacity(0.35)).frame(width: 2, height: h * 0.5)
-                .frame(width: 10, height: h)
-                .contentShape(Rectangle())
-                .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
-                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .onChanged { size(block.key, by: $0.translation.width / scale) }
-                    .onEnded { _ in finish() })
+                .onTapGesture(count: 2) { if !short { resetWidth(block.key) } }
+            // The short bar's blocks keep their own sizes (owner, 26.10).
+            if !short {
+                Rectangle().fill(Color.white.opacity(0.35)).frame(width: 2, height: h * 0.5)
+                    .frame(width: 10, height: h)
+                    .contentShape(Rectangle())
+                    .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+                    .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                        .onChanged { size(block.key, by: $0.translation.width / scale) }
+                        .onEnded { _ in finish() })
+            }
         }
         .frame(width: w, height: h)
         .offset(x: x)
@@ -1457,7 +1502,7 @@ struct ButtonsTab: View {
                             Text(b.label).font(.system(size: 13)).lineLimit(1).frame(width: 90, alignment: .leading)
                             Text(b.value).font(.system(size: 12)).foregroundColor(.sSecondary).lineLimit(1)
                             Spacer(minLength: 0)
-                            Text(b.type.rawValue + (b.menu ? " · in the menu" : "")
+                            Text(b.type.rawValue + (b.menu ? " · only in Commands" : "")
                                  + (b.hotkey.map { " · " + HotKeys.display($0) } ?? ""))
                                 .font(.system(size: 12)).foregroundColor(.sSecondary)
                         }
@@ -1488,7 +1533,7 @@ struct ButtonsTab: View {
                 .padding(.horizontal, 4).padding(.vertical, 2)
             }
             .tourAnchor("buttons.list")
-            Text("In the menu: behind the menu button in the widget and on the Touch Bar, and in the menu bar. In a phrase or a text, {project}, {branch}, {clipboard} and {date} are filled in.")
+            Text("Commands, in the widget, on the Touch Bar and in the menu bar, lists them all; one kept only in Commands stays out of the row. In a phrase or a text, {project}, {branch}, {clipboard} and {date} are filled in.")
                 .font(.system(size: 11)).foregroundColor(.sSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             if !profile.isEmpty {
@@ -1517,11 +1562,11 @@ struct ButtonsTab: View {
             ShortcutField(combo: $draftHotkey).frame(width: 120, height: 30)
             Picker("", selection: Binding(get: { draftMenu }, set: { menu in
                 draftMenu = menu
-                // In the menu: words to finish, unless you picked otherwise.
+                // Only in Commands: words to finish, unless you picked otherwise.
                 if !typePicked { draftType = menu ? .text : ButtonSpec.guessType(draftValue) }
             })) {
                 Text("In the row").tag(false)
-                Text("In the menu").tag(true)
+                Text("Only in Commands").tag(true)
             }
             .labelsHidden().frame(width: 120)
             .accessibilityLabel("Where")
@@ -1652,7 +1697,7 @@ struct TouchBarPreview: View {
         let agentsWidth = agentsText.map { Self.text($0, 10) + 16 } ?? 0
         let icons = [shows.contains("shot") ? "camera.viewfinder" : nil, shows.contains("mic") ? "mic" : nil].compactMap { $0 }
         let extras = [("lines", "+120 −8"), ("branch", model.branch ?? "main"), ("cost", "$1.20"), ("chat", "Write"),
-                      ("templates", "Menu")].filter { shows.contains($0.0) }.map(\.1)
+                      ("templates", "Commands")].filter { shows.contains($0.0) }.map(\.1)
         let extraWidths = extras.map { Self.text($0, 10) + 16 }
         let items = 1 + buttons.count + (modelText == nil ? 0 : 1) + (agentsText == nil ? 0 : 1) + icons.count
             + (session || context ? 1 : 0) + extras.count
