@@ -237,7 +237,7 @@ final class BarView: NSView {
         subviews.forEach { $0.removeFromSuperview() }
         slots = []
         meters = nil
-        shortReset = nil
+        resetBlock = nil
         mini = nil
         field = nil
         pendingAnimations = []
@@ -297,6 +297,14 @@ final class BarView: NSView {
                 let pair = MetersPair(padding: 6, showSession: session, showContext: context)
                 meters = pair
                 blocks.append(("meters", pair, .flex(weight: 1, min: short ? shortHalf : session && context ? 120 : 80), false))
+            }
+            // The time to the reset as a block of its own: in the meters it only
+            // showed from 280 pt, so often not at all (owner, 26.10).
+            if shows.contains("reset") {
+                let b = BarButton(model.resetCountdown ?? "—", fontSize: 12, symbol: ("clock", 0x8E8E93))
+                b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
+                resetBlock = b
+                blocks.append(("reset", b, .shrinkable(64), true)) // the clock and up to "4:59"
             }
             // Switched on, it shows: "—" until it's known (owner, 25.10).
             if shows.contains("model") {
@@ -359,11 +367,11 @@ final class BarView: NSView {
             if !short, shows.contains("mic") {
                 blocks.append(("mic", BarButton("Dictate", icon: Self.micImage()) { [weak self] in self?.onAction?(.dictate) }, .fixed(48), true))
             }
-            // Your order first, the rest after it as they come.
-            let rank = Dictionary(model.order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
-            let ordered = blocks.enumerated().sorted {
-                (rank[$0.element.key] ?? model.order.count + $0.offset, $0.offset) < (rank[$1.element.key] ?? model.order.count + $1.offset, $1.offset)
-            }.map(\.element)
+            // Your order; one not in it (new since you arranged the bar, like
+            // the reset) right after the block it follows here, not last —
+            // the first to go when room runs out (owner, 26.10).
+            let place = Self.places(blocks.map(\.key), order: model.order)
+            let ordered = blocks.enumerated().sorted { (place[$0.offset], $0.offset) < (place[$1.offset], $1.offset) }.map(\.element)
             var flexible = false
             for b in ordered {
                 var width = b.width
@@ -640,13 +648,15 @@ final class BarView: NSView {
             blocks.append(("meters", pair, Self.shortWidth("meters", shows: shows), false))
         }
         if shows.contains("reset") {
-            let b = BarButton(model.resetCountdown ?? "—", fontSize: 11, symbol: ("clock", 0x8E8E93))
+            // The time alone: with the clock it was squeezed (owner, 26.10).
+            let b = BarButton(model.resetCountdown ?? "—", fontSize: 12)
             b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
-            shortReset = b // kept up to the minute by refreshValues
+            resetBlock = b // kept up to the minute by refreshValues
             blocks.append(("reset", b, Self.shortWidth("reset", shows: shows), true))
         }
         if shows.contains("model") {
-            let b = BarButton(model.modelLabel ?? "—", fontSize: 11, symbol: ("cpu", 0xBF5AF2)) { [weak self] in self?.onAction?(.models) }
+            // A purple dot, not the chip icon: the name slides when it doesn't fit.
+            let b = BarButton(model.modelLabel ?? "—", fontSize: 11, dot: 0xBF5AF2, marquee: true) { [weak self] in self?.onAction?(.models) }
             blocks.append(("model", b, Self.shortWidth("model", shows: shows), true))
         }
         if shows.contains("agents") {
@@ -662,10 +672,10 @@ final class BarView: NSView {
         }
         // Your commands: in the chat line, or behind Commands.
         let chat = shows.contains("chat")
-        if shows.contains("templates") {
-            let b = BarButton("", fontSize: 12, symbol: ("text.badge.plus", 0xBF5AF2)) { [weak self] in self?.onAction?(.templates) }
-            b.setAccessibilityLabel("Commands")
-            blocks.append(("templates", b, Self.shortWidth("templates", shows: shows), true))
+        if shows.contains("templates"), let icon = NSImage(systemSymbolName: "text.badge.plus", accessibilityDescription: "Commands") {
+            // An icon alone, centred, like the screenshot and the mic.
+            blocks.append(("templates", BarButton("Commands", icon: icon) { [weak self] in self?.onAction?(.templates) },
+                           Self.shortWidth("templates", shows: shows), true))
         }
         if shows.contains("shot"), let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
             blocks.append(("shot", BarButton("Screenshot", icon: icon) { [weak self] in self?.onAction?(.screenshot) },
@@ -700,9 +710,10 @@ final class BarView: NSView {
         }
         // Your order; else the chat line before the tools, as on the whole bar.
         // The chat line gives way first where the bar is narrower than 628 pt.
-        let rank = Dictionary(model.order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         let natural = ["name", "meters", "reset", "model", "agents", "lines", "branch", "cost", "chat", "templates", "shot", "mic"]
-        func place(_ key: String) -> Int { rank[key] ?? model.order.count + (natural.firstIndex(of: key) ?? natural.count) }
+        let keys = kept.map(\.key).sorted { (natural.firstIndex(of: $0) ?? natural.count) < (natural.firstIndex(of: $1) ?? natural.count) }
+        let places = Dictionary(zip(keys, Self.places(keys, order: model.order)), uniquingKeysWith: { a, _ in a })
+        func place(_ key: String) -> Double { places[key] ?? Double(model.order.count) }
         for b in kept.enumerated().sorted(by: { (place($0.element.key), $0.offset) < (place($1.element.key), $1.offset) }).map(\.element) {
             add(b.view, b.key == "chat" ? .flex(weight: 1, min: Self.shortChatMin) : .fixed(b.width), droppable: b.droppable, key: b.key)
         }
@@ -712,8 +723,24 @@ final class BarView: NSView {
         }
     }
 
-    /// The short bar's reset block, its countdown set as it changes.
-    private weak var shortReset: BarButton?
+    /// Where each block goes: its place in your order; one not in it right
+    /// after the nearest block before it here that is (else first).
+    static func places(_ keys: [String], order: [String]) -> [Double] {
+        let rank = Dictionary(order.enumerated().map { ($1, Double($0)) }, uniquingKeysWith: { a, _ in a })
+        var last = -1.0, step = 0.0
+        return keys.map { key in
+            if let r = rank[key] {
+                last = r
+                step = 0
+                return r
+            }
+            step += 0.001
+            return last + 0.5 + step
+        }
+    }
+
+    /// The reset block, its countdown set as it changes.
+    private weak var resetBlock: BarButton?
 
     /// The short bar: Cloud and "Whole bar" at its ends, the chat line at
     /// the least room to tap and write.
@@ -728,7 +755,7 @@ final class BarView: NSView {
         switch key {
         case "name": return 34
         case "meters": return shows.contains("session") && shows.contains("context") ? 180 : 90
-        case "reset": return 64
+        case "reset": return 52
         case "model": return 110
         case "agents": return 96
         case "lines": return 90
@@ -793,14 +820,14 @@ final class BarView: NSView {
     private func refreshValues() {
         mascot.activity = model.activity
         mascot.awake = model.awake
-        if let b = shortReset {
+        if let b = resetBlock {
             b.setTitle(model.resetCountdown ?? "—")
             b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
         }
         // The short bar: no countdown to the reset (owner, 24.10).
         meters?.set(session: model.sessionPercent,
-                    // The short bar has the reset as a block of its own.
-                    countdown: model.mode == .normal && (!model.shows.contains("reset") || model.short) ? nil : model.resetCountdown,
+                    // The bar's own: the reset is a block of its own.
+                    countdown: model.mode == .normal ? nil : model.resetCountdown,
                     context: model.contextPercent)
         mini?.set(session: model.sessionPercent, context: model.contextPercent)
         if case let .typing(text) = model.mode { field?.set(text: text) }

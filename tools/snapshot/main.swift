@@ -58,9 +58,10 @@ do { // the short bar keeps every block Settings lets in, in every combination (
 }
 for (name, shows) in [("short-default", ["name", "session", "context", "chat", "shot", "mic"]),
                       ("short-chat", ["name", "session", "context", "chat"]),
-                      ("short-many", ["name", "session", "context", "model", "lines", "cost", "templates", "shot", "mic"])] {
+                      ("short-many", ["name", "session", "context", "model", "lines", "cost", "templates", "shot", "mic"]),
+                      ("short-tools", ["name", "session", "context", "reset", "model", "templates", "shot"])] {
     add(name, width: BarView.narrowWidth) { // the short bar's own set, fixed sizes; what doesn't fit is left for the whole bar
-        $0.short = true; $0.shows = Set(shows); $0.project = "DiaRoute"; $0.modelLabel = "Opus 5.5 · high"; $0.lines = "+120 −8"
+        $0.short = true; $0.shows = Set(shows); $0.project = "DiaRoute"; $0.modelLabel = "Opus 5.5 1M · xhigh"; $0.lines = "+120 −8"
         $0.chats = [BarModel.Chat(id: "1", name: "Offline routes", color: Session.colors[0], current: true, waiting: false)]
     }
 }
@@ -69,6 +70,14 @@ add("question-long") { // the same question on the Touch Bar
                         options: ["Новый трек в стиле трендов (Recommended)", "Лицензионный трек — пришлю файл", "Версия без музыки для TikTok"],
                         multiSelect: false, picked: [])
     $0.activity = .wait
+}
+add("whole-reset") { // the reset as a block of its own on the whole bar, seen however narrow the meters are
+    $0.shows = ["session", "reset", "context", "chat", "buttons", "templates", "cost", "shot", "mic"]; $0.cost = "$1.20"
+    $0.templates = ["Continue"]; $0.chatName = "Status bar"
+}
+add("whole-reset-arranged") { // arranged in 1.1.2, before the reset was a block: it comes right after the meters, not last
+    $0.shows = ["session", "reset", "context", "chat", "buttons", "templates", "cost", "shot", "mic"]; $0.cost = "$1.20"
+    $0.templates = ["Continue"]; $0.chatName = "Status bar"; $0.order = ["meters", "chat", "cost", "templates", "shot", "mic"]
 }
 add("normal-unknown") { // a chat whose model, lines, branch and cost aren't known yet (VS Code has no cost): "—", the menu empty
     $0.shows = ["session", "context", "model", "lines", "branch", "cost", "templates", "shot", "mic"]
