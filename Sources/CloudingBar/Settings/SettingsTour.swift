@@ -4,7 +4,7 @@ import SwiftUI
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is and what to
 /// try; Cloud hops onto it. Seven stops across the tabs (cut down from
-/// thirteen, owner, 25.10).
+/// thirteen, owner, 25.10; Cowork folded into General, 27.10).
 struct TourStop {
     let tab: String
     /// The `tourAnchor` it lights up.
@@ -25,11 +25,12 @@ enum SettingsTour {
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
                  text: "Seven stops, about a minute. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
-                 text: "Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first."),
-        TourStop(tab: "widget", anchor: "widget.show", title: "The floating widget",
-                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Hover it for the panel. It can live in the notch too; the rest is behind More."),
-        TourStop(tab: "widget", anchor: "widget.preview", title: "Arrange it your way",
-                 text: "Your widget as it is now. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. It works in the widget itself too."),
+                 text: "Claude Code, VS Code, Codex and Cowork connect in this box. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first."),
+        TourStop(tab: "general", anchor: "app.more", title: "Only the main rows",
+                 text: "Each box shows what most people need. The rest, like colours, updates or the extra widget switches, waits behind More… in the same box. It stays open next time.",
+                 tryText: "Try it: click More…", tried: .more),
+        TourStop(tab: "widget", anchor: "widget.preview", title: "The floating widget, your way",
+                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. The notch and its place are in the box below."),
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
                  text: "Your Touch Bar, live: the whole bar and the short one beside Apple's buttons. Drag a block to move it, its right edge to size it. Claude's questions and permission requests show up there too: answer with a tap."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
@@ -89,7 +90,7 @@ struct TourOverlay: View {
     let target: CGRect?
     let size: CGSize
     @Environment(\.grayButtons) private var gray
-    @AppStorage("settings.more.widget") private var widgetMore = false
+    @AppStorage("settings.more.app") private var appMore = false
     @State private var spot: CGRect = .zero
     @State private var tried = false
     @State private var startConfig: Config?
@@ -150,7 +151,7 @@ struct TourOverlay: View {
                   config.widgetAtNotch != start.widgetAtNotch else { return }
             didTry()
         }
-        .onChange(of: widgetMore) { open in
+        .onChange(of: appMore) { open in
             if open, stop.tried == .more, !tried { didTry() }
         }
     }
