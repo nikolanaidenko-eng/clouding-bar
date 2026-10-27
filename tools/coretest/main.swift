@@ -674,6 +674,22 @@ do {
           && CodexRollout.contextUsedPercent(tokens: 1, window: 10000) == 100, "codex context: from 0 to 100, and a window under the baseline is full")
     let cs = Session(id: "cx"); cs.entrypoint = "codex"; cs.contextTokens = 41900; cs.contextWindowSize = 258400; cs.model = "gpt-5.3-codex"
     check(cs.contextPercent(windowOverride: nil) == 12 && cs.modelName == "GPT-5.3-Codex", "codex session: context and model as Codex says them")
+    // Its tab told by the title Codex gives it (review, 27.10)
+    let tabName = "Приветствовать пользователя", long = String(repeating: "слово ", count: 12) + "конец"
+    check(CodexRollout.isTabTitle("Приветствовать пользователя | codex-test", of: tabName, in: "/Users/me/codex-test")
+          && CodexRollout.isTabTitle("⠋ Приветствовать пользователя | codex-test", of: tabName, in: "/Users/me/codex-test")
+          && CodexRollout.isTabTitle("⠏  Приветствовать   пользователя | codex-test", of: tabName, in: "/Users/me/codex-test"),
+          "codex tab: idle, and while working (the spinner, spaces squashed)")
+    check(CodexRollout.isTabTitle(String(long.prefix(45)) + "... | proj", of: long, in: "/Users/me/proj")
+          && CodexRollout.isTabTitle("Fix | a-very-long-project-f...", of: "Fix", in: "/Users/me/a-very-long-project-folder-name")
+          && CodexRollout.isTabTitle("Fix | repo", of: "Fix", in: "/Users/me/repo/sub")
+          && CodexRollout.isTabTitle("A | B | proj", of: "A | B", in: "/Users/me/proj"),
+          "codex tab: the name cut to 48, the project to 24, the git root's name, a | in the name")
+    check(!CodexRollout.isTabTitle("[ ! ] Action Required | codex-test", of: tabName, in: "/Users/me/codex-test")
+          && !CodexRollout.isTabTitle("Другой чат | codex-test", of: tabName, in: "/Users/me/codex-test")
+          && !CodexRollout.isTabTitle("Приветствовать пользователя | other", of: tabName, in: "/Users/me/codex-test")
+          && !CodexRollout.isTabTitle("Приветствовать пользователя", of: tabName, in: "/Users/me/codex-test"),
+          "codex tab: Action Required, another chat, another project, no project: not it")
     check(CodexRollout.modelName("gpt-5.1-codex-max") == "GPT-5.1-Codex-Max" && CodexRollout.modelName("o4-mini") == "o4-mini"
           && Session.displayName("claude-opus-5-5[1m]") == "Opus 5.5 1M", "model names: GPT with its dashes; Claude's as before")
     check(Inbound(raw: ["model": "gpt-5.3-codex", "claude_entrypoint": "codex"]).modelId == "gpt-5.3-codex"

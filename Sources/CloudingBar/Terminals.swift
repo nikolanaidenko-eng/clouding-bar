@@ -74,54 +74,46 @@ enum Terminals {
         }
     }
 
-    /// Brings forward the one tab titled `title`: Codex titles its tab
-    /// "<the chat's name> | <folder>", a chat known only from Codex's files
-    /// has no tty to find it by (owner, 27.10). None, or two: not found —
-    /// and this only opens a tab, nothing is typed by it.
-    static func focus(title: String, completion: @escaping (Bool) -> Void) {
+    /// Every tab's tty and title, in Terminal and iTerm (main queue): a
+    /// chat known only from Codex's files has no tty, and its tab is told
+    /// by the title Codex gives it (CodexRollout.isTabTitle; owner, 27.10).
+    /// Only read — what's done with it is bringing one tab forward.
+    static func tabs(completion: @escaping ([(tty: String, title: String)]) -> Void) {
         let running = [terminal, iterm].filter { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
-        guard !running.isEmpty, !title.isEmpty else { completion(false); return }
-        let safe = title.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        guard !running.isEmpty else { completion([]); return }
         queue.async {
-            var found = false
-            for app in running where !found {
+            var list: [(tty: String, title: String)] = []
+            for app in running {
                 let script = app == iterm ? """
                     tell application id "com.googlecode.iterm2"
-                      set hits to {}
+                      set out to ""
                       repeat with w in windows
                         repeat with t in tabs of w
                           repeat with s in sessions of t
-                            if name of s starts with "\(safe)" then set end of hits to {w, t, s}
+                            set out to out & (tty of s) & (character id 9) & (name of s) & (character id 10)
                           end repeat
                         end repeat
                       end repeat
-                      if (count of hits) is not 1 then return "no"
-                      set {w, t, s} to item 1 of hits
-                      select w
-                      tell t to select
-                      tell s to select
-                      activate
-                      return "yes"
+                      return out
                     end tell
                     """ : """
                     tell application id "com.apple.Terminal"
-                      set hits to {}
+                      set out to ""
                       repeat with w in windows
                         repeat with t in tabs of w
-                          if custom title of t is "\(safe)" then set end of hits to {w, t}
+                          set out to out & (tty of t) & (character id 9) & (custom title of t) & (character id 10)
                         end repeat
                       end repeat
-                      if (count of hits) is not 1 then return "no"
-                      set {w, t} to item 1 of hits
-                      set selected of t to true
-                      set index of w to 1
-                      activate
-                      return "yes"
+                      return out
                     end tell
                     """
-                found = run(script) == "yes"
+                for line in (run(script) ?? "").split(separator: "\n") {
+                    let pair = line.split(separator: "\t", maxSplits: 1)
+                    guard pair.count == 2, pair[0].hasPrefix("/dev/") else { continue }
+                    list.append((String(pair[0]), String(pair[1])))
+                }
             }
-            DispatchQueue.main.async { completion(found) }
+            DispatchQueue.main.async { completion(list) }
         }
     }
 

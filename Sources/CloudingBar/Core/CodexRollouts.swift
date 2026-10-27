@@ -94,6 +94,27 @@ enum CodexRollout {
         return 100 - min(100, max(0, left)).rounded()
     }
 
+    /// A terminal tab's title is the one Codex gives this chat (0.164's
+    /// default): "[spinner ]<name> | <project>", the name cut to 48
+    /// characters and the project — its git root's name, else its folder's
+    /// — to 24, with "...", spaces squashed (review, 27.10). "Action
+    /// Required" names no chat: not it.
+    static func isTabTitle(_ title: String, of name: String, in cwd: String) -> Bool {
+        func squash(_ s: String) -> String { s.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        func cut(_ s: String, _ n: Int) -> String {
+            let s = squash(s)
+            return s.count <= n ? s : String(s.prefix(n - 3)) + "..."
+        }
+        let spinner: ClosedRange<Character> = "\u{2800}"..."\u{28FF}"
+        var t = squash(title)
+        if let f = t.first, spinner.contains(f) { t = String(t.drop { spinner.contains($0) || $0 == " " }) }
+        guard let bar = t.range(of: " | ", options: .backwards) else { return false }
+        let shown = String(t[..<bar.lowerBound]), project = String(t[bar.upperBound...])
+        guard !name.isEmpty, shown == cut(name, 48) else { return false }
+        // The git root is the folder or one it sits in.
+        return URL(fileURLWithPath: cwd).standardized.pathComponents.dropFirst().contains { cut($0, 24) == project }
+    }
+
     /// "gpt-5.3-codex" → "GPT-5.3-Codex", the way OpenAI writes it.
     static func modelName(_ id: String) -> String {
         guard id.lowercased().hasPrefix("gpt-") else { return id }
