@@ -167,7 +167,7 @@ final class SessionStore {
         }
         let candidates = alive
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
-        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates) } ?? []
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates, halves: true) } ?? []
         if let top = ranked.first {
             if top.score == 3 { return top.session }
             let best = ranked.filter { $0.score == top.score }.map(\.session)
@@ -233,7 +233,11 @@ final class SessionStore {
     /// (two chats of one project, the window on a file): typing there
     /// could land anywhere.
     func session(inWindow title: String?, tty: String? = nil) -> Session? {
-        if let tty, let s = alive.first(where: { $0.tty == tty }) { return s }
+        if let tty {
+            // A terminal tab in front that's no chat's we know (a shell,
+            // Codex): none, whatever its title says (review, 27.10).
+            return alive.first(where: { $0.tty == tty })
+        }
         guard let title else { return nil }
         // A chat found only in Codex's files has no tab or process to tell
         // its window by: a folder's name alone matched a shell or an editor
@@ -246,14 +250,16 @@ final class SessionStore {
 
     /// The window title's pieces, without what decorates them ("● ",
     /// a terminal's spinner, " (Workspace)").
-    static func titleParts(_ title: String) -> [String] {
+    static func titleParts(_ title: String, halves: Bool = false) -> [String] {
         var pieces = [title]
         for separator in [" — ", " – ", " - "] {
             pieces = pieces.flatMap { $0.components(separatedBy: separator) }
         }
         // Codex names its tab "<what it does> | <folder>" (owner, 27.10):
-        // both halves too, the whole kept for a chat's title with a "|".
-        pieces += pieces.flatMap { p in p.contains(" | ") ? p.components(separatedBy: " | ") : [] }
+        // both halves too, the whole kept for a chat's title with a "|" —
+        // only to follow a chat, never to type: the folder half made a
+        // Claude chat of that folder "in front" of Codex's tab (review, 27.10).
+        if halves { pieces += pieces.flatMap { p in p.contains(" | ") ? p.components(separatedBy: " | ") : [] } }
         return pieces.compactMap { piece in
             let t = String(piece.replacingOccurrences(of: " (Workspace)", with: "")
                 .drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces)
@@ -263,8 +269,8 @@ final class SessionStore {
 
     /// Sessions the window shows, best first: 3 its chat's title, 2 its
     /// project's folder, 1 a parent folder of it.
-    private static func ranked(title: String, in sessions: [Session]) -> [(score: Int, session: Session)] {
-        let parts = titleParts(title)
+    private static func ranked(title: String, in sessions: [Session], halves: Bool = false) -> [(score: Int, session: Session)] {
+        let parts = titleParts(title, halves: halves)
         let set = Set(parts)
         let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents
         func titled(_ t: String) -> Bool {
@@ -402,8 +408,32 @@ final class SessionStore {
             }
             var added = false
             for f in found where !f.archived { added = self.adopt(f, now: now) || added }
-            if added { self.scheduleSave(); self.onChange?(); self.pollTranscripts() }
+            // Codex's names for its chats: the widget shows them, and a tab
+            // is told by its own (two of one folder looked the same).
+            var renamed = false
+            for f in found {
+                guard let name = f.name, let s = self.sessions[f.id], s.entrypoint == "codex", s.title != name else { continue }
+                s.title = name
+                renamed = true
+            }
+            self.markOpenCodexChats()
+            if added || renamed { self.scheduleSave(); self.onChange?() }
+            if added { self.pollTranscripts() }
         }
+    }
+
+    /// The folders a Codex program runs in, in a terminal (tests stand in for it).
+    var codexFoldersOpen: (Set<String>) -> Set<String> = Tty.codexFolders
+
+    /// A Codex chat takes words from its server only while a Codex runs in
+    /// its folder: closed, its chat stays loaded in Codex's server for up to
+    /// half an hour, and what was sent would run with no window to answer
+    /// its questions in (review, 27.10).
+    func markOpenCodexChats() {
+        let chats = alive.filter { $0.entrypoint == "codex" }
+        guard !chats.isEmpty else { return }
+        let open = codexFoldersOpen(Set(chats.compactMap(\.cwd)))
+        for s in chats { s.codexWindowOpen = s.cwd.map(open.contains) ?? false }
     }
 
     private func adopt(_ f: CodexRollouts.Found, now: Date) -> Bool {
@@ -417,6 +447,7 @@ final class SessionStore {
         s.cwd = meta.cwd
         s.cwdBranch = meta.branch
         s.codexHost = meta.host
+        s.title = f.name
         s.transcriptPath = f.path
         s.transcriptChanged = f.modified
         s.activitySince = .distantPast // what its file says about the turn counts

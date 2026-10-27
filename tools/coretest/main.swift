@@ -39,11 +39,18 @@ check(focus("● main.swift — claudebar (Workspace) — Visual Studio Code") =
       "dirty marker and (Workspace) suffix don't get in the way")
 // Codex's tab: "<what it does> | <folder>" (owner, 27.10)
 event("x", "/Users/me/codex-test")
-check(SessionStore.titleParts("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63").contains("codex-test")
+check(SessionStore.titleParts("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63", halves: true).contains("codex-test")
       && focus("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63") == "x",
       "a Codex tab's title names its folder after a |: followed")
-check(SessionStore.titleParts("Fix A | B — GitHub").contains("Fix A | B"), "a chat's title with a | still matches whole")
+check(SessionStore.titleParts("Fix A | B — GitHub", halves: true).contains("Fix A | B"), "a chat's title with a | still matches whole")
 event("x", "/Users/me/codex-test", "SessionEnd")
+// review, 27.10: the halves only follow a chat; a Claude chat of that folder isn't "in front" of Codex's tab
+event("cl", "/Users/me/proj")
+check(store.session(inWindow: "nikola — Fix tests | proj — codex ▸ codex — 202×63") == nil,
+      "typing: a Codex tab's folder half doesn't make a Claude chat of that folder the one in front")
+check(store.session(inWindow: "proj — -zsh — 80×24", tty: "/dev/ttys099") == nil,
+      "typing: a terminal tab that's no chat's we know: none, whatever its title says")
+event("cl", "/Users/me/proj", "SessionEnd")
 
 // Two chats in one project: told apart by their titles.
 event("a2", "/Users/me/Documents/GitHub")
@@ -881,6 +888,22 @@ do {
         known.pollCodexRollouts()
         spin({ known.sessions.count > 1 }, seconds: 0.6)
         check(known.sessions.count == 1 && known.sessions[ids[4]]?.ambient == false, "codex files: a chat a hook knows isn't added twice")
+        // Codex's names for its chats, and whether a Codex runs in the folder (review, 27.10)
+        try? #"{"id":"\#(ids[4])","thread_name":"Fix the tests","updated_at":"2026-10-27T10:24:19Z"}"#
+            .appending("\n").write(to: base.appendingPathComponent("home/session_index.jsonl"), atomically: true, encoding: .utf8)
+        let named = SessionStore()
+        var running: Set<String> = []
+        named.codexFoldersOpen = { $0.intersection(running) }
+        named.pollCodexRollouts()
+        spin { named.sessions[ids[4]]?.title != nil }
+        check(named.sessions[ids[4]]?.title == "Fix the tests", "codex files: a chat takes Codex's name for it")
+        check(named.focus(windowTitle: "nikola — Fix the tests | proj — codex ▸ codex — 202×63", sticky: [])?.id == ids[4],
+              "codex files: its tab followed by that name")
+        check(named.sessions[ids[4]]?.codexWindowOpen == false, "codex files: no Codex running in its folder: closed, its server not handed words")
+        running = ["/Users/me/proj"]
+        named.markOpenCodexChats()
+        check(named.sessions[ids[4]]?.codexWindowOpen == true, "codex files: a Codex running in its folder: open")
+        try? fm.removeItem(at: base.appendingPathComponent("home/session_index.jsonl"))
         let idle = Session(id: "idle"); idle.entrypoint = "codex"; idle.ambient = true
         idle.lastEvent = Date().addingTimeInterval(-1200); idle.transcriptChanged = Date().addingTimeInterval(-1200)
         check(!idle.isAlive(), "codex files: a chat whose file stopped changing is gone after a quarter of an hour")

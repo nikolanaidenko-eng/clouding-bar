@@ -174,6 +174,8 @@ final class CodexRollouts {
         /// Only read for the ones fresh enough to be a chat shown.
         let meta: CodexRollout.Meta?
         let archived: Bool
+        /// Codex's name for the chat ("Fix the tests"), as its tab shows it.
+        var name: String? = nil
     }
 
     /// Limits older than a week are over whatever they said.
@@ -222,6 +224,7 @@ final class CodexRollouts {
             if let m = Self.modified(path), m > newest, now.timeIntervalSince(m) < Self.horizon { list.append((path, m, true)) }
         }
         metas = metas.filter { alive.contains($0.key) }
+        let names = Self.threadNames()
         return list.sorted { $0.modified > $1.modified }.map { f in
             var meta: CodexRollout.Meta?
             if !f.archived, now.timeIntervalSince(f.modified) < Self.freshness {
@@ -231,9 +234,27 @@ final class CodexRollouts {
                     if meta != nil { metas[f.path] = .some(meta) }
                 }
             }
-            return Found(path: f.path, id: meta?.id?.lowercased() ?? CodexRollout.threadId(ofFile: f.path) ?? f.path,
-                         modified: f.modified, meta: meta, archived: f.archived)
+            let id = meta?.id?.lowercased() ?? CodexRollout.threadId(ofFile: f.path) ?? f.path
+            return Found(path: f.path, id: id, modified: f.modified, meta: meta, archived: f.archived, name: names[id])
         }
+    }
+
+    /// Codex's names for its chats (session_index.jsonl: id, thread_name;
+    /// the newest last), from the file's end. Two tabs of one folder are
+    /// told apart by them, as the tabs' titles carry them (review, 27.10).
+    static func threadNames() -> [String: String] {
+        guard let h = try? FileHandle(forReadingFrom: CodexRollout.home.appendingPathComponent("session_index.jsonl")) else { return [:] }
+        defer { try? h.close() }
+        let size = (try? h.seekToEnd()) ?? 0
+        try? h.seek(toOffset: size > 256 << 10 ? size - (256 << 10) : 0)
+        guard let data = try? h.readToEnd() else { return [:] }
+        var names: [String: String] = [:]
+        for line in data.split(separator: 0x0A) { // a line cut at the start doesn't parse: skipped
+            guard let o = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+                  let id = o["id"] as? String, let name = o["thread_name"] as? String, !name.isEmpty else { continue }
+            names[id.lowercased()] = name
+        }
+        return names
     }
 
     private static func modified(_ path: String) -> Date? {

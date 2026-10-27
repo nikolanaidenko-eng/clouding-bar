@@ -29,6 +29,9 @@ final class Session {
     var ambient = false
     /// Where a Codex chat runs: "Terminal", "VS Code", "App" (its session_meta).
     var codexHost: String?
+    /// A Codex runs in its folder (SessionStore.markOpenCodexChats): its
+    /// server may be handed words for it.
+    var codexWindowOpen = false
     var activity: Activity = .sleep {
         didSet {
             if activity != oldValue { activitySince = Date() }
