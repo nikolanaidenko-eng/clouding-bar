@@ -2170,6 +2170,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func sendToCodex(_ text: String, files: [String], into session: Session, fallback: @escaping () -> Void) {
         let words = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
         let name = session.displayName, id = session.id
+        // Its Codex looked at again now, not 10 s ago: just quit, the chat is
+        // still loaded and would run with no window (review, 27.10).
+        guard let cwd = session.cwd, Tty.codexFolders([cwd]).contains(cwd) else {
+            session.codexWindowOpen = false
+            DebugLog.note("Codex isn't running in \(name)'s folder any more — kept")
+            fallback()
+            return
+        }
         codexSending.insert(id)
         codexServer.send(words, to: id) { [weak self] result in
             self?.codexSending.remove(id)
