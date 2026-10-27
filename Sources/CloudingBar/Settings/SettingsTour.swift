@@ -31,7 +31,7 @@ enum SettingsTour {
                  text: "Claude Code, VS Code, Codex and Cowork connect in this box. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first.",
                  group: "Connections"),
         TourStop(tab: "general", anchor: "app.more", title: "Only the main rows",
-                 text: "Each box opens with a click on its name and shows what most people need. The rest, like colours, updates or the extra widget switches, waits behind More… in the same box.",
+                 text: "Each box shows two or three rows most people need. The rest, like the look, short chat names, updates or Cowork, waits behind More… in the same box.",
                  tryText: "Try it: click More…", tried: .more, group: "App"),
         TourStop(tab: "widget", anchor: "widget.preview", title: "The floating widget, your way",
                  text: "A small pill over your windows: the 5-hour limit and how full the chat is. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. The notch and its place are in the box below."),
