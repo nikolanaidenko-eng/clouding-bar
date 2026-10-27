@@ -42,6 +42,8 @@ struct BarModel: Equatable {
     var quiet = false
     /// The widget is open from Cloud's button: Cloud stays up (not asleep).
     var awake = false
+    /// The chat's Cloud (its colorIndex); nil: the colour picked in Settings.
+    var cloudVariant: Int?
     /// What shows besides the character: "session", "reset", "context",
     /// "model", "buttons", "mic", "shot" (Settings → Touch Bar).
     var shows: Set<String> = ["session", "reset", "context", "buttons"]
@@ -887,6 +889,7 @@ final class BarView: NSView {
     func waveCharacter() { mascot.wave() }
 
     private func refreshValues() {
+        mascot.variant = model.cloudVariant
         mascot.activity = model.activity
         mascot.awake = model.awake
         if case let .question(text, _, _, _) = model.mode { questionMessage?.setDetail(text) }

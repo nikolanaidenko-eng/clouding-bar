@@ -803,7 +803,7 @@ struct PillBoard: View {
     /// Cloud, with the number of files waiting for Claude (or a "+" while
     /// some are dragged over).
     private var character: some View {
-        MascotIcon(activity: model.activity, size: 30, waves: model.cloudWaves).frame(width: 30, height: 30).cloudOut(model.cloudOut)
+        MascotIcon(activity: model.activity, size: 30, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 30, height: 30).cloudOut(model.cloudOut)
             .overlay(FileBadge(text: state.dropHover ? "+" : model.attachments.isEmpty ? nil : "\(model.attachments.count)")
                 .offset(x: 5, y: -3), alignment: .topTrailing)
             .allowsHitTesting(false)
@@ -1000,7 +1000,7 @@ struct PillTyping: View {
     var body: some View {
         HStack(spacing: 10) {
             if !inline {
-                MascotIcon(activity: model.activity, size: 30, waves: model.cloudWaves).frame(width: 30, height: 30).cloudOut(model.cloudOut)
+                MascotIcon(activity: model.activity, size: 30, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 30, height: 30).cloudOut(model.cloudOut)
                     .allowsHitTesting(false)
             }
             if !model.attachments.isEmpty {
