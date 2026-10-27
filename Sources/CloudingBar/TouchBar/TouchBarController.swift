@@ -15,9 +15,12 @@ final class TouchBarController: NSObject, NSTouchBarDelegate {
     /// `fullWidth`: over the Control Strip too; else next to it (put up
     /// again when that changes).
     func show(_ model: BarModel, fullWidth: Bool) {
+        // Another width: the bar up now taken down first. Changed in it, the
+        // new content showed squeezed there a moment, then again in the new
+        // one — the chats list blinked and took taps only after (owner, 27.10).
+        if presentedBar != nil && presentedFullWidth != fullWidth { hide() }
         barView.narrow = !fullWidth
         barView.update(model)
-        if presentedBar != nil && presentedFullWidth != fullWidth { hide() }
         // Taken off the Touch Bar meanwhile (a window of ours came to the
         // keyboard): put it back.
         if presentedBar != nil && barView.window == nil && Date().timeIntervalSince(presentedAt) > 5 { hide() }

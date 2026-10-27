@@ -115,6 +115,10 @@ moved.transcriptPath = "/Users/me/.claude/projects/-Users-me-my-app/mv.jsonl"
 check(moved.startFolder == "/Users/me/my.app", "start folder: a dot in a name reads as Claude Code writes it")
 moved.transcriptPath = "/Users/me/.claude/projects/-Users-me-elsewhere/mv.jsonl"
 check(moved.startFolder == nil, "start folder: none of its folders: unknown (the cwd is used)")
+moved.cwd = "/Users/me/elsewhere/x/../y"
+check(moved.startFolder == "/Users/me/elsewhere", "start folder: a path with .. is read as it resolves, never looped on")
+moved.cwd = "/.."
+check(moved.startFolder == nil, "start folder: the root: none")
 
 // Context percent
 let s = Session(id: "x")
@@ -886,6 +890,32 @@ do {
         spin { done }
         check(found.first { $0.path == latePath }?.meta?.interactive == true, "codex files: a file whose first line came late is read again")
         try? fm.removeItem(atPath: latePath)
+
+        // Its tab (owner, 27.10): the one Codex program in a terminal in its folder
+        func termMeta(_ id: String) -> String {
+            line(t0, "session_meta", #"{"id":"\#(id)","cwd":"/Users/me/term","originator":"codex_cli_rs","cli_version":"0.164.0","source":"cli"}"#)
+        }
+        let termId = "019a0000-0000-7000-8000-000000000011", twinId = "019a0000-0000-7000-8000-000000000012"
+        let termPath = dir.appendingPathComponent(rollName(termId)).path, twinPath = dir.appendingPathComponent(rollName(twinId)).path
+        write([termMeta(termId)], to: termPath, modified: Date())
+        let tabs = SessionStore()
+        var running: Set<String> = ["/dev/ttys042"]
+        tabs.codexTerminals = { $0 == "/Users/me/term" ? running : [] }
+        tabs.pollCodexRollouts()
+        spin { tabs.sessions[termId]?.tty != nil }
+        check(tabs.sessions[termId]?.tty == "/dev/ttys042" && tabs.session(inWindow: "zsh", tty: "/dev/ttys042")?.id == termId,
+              "codex files: a chat in a terminal gets the tab of the one Codex in its folder — it opens, and takes words there")
+        check(tabs.sessions[ids[4]].map { $0.tty == nil } != false, "codex files: one in VS Code gets none")
+        running = ["/dev/ttys042", "/dev/ttys043"]
+        tabs.findCodexTerminals()
+        check(tabs.sessions[termId]?.tty == nil, "codex files: two Codex programs in its folder: no tab, never a guess")
+        running = ["/dev/ttys042"]
+        write([termMeta(twinId)], to: twinPath, modified: Date())
+        tabs.pollCodexRollouts()
+        spin { tabs.sessions[twinId] != nil }
+        check(tabs.sessions[termId]?.tty == nil && tabs.sessions[twinId]?.tty == nil, "codex files: two chats in that folder: no tab for either")
+        try? fm.removeItem(atPath: termPath)
+        try? fm.removeItem(atPath: twinPath)
     }
 
     // Connect: only what's new is added
