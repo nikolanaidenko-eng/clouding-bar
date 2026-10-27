@@ -1741,18 +1741,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if session.ambient {
             // Known only from Codex's files, no tty: its tab by the title Codex
-            // gives it, "<the chat's name> | <folder>" — one such tab, or none
-            // brought up (owner, 27.10).
+            // gives it, "<the chat's name> | <project>" — one such tab, or none
+            // brought up (owner, 27.10). Only brought up: nothing typed by it.
             let name = session.displayName
-            guard let title = session.title, let folder = session.cwd.map({ URL(fileURLWithPath: $0).lastPathComponent }) else {
+            guard let title = session.title, let cwd = session.cwd else {
                 NSSound.beep()
                 DebugLog.note("open: \(name) has no name from Codex yet — no tab to bring up")
                 return
             }
-            Terminals.focus(title: title + " | " + folder) { found in
-                guard !found else { return }
-                NSSound.beep()
-                DebugLog.note("open: no one tab titled for \(name) — not brought up")
+            Terminals.tabs { tabs in
+                let hits = tabs.filter { CodexRollout.isTabTitle($0.title, of: title, in: cwd) }
+                guard hits.count == 1 else {
+                    NSSound.beep()
+                    DebugLog.note("open: \(hits.count) tabs titled for \(name) — not brought up")
+                    return
+                }
+                Terminals.focus(tty: hits[0].tty) { found in if !found { NSSound.beep() } }
             }
             return
         }
