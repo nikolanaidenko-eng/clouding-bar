@@ -221,15 +221,15 @@ enum Setup {
     /// ~/.codex/hooks.json: the same command, marked --codex. It runs them
     /// only once you've trusted them in Codex (/hooks). CLOUDINGBAR_CODEX_HOME
     /// stands in for ~/.codex in tests.
-    static var codexHome: URL {
-        ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"].map { URL(fileURLWithPath: $0) }
-            ?? home.appendingPathComponent(".codex")
-    }
+    static var codexHome: URL { CodexRollout.home }
     static var codexHooksURL: URL { codexHome.appendingPathComponent("hooks.json") }
     static var codexCommand: String { hook + " --codex" }
-    /// Codex has no Notification or PostToolUseFailure.
+    /// Codex has no Notification or PostToolUseFailure, and has Interrupt (you
+    /// stopped a turn: no Stop follows). Codex trusts a hook entry once, so
+    /// an event added later is the only thing to trust again: new events go
+    /// last in the list, the entries already there are never touched.
     static let codexEvents = ["SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "PreToolUse",
-                              "PostToolUse", "PermissionRequest", "SubagentStart", "SubagentStop"]
+                              "PostToolUse", "PermissionRequest", "SubagentStart", "SubagentStop", "Interrupt"]
 
     static var hasCodex: Bool { FileManager.default.fileExists(atPath: codexHome.path) }
 
@@ -258,10 +258,12 @@ enum Setup {
             file = o
         }
         var hooks = file["hooks"] as? [String: Any] ?? [:]
+        var added = false
         for event in codexEvents {
             var entries = hooks[event] as? [[String: Any]] ?? []
             let ours = entries.contains { (($0["hooks"] as? [[String: Any]]) ?? []).contains { ($0["command"] as? String) == codexCommand } }
             if !ours {
+                added = true
                 var h: [String: Any] = ["type": "command", "command": codexCommand]
                 if let t = timeouts[event] { h["timeout"] = t }
                 entries.append(["hooks": [h]])
@@ -270,7 +272,7 @@ enum Setup {
         }
         file["hooks"] = hooks
         let after = try JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        guard after != before else { return }
+        guard added else { return }
         try fm.createDirectory(at: codexHome, withIntermediateDirectories: true)
         if let before {
             let backups = dir.appendingPathComponent("backups", isDirectory: true)

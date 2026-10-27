@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             accept(message, responder)
         } else if let id = message.sessionId {
             switch message.event {
-            case "Stop", "UserPromptSubmit", "SessionEnd":
+            case "Stop", "UserPromptSubmit", "SessionEnd", "Interrupt":
                 // Claude moved on, so whatever it asked was answered elsewhere.
                 for r in requests where r.sessionId == id { finish(r, "\(message.event ?? "") → dropped") }
             case "PostToolUse", "PostToolUseFailure":
@@ -271,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if ticks % 2 == 0 {
             store.pollTranscripts()
+            if ticks % 10 == 0 || ticks == 2 { store.pollCodexRollouts() }
             readCowork()
         } else {
             readDesktopPrompt()
@@ -499,6 +500,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .permission:
                 let s = request.summary
                 bar.mode = .permission(verb: s.verb, detail: s.detail)
+                bar.offersAlways = request.canRemember
             case .question:
                 if typingFor === request {
                     bar.mode = .typing(text: typingText)
@@ -948,6 +950,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         requests.removeAll { $0 === request }
         request.responder.answer(output)
+        // Codex's own prompt is not coming: it asked, you answered here.
+        if request.entrypoint == "codex", let id = request.sessionId { store.sessions[id]?.waitingNotice = false }
         if typingFor === request { stopTyping() }
         DebugLog.note("answered from the bar")
         setNeedsRefresh()
@@ -1209,7 +1213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("connect to Codex")
             do {
                 try Setup.connectCodex()
-                self?.model.setupMessage = "Done. Now open Codex once and run /hooks to trust Clouding Bar's hooks — Codex runs them only after that."
+                self?.model.setupMessage = "Done. Codex runs the hooks only once you trust them: start it and choose Trust all (or run /hooks). A hook added later asks again, for itself only."
             } catch {
                 self?.model.setupMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
             }
@@ -1504,7 +1508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "claude-vscode": source = "VS Code"
         case "cli": source = "Terminal"
         case "claude-desktop": source = "Desktop"
-        case "codex": source = "Codex"
+        case "codex": source = "Codex" + (s.codexHost.map { " · " + $0 } ?? "")
         default: source = "Claude Code"
         }
         // A titled chat names its project too; an untitled one is its project.
@@ -1674,6 +1678,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             card.verb = s.verb
             // The widget has room for all of it: the command, the change, the arguments.
             card.detail = r.fullDetail
+            card.offersAlways = r.canRemember
         } else if let q = r.current {
             card.question = q.text
             card.options = q.options

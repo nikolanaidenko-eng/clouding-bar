@@ -113,21 +113,42 @@ These are messages without `hook_event_name`, in the status line's shape:
 OpenAI's Codex runs the same hook, from `~/.codex/hooks.json`, as
 `cloudingbar-hook --codex`; the hook marks its events `"claude_entrypoint":
 "codex"`. Codex has `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `Stop`,
-`PreToolUse`, `PostToolUse`, `PermissionRequest`, `SubagentStart` and
-`SubagentStop` (no `Notification`), and runs hooks only after you trust them
-with `/hooks` in Codex.
+`Interrupt` (you stopped a turn: no `Stop` follows), `PreToolUse`,
+`PostToolUse`, `PermissionRequest`, `SubagentStart` and `SubagentStop` (no
+`Notification`), and runs hooks only after you trust them (`/hooks`, or
+"Trust all" at start). The trust is per entry: Connect only ever appends.
+`model` in its hooks is a plain string.
 
 - Permissions: the same outputs, except **Always** is a plain allow (Codex
-  refuses `updatedPermissions`). Codex holds its own prompt while the hook
-  waits, so its requests are held briefly, like the terminal's.
+  refuses `updatedPermissions`), so the bar doesn't offer it. Codex holds its
+  own prompt while the hook waits, so its requests are held briefly, like the
+  terminal's. A `PermissionRequest` marks the chat as asking (`waitingNotice`)
+  until `PostToolUse`, `Stop`, `Interrupt` or a new prompt. `apply_patch`
+  shows its files, from the `*** Update/Add/Delete File:` lines.
 - Its questions (`request_user_input`) can't be answered from a hook.
-- Its `transcript_path` is the session's rollout. The app reads
-  `event_msg` / `token_count` lines — `info.last_token_usage.total_tokens`
-  over `info.model_context_window` for the context, and `rate_limits.primary`
-  / `secondary` (`used_percent`, `window_minutes`: 300 or 10080, `resets_at`)
-  for **Codex's own** 5-hour and weekly limits — and `turn_context` lines for
-  the model and effort. While a Codex session is in front, the widget and the
-  bar show Codex's limits.
+- **Its files**, read with or without hooks: `~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`
+  (`.zst` ones are old and skipped), lines of `{"timestamp", "type", "payload"}`.
+  A file is read from its last 3 MB, whole lines only. Used:
+  - `session_meta` (first line): `id`, `cwd`, `originator` ("codex_cli_rs" =
+    Terminal, "codex_vscode" = VS Code, "Codex …" = App), `source` (a chat of a
+    person is `cli`/`vscode`/custom; `subagent`, `exec`, `mcp` are not shown), `git.branch`;
+  - `turn_context`: `model`, `effort`;
+  - `event_msg` `task_started` (working), `task_complete` / `turn_aborted` (done);
+  - `event_msg` `token_count`: `info.last_token_usage.total_tokens` over
+    `info.model_context_window` for the context — as Codex shows it, the first
+    12 000 tokens not counted — `info.total_token_usage` for tokens, and
+    `rate_limits` for **Codex's own** limits: `primary` / `secondary` with
+    `used_percent`, `window_minutes` (300 = 5-hour, 10080 = weekly; one window
+    is possible, other lengths are ignored), `resets_at` (unix seconds, an ISO
+    string in older files; `resets_in_seconds` in the oldest), and `plan_type`.
+    Only `limit_id` empty or `codex` is the account's; other buckets are kept aside.
+  The newest report wins, whichever chat's file it came from; a window whose
+  `resets_at` has passed reads as reset (0 %).
+- Without hooks, a chat whose file changed in the last quarter of an hour (an
+  hour while a turn is on) is shown, marked ambient: no process to watch, no
+  permissions to answer. A hook that arrives takes it over; a `SessionEnd`
+  keeps it from coming back.
+- While a Codex chat is in front, the widget and the bar show Codex's limits.
 
 ## Requests: answers from the bar
 

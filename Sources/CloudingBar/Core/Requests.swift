@@ -100,6 +100,10 @@ final class PendingRequest {
 
     var current: QuestionItem? { index < questions.count ? questions[index] : nil }
 
+    /// "Always" is Claude's: Codex refuses what it would remember, so there
+    /// it would only be a second Allow.
+    var canRemember: Bool { entrypoint != "codex" }
+
     /// VS Code and the desktop app show their own dialog alongside the hook
     /// and take whichever answer comes first, so holding there costs
     /// nothing. Elsewhere (terminal, scripts) Claude may wait on the hook.
@@ -124,6 +128,13 @@ final class PendingRequest {
         func file(_ key: String) -> String? { str(key).map { URL(fileURLWithPath: $0).lastPathComponent } }
         let oneLine: (String) -> String = { $0.replacingOccurrences(of: "\n", with: " ⏎ ") }
         switch toolName {
+        case "apply_patch" where !patchFiles.isEmpty:
+            // Codex's patch: which files, not the patch (fullDetail has the list).
+            let files = patchFiles
+            let names = files.map { URL(fileURLWithPath: $0.path).lastPathComponent }
+            let shown = names.count > 3 ? Array(names.prefix(2)) + ["+\(names.count - 2) more"] : names
+            let verb = files.allSatisfy { $0.action == "Add" } ? "Write" : files.allSatisfy { $0.action == "Delete" } ? "Delete" : "Edit"
+            return (verb, shown.joined(separator: ", "))
         case "Bash": return ("Run", oneLine(str("command") ?? ""))
         case "Edit", "MultiEdit": return ("Edit", file("file_path") ?? "")
         case "Write": return ("Write", file("file_path") ?? "")
@@ -147,6 +158,10 @@ final class PendingRequest {
         func str(_ key: String) -> String? { toolInput[key] as? String }
         func cut(_ s: String, _ n: Int) -> String { s.count > n ? String(s.prefix(n)) + "…" : s }
         switch toolName {
+        case "apply_patch" where !patchFiles.isEmpty:
+            let files = patchFiles
+            return (files.prefix(12).map { $0.action + " " + $0.path } + (files.count > 12 ? ["… +\(files.count - 12) more"] : []))
+                .joined(separator: "\n")
         case "Bash":
             return str("command") ?? summary.detail
         case "Edit":
@@ -167,6 +182,26 @@ final class PendingRequest {
             }
             return ([summary.detail] + args).joined(separator: "\n")
         }
+    }
+
+    /// The files an apply_patch changes, from its "*** Update File: path" lines
+    /// (Add, Delete too; a move shows as its new path).
+    var patchFiles: [(action: String, path: String)] {
+        guard let patch = (toolInput["command"] ?? toolInput["input"]) as? String else { return [] }
+        return Self.patchFiles(in: patch)
+    }
+
+    static func patchFiles(in patch: String) -> [(action: String, path: String)] {
+        var files: [(action: String, path: String)] = []
+        for line in patch.split(separator: "\n", omittingEmptySubsequences: true) {
+            for action in ["Update", "Add", "Delete"] where line.hasPrefix("*** \(action) File: ") {
+                files.append((action, String(line.dropFirst("*** \(action) File: ".count)).trimmingCharacters(in: .whitespaces)))
+            }
+            if line.hasPrefix("*** Move to: "), !files.isEmpty {
+                files[files.count - 1].path = String(line.dropFirst("*** Move to: ".count)).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return files
     }
 
     // MARK: Hook output (docs: code.claude.com/docs/en/hooks)

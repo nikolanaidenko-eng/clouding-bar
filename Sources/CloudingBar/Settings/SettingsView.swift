@@ -822,8 +822,8 @@ struct GeneralTab: View {
                 if model.hasCodex {
                     SettingsRow(title: "Codex · beta",
                                 hint: model.codexConnected
-                                    ? "Beta, little tested · trust the hooks once with /hooks in Codex"
-                                    : "Beta, little tested · its own limits and permissions, here too",
+                                    ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
+                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)",
                                 divider: model.hasVSCode || model.setupMessage != nil) {
                         if model.codexConnected {
                             Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)

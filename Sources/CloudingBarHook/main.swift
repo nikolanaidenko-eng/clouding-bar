@@ -48,7 +48,8 @@ func claudePID() -> Int32? {
         let name = withUnsafePointer(to: &info.kp_proc.p_comm) {
             $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXCOMLEN) + 1) { String(cString: $0) }
         }
-        if name == "claude" || name == "codex" { return pid }
+        // Codex's program may carry its platform in the name ("codex-aarch64-ap…").
+        if name == "claude" || name.hasPrefix("codex") { return pid }
         pid = info.kp_eproc.e_ppid
     }
     return nil

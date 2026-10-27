@@ -1578,8 +1578,10 @@ struct RequestCardView: View {
             Button("Allow") { model.perform(.allow) }
                 .buttonStyle(WidgetButtonStyle(background: .cbAction, foreground: .white, weight: .semibold,
                                                height: 32, radius: 9))
-            Button("Always allow") { model.perform(.always) }
-                .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
+            if r.offersAlways {
+                Button("Always allow") { model.perform(.always) }
+                    .buttonStyle(WidgetButtonStyle(height: 32, radius: 9))
+            }
             Button("Deny") { model.perform(.deny) }
                 .buttonStyle(WidgetButtonStyle(foreground: .cbDeny, height: 32, radius: 9))
                 .cancelKey(enabled: armed == r.id)

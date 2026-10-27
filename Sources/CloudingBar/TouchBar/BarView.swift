@@ -55,6 +55,8 @@ struct BarModel: Equatable {
     var chats: [Chat] = []
     /// The chat a request comes from (with several chats).
     var requestChat: Chat?
+    /// "Always" beside Allow: Claude's, not Codex's (it can't remember an allow).
+    var offersAlways = true
     /// The typing field's word before it and its placeholder: an answer
     /// ("Other") or a message to the chat ("To Status bar").
     var typingLabel = "Other"
@@ -230,7 +232,7 @@ final class BarView: NSView {
         case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
         case .contextWarning: return "context"
         case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)"
-        case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)"
+        case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)|\(m.offersAlways)"
         case let .question(text, options, multi, picked):
             // The question as asked, not its short form: that swaps in place.
             return "question|\(m.questionKey.isEmpty ? text : m.questionKey)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
@@ -440,9 +442,9 @@ final class BarView: NSView {
             let always = BarButton("Always") { [weak self] in self?.onAction?(.always) }
             let deny = BarButton("Deny", style: .deny) { [weak self] in self?.onAction?(.deny) }
             add(allow, .fixed(model.short ? 76 : 100))
-            add(always, .fixed(model.short ? 80 : 100))
+            if model.offersAlways { add(always, .fixed(model.short ? 80 : 100)) }
             add(deny, .fixed(model.short ? 62 : 75))
-            [allow, always, deny].forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
+            (model.offersAlways ? [allow, always, deny] : [allow, deny]).forEach { b in animate(b) { $0.slideIn(delay: 0.06) } }
 
         case let .question(text, options, multi, picked):
             addRequestChat()
@@ -642,12 +644,13 @@ final class BarView: NSView {
         let shows = model.shows
         var blocks: [(key: String, view: NSView, width: CGFloat, droppable: Bool)] = []
         // The chat: its project's first letter, a capital, no dot (owner,
-        // 26.10); a tap lists the chats to switch.
+        // 26.10), in the chat's colour and a little bolder (owner, 27.10);
+        // a tap lists the chats to switch.
         if shows.contains("name") {
             let chat = model.chats.first(where: \.current)
             let source = model.project ?? chat?.name ?? ""
             let letter = source.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "—"
-            let b = BarButton(letter, fontSize: 13) { [weak self] in self?.onAction?(.chats) }
+            let b = BarButton(letter, fontSize: 13, tint: chat?.color, weight: .semibold) { [weak self] in self?.onAction?(.chats) }
             b.setAccessibilityLabel(chat?.name ?? "Chats")
             blocks.append(("name", b, Self.shortWidth("name", shows: shows), false))
         }

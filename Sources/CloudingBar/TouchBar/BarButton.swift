@@ -22,9 +22,14 @@ final class BarButton: NSButton {
     private let fullTitle: String
     private let dotColor: UInt32?
     private var scroller: CALayer?
+    /// The title in a colour of its own (the chat's letter on the short
+    /// bar) and weight; else the style's.
+    private let tint: UInt32?
+    private let weight: NSFont.Weight
 
     init(_ title: String, style: Style = .normal, fontSize: CGFloat = Palette.buttonFont,
          icon: NSImage? = nil, dot: UInt32? = nil, symbol: (name: String, tint: UInt32)? = nil,
+         tint: UInt32? = nil, weight: NSFont.Weight? = nil,
          marquee: Bool = false, onTap: (() -> Void)? = nil) {
         self.style = style
         self.fontSize = fontSize
@@ -32,6 +37,8 @@ final class BarButton: NSButton {
         self.marquee = marquee && symbol == nil && icon == nil
         self.fullTitle = title
         self.dotColor = dot
+        self.tint = tint
+        self.weight = weight ?? (style == .primary ? .semibold : .regular)
         super.init(frame: .zero)
         isBordered = false
         wantsLayer = true
@@ -87,16 +94,9 @@ final class BarButton: NSButton {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingTail
-        let color: NSColor
-        switch style {
-        case .primary: color = .white
-        case .deny: color = Palette.denyText
-        default: color = Palette.text
-        }
-        let weight: NSFont.Weight = style == .primary ? .semibold : .regular
         attributedTitle = NSAttributedString(string: text, attributes: [
-            .font: NSFont.systemFont(ofSize: fontSize, weight: weight),
-            .foregroundColor: color,
+            .font: titleFont,
+            .foregroundColor: titleColor,
             .paragraphStyle: paragraph,
         ])
     }
@@ -106,7 +106,15 @@ final class BarButton: NSButton {
         ceil(titleWidth) + padding * 2 + (hasDot ? 17 : 0)
     }
 
-    private var titleFont: NSFont { NSFont.systemFont(ofSize: fontSize, weight: style == .primary ? .semibold : .regular) }
+    private var titleFont: NSFont { NSFont.systemFont(ofSize: fontSize, weight: weight) }
+    private var titleColor: NSColor {
+        if let tint { return NSColor(hex: tint) }
+        switch style {
+        case .primary: return .white
+        case .deny: return Palette.denyText
+        default: return Palette.text
+        }
+    }
     private var titleWidth: CGFloat { (fullTitle as NSString).size(withAttributes: [.font: titleFont]).width }
 
     override func layout() {
@@ -172,7 +180,7 @@ final class BarButton: NSButton {
         let clip = CALayer()
         clip.frame = CGRect(x: x0 + dotRoom, y: 0, width: shown, height: bounds.height)
         clip.masksToBounds = true
-        let color: NSColor = style == .deny ? Palette.denyText : style == .primary ? .white : Palette.text
+        let color = titleColor
         let height = ceil(titleFont.ascender - titleFont.descender) + 2
         let y = (bounds.height - height) / 2
         func copy(at x: CGFloat) -> CATextLayer {

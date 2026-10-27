@@ -127,10 +127,20 @@ A first version for **Windows** is in [windows/](windows/README.md).
   let it compact by itself).
 
 **Codex too (beta)**
-- Clouding Bar can follow OpenAI's **Codex** as well: its sessions, its own
-  5-hour and weekly limits, its context, and its permission requests
-  (Settings → General → Codex → Connect, then trust the hooks once with
-  `/hooks` in Codex). It's little tested yet — tell us what doesn't work.
+- Clouding Bar follows OpenAI's **Codex** as well, with nothing to set up:
+  it reads Codex's own session files (`~/.codex/sessions`), so its chats
+  show up with their 5-hour and weekly limits (while a Codex chat is in
+  front), their context as Codex counts it, the model, and whether Codex is
+  working or done — even when you stop it with Esc.
+- **Connect** (Settings → General → Codex) adds Codex's hooks: permission
+  requests answered from the bar, subagents, and Esc seen at once. Codex runs
+  hooks only after you trust them — start Codex and choose *Trust all* (or
+  `/hooks`). A hook added in a later version asks again, for itself only.
+  Codex can't remember an "always allow", so there is none for it.
+- Not for Codex yet: its questions, the model picker, Stats, and — without
+  Connect — words from the widget (a chat known only from its files can't be
+  told apart from a shell in the same folder, so nothing is typed). It's
+  little tested — tell us what doesn't work.
 
 **And**
 - A **tour** on first launch (and behind the ? in Settings): seven stops

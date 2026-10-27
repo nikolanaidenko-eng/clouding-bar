@@ -7,6 +7,10 @@ guard ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"] != nil else {
     print("run through `make test` (it sets CLOUDINGBAR_DIR)")
     exit(2)
 }
+// Nothing here reads the real ~/.codex either.
+if ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"] == nil {
+    setenv("CLOUDINGBAR_CODEX_HOME", ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]! + "/no-codex", 1)
+}
 var failures = 0
 func check(_ ok: Bool, _ what: String, line: Int = #line) {
     print(ok ? "ok   \(what)" : "FAIL \(what) (line \(line))")
@@ -550,6 +554,361 @@ do {
     let always = pending?.always()["hookSpecificOutput"] as? [String: Any]
     check((always?["decision"] as? [String: Any])?["updatedPermissions"] == nil, "codex: Always is a plain allow (no remembered rules)")
     check(pending?.hostAnswersInParallel == false, "codex: Codex waits on the hook, so it's held briefly")
+}
+
+// MARK: Codex: limits, status, files (fixtures follow the documented rollout and hook formats)
+
+do {
+    let fm = FileManager.default
+    let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("codex")
+    try? fm.removeItem(at: base)
+    try? fm.createDirectory(at: base, withIntermediateDirectories: true)
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    func stamp(_ d: Date) -> String { iso.string(from: d) }
+    func line(_ ts: Date, _ type: String, _ payload: String) -> String { #"{"timestamp":"\#(stamp(ts))","type":"\#(type)","payload":\#(payload)}"# }
+    func event(_ ts: Date, _ payload: String) -> String { line(ts, "event_msg", payload) }
+    func counts(_ ts: Date, last: Int = 41900, window: Int = 258400, limits: String?) -> String {
+        event(ts, #"{"type":"token_count","info":{"total_token_usage":{"input_tokens":120000,"cached_input_tokens":90000,"output_tokens":3200,"reasoning_output_tokens":1500,"total_tokens":123200},"last_token_usage":{"input_tokens":41000,"cached_input_tokens":38000,"output_tokens":900,"reasoning_output_tokens":400,"total_tokens":\#(last)},"model_context_window":\#(window)},"rate_limits":\#(limits ?? "null")}"#)
+    }
+    func windows(id: String = "codex", five: String? = #""used_percent":12.0,"window_minutes":300,"resets_at":1793020000"#,
+                 week: String? = #""used_percent":4.0,"window_minutes":10080,"resets_at":1793600000"#, plan: String = "plus") -> String {
+        #"{"limit_id":"\#(id)","limit_name":null,"primary":\#(five.map { "{" + $0 + "}" } ?? "null"),"secondary":\#(week.map { "{" + $0 + "}" } ?? "null"),"credits":{"has_credits":false,"unlimited":false,"balance":null},"plan_type":"\#(plan)"}"#
+    }
+    func scan(_ lines: [String]) -> TranscriptWatcher.Update {
+        var u = TranscriptWatcher.Update(sessionId: "t", modified: Date())
+        for l in lines { TranscriptWatcher.scanCodex(Data(l.utf8)[...], into: &u) }
+        return u
+    }
+    func spin(_ done: () -> Bool, seconds: Double = 5) {
+        let end = Date().addingTimeInterval(seconds)
+        while !done() && Date() < end { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
+    }
+    let t0 = Date(timeIntervalSince1970: 1_792_999_000) // 2026-10-26, fixed: parsing doesn't look at the clock
+
+    // Limits, as the lines say them
+    let modern = scan([counts(t0, limits: windows())])
+    check(modern.codexFiveHour?.percent == 12 && modern.codexFiveHour?.resetsAt == 1793020000
+          && modern.codexWeek?.percent == 4 && modern.codexPlan == "plus", "codex files: 5-hour, weekly and plan from a token_count")
+    check(abs((modern.codexFiveHour?.reported.timeIntervalSince(t0) ?? 99)) < 0.01, "codex files: a limit is reported at its line's time")
+    let spark = scan([counts(t0, limits: windows()), counts(t0.addingTimeInterval(1), limits: windows(id: "codex_other", five: #""used_percent":88,"window_minutes":300,"resets_at":1793021111"#))])
+    check(spark.codexFiveHour?.percent == 12 && spark.codexOther["codex_other"]?.fiveHour?.percent == 88,
+          "codex files: another bucket's snapshot is kept aside, never the account's limit")
+    check(scan([counts(t0, limits: windows(id: "codex_other"))]).codexFiveHour == nil, "codex files: only another bucket's limit: no account limit")
+    check(scan([counts(t0, limits: windows(id: ""))]).codexFiveHour?.percent == 12, "codex files: an empty limit_id is the account's")
+    let legacy = scan([counts(t0, limits: windows(five: #""used_percent":2,"window_minutes":300,"resets_in_seconds":1800"#, week: nil))])
+    check(legacy.codexFiveHour?.resetsAt == t0.timeIntervalSince1970 + 1800 && legacy.codexWeek == nil, "codex files: resets_in_seconds counts from the line, no weekly window is fine")
+    let isoReset = scan([counts(t0, limits: windows(five: #""used_percent":3,"window_minutes":300,"resets_at":"2025-10-19T13:51:37.876641+00:00""#, week: nil))])
+    check(abs((isoReset.codexFiveHour?.resetsAt ?? 0) - 1_760_881_897.9) < 1, "codex files: resets_at as an ISO string, microseconds too")
+    let unknownReset = scan([counts(t0, limits: windows(five: #""used_percent":3,"window_minutes":300"#, week: nil))])
+    check(unknownReset.codexFiveHour?.resetsAt == t0.timeIntervalSince1970 + 300 * 60, "codex files: no reset time: at the latest a window's length later")
+    let weekly = scan([counts(t0, limits: windows(five: nil))])
+    check(weekly.codexFiveHour == nil && weekly.codexWeek?.percent == 4, "codex files: a plan with only the weekly window")
+    check(scan([counts(t0, limits: windows(five: #""used_percent":50,"window_minutes":120,"resets_at":1793020000"#, week: nil))]).codexFiveHour == nil,
+          "codex files: a window of some other length is not called 5-hour")
+    check(scan([counts(t0, limits: "null")]).codexFiveHour == nil && scan([counts(t0, limits: "null")]).contextTokens == 41900, "codex files: no rate_limits (API key): context still read")
+
+    // Turns
+    let turns = scan([event(t0, #"{"type":"task_started","turn_id":"t1","model_context_window":258400}"#),
+                      event(t0.addingTimeInterval(9), #"{"type":"turn_aborted","turn_id":"t1","reason":"interrupted"}"#)])
+    check(turns.codexTurn?.state == .aborted && turns.contextWindow == 258400, "codex files: the latest turn event wins; the window from task_started")
+    check(scan([event(t0, #"{"type":"task_started","turn_id":"t1"}"#), event(t0, #"{"type":"task_complete","turn_id":"t1","last_agent_message":"ok"}"#)]).codexTurn?.state == .done, "codex files: task_complete is done")
+    check(scan([event(t0, #"{"type":"task_started","turn_id":"t2"}"#)]).codexTurn?.state == .started, "codex files: task_started is at work")
+    check(modern.codexTokens?.input == 30000 && modern.codexTokens?.output == 3200, "codex files: tokens in (not cached) and out of the whole chat")
+
+    // Numbers
+    check(CodexRollout.contextUsedPercent(tokens: 41900, window: 258400) == 12, "codex context: 12 000 tokens are not yours (41 900 of 258 400 reads 12 %)")
+    check(CodexRollout.contextUsedPercent(tokens: 5000, window: 258400) == 0 && CodexRollout.contextUsedPercent(tokens: 258400, window: 258400) == 100
+          && CodexRollout.contextUsedPercent(tokens: 1, window: 10000) == 100, "codex context: from 0 to 100, and a window under the baseline is full")
+    let cs = Session(id: "cx"); cs.entrypoint = "codex"; cs.contextTokens = 41900; cs.contextWindowSize = 258400; cs.model = "gpt-5.3-codex"
+    check(cs.contextPercent(windowOverride: nil) == 12 && cs.modelName == "GPT-5.3-Codex", "codex session: context and model as Codex says them")
+    check(CodexRollout.modelName("gpt-5.1-codex-max") == "GPT-5.1-Codex-Max" && CodexRollout.modelName("o4-mini") == "o4-mini"
+          && Session.displayName("claude-opus-5-5[1m]") == "Opus 5.5 1M", "model names: GPT with its dashes; Claude's as before")
+    check(Inbound(raw: ["model": "gpt-5.3-codex", "claude_entrypoint": "codex"]).modelId == "gpt-5.3-codex"
+          && Inbound(raw: ["model": "claude-opus-5-5"]).modelId == nil
+          && Inbound(raw: ["model": ["id": "claude-opus-5-5"]]).modelId == "claude-opus-5-5", "model from a hook: Codex's plain string; Claude's unchanged")
+
+    // The account: newest report wins, a passed reset reads as reset
+    let acct = Account(fileName: "codex-test-account.json", keepsHistory: false)
+    let soon = Date().addingTimeInterval(3600).timeIntervalSince1970
+    acct.apply(used: 10, resetsAt: soon, reported: Date().addingTimeInterval(-100))
+    acct.apply(used: 50, resetsAt: soon, reported: Date().addingTimeInterval(-500))
+    check(acct.sessionPercent == 10, "codex account: an older report never replaces a newer one")
+    acct.apply(used: 20, resetsAt: soon, reported: Date().addingTimeInterval(-10))
+    check(acct.sessionPercent == 20 && acct.updatedAt.map { Date().timeIntervalSince($0) < 15 } == true, "codex account: a newer one does, and 'last seen' is its time")
+    acct.apply(used: 70, resetsAt: Date().addingTimeInterval(-5).timeIntervalSince1970, reported: Date().addingTimeInterval(-1))
+    check(acct.sessionPercent == 0 && acct.resetsAt == nil, "codex account: a window whose reset has passed reads as reset (0 %, no number from before)")
+    acct.applyWeek(used: 30, resetsAt: soon, reported: Date().addingTimeInterval(-60))
+    acct.applyWeek(used: 90, resetsAt: Date().addingTimeInterval(-60).timeIntervalSince1970, reported: Date())
+    check(acct.weekPercent == 0 && acct.weekResetsAt == nil, "codex account: the weekly window the same")
+    acct.setPlan("pro")
+    let again = Account(fileName: "codex-test-account.json", keepsHistory: false)
+    again.load()
+    check(again.plan == "pro" && again.weekPercent == 0, "codex account: kept across restarts, plan too")
+    let claude = Account(fileName: "codex-test-claude.json", keepsHistory: false)
+    claude.apply(used: 5, resetsAt: Date().addingTimeInterval(-60).timeIntervalSince1970)
+    check(claude.sessionPercent == 5, "claude account: applied as before (no report time, no passed-reset reading)")
+    // 1.1.4 kept the time it read any line, of any bucket (review, 27.10)
+    try? #"{"sessionPercent":88,"updatedAt":\#(Date().timeIntervalSinceReferenceDate)}"#
+        .write(to: Config.directory.appendingPathComponent("codex-test-old.json"), atomically: true, encoding: .utf8)
+    let older = Account(fileName: "codex-test-old.json", keepsHistory: false)
+    older.load()
+    older.apply(used: 12, resetsAt: soon, reported: Date().addingTimeInterval(-60))
+    check(older.sessionPercent == 12, "codex account: a number an older version kept doesn't hold back a true report")
+    let working = Session(id: "w"); working.entrypoint = "codex"; working.activity = .work
+    working.activitySince = Date().addingTimeInterval(-120)
+    let back = Session(record: working.record)
+    check(back.activity == .work && abs(back.activitySince.timeIntervalSince(working.activitySince)) < 0.01,
+          "codex: when a turn began is kept across a restart, so its task_complete written meanwhile still ends it")
+
+    // Hooks
+    func session(_ store: SessionStore, _ id: String, path: String? = nil) -> Session {
+        var raw: [String: Any] = ["session_id": id, "hook_event_name": "SessionStart", "cwd": "/Users/me/proj",
+                                  "claude_entrypoint": "codex", "claude_pid": Int(getpid())]
+        if let path { raw["transcript_path"] = path }
+        store.apply(Inbound(raw: raw))
+        return store.sessions[id]!
+    }
+    func hook(_ store: SessionStore, _ id: String, _ name: String, _ extra: [String: Any] = [:]) {
+        var raw: [String: Any] = ["session_id": id, "hook_event_name": name, "claude_entrypoint": "codex", "claude_pid": Int(getpid())]
+        for (k, v) in extra { raw[k] = v }
+        store.apply(Inbound(raw: raw))
+    }
+    do {
+        let store = SessionStore()
+        let s = session(store, "w1")
+        hook(store, "w1", "UserPromptSubmit")
+        hook(store, "w1", "PreToolUse", ["tool_name": "Bash", "tool_input": ["command": "ls"]])
+        hook(store, "w1", "PermissionRequest", ["tool_name": "Bash", "tool_input": ["command": "rm x"]])
+        check(s.waitingNotice && s.activity == .work, "codex status: a PermissionRequest is Codex asking")
+        hook(store, "w1", "PreToolUse", ["tool_name": "Bash", "tool_input": ["command": "pwd"]])
+        check(s.waitingNotice, "codex status: another call's start doesn't end the asking")
+        hook(store, "w1", "PostToolUse", ["tool_name": "Bash"])
+        check(!s.waitingNotice, "codex status: the tool's end does")
+        for end in ["Stop", "Interrupt", "UserPromptSubmit"] {
+            hook(store, "w1", "PermissionRequest", ["tool_name": "Bash", "tool_input": ["command": "x"]])
+            hook(store, "w1", end)
+            check(!s.waitingNotice && (end == "UserPromptSubmit" || s.activity == .sleep), "codex status: \(end) ends the asking")
+        }
+        hook(store, "w1", "UserPromptSubmit")
+        hook(store, "w1", "SubagentStart", ["agent_id": "a1", "agent_type": "explorer"])
+        hook(store, "w1", "Interrupt")
+        check(s.activity == .sleep && s.runningAgents == 0, "codex status: Interrupt ends the turn (no Stop comes) and its subagents")
+        let c = SessionStore(), cs = Session(id: "claude-1")
+        c.apply(Inbound(raw: ["session_id": "claude-1", "hook_event_name": "PermissionRequest", "claude_entrypoint": "cli", "tool_name": "Bash"]))
+        check(!(c.sessions["claude-1"]?.waitingNotice ?? true) && cs.entrypoint == nil, "claude status: PermissionRequest leaves waitingNotice to the Notification, as before")
+    }
+
+    // Status from the file
+    func rollName(_ id: String, _ time: Date = Date()) -> String {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH-mm-ss"
+        return "rollout-\(f.string(from: time))-\(id).jsonl"
+    }
+    let ids = (1...9).map { "019a0000-0000-7000-8000-00000000000\($0)" }
+    func write(_ lines: [String], to path: String, modified: Date? = nil) {
+        try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        if let modified { try? fm.setAttributes([.modificationDate: modified], ofItemAtPath: path) }
+    }
+    do {
+        let store = SessionStore()
+        let path = base.appendingPathComponent(rollName(ids[0])).path
+        let s = session(store, ids[0], path: path)
+        hook(store, ids[0], "UserPromptSubmit")
+        Thread.sleep(forTimeInterval: 0.05)
+        let t = Date()
+        write([event(t, #"{"type":"task_started","turn_id":"t1","model_context_window":258400}"#),
+               counts(t.addingTimeInterval(0.1), limits: windows()),
+               event(t.addingTimeInterval(0.5), #"{"type":"turn_aborted","turn_id":"t1","reason":"interrupted"}"#)], to: path)
+        store.pollTranscripts()
+        spin { s.activity == .sleep }
+        check(s.activity == .sleep && s.finishedAt != nil, "codex status: Esc in Codex (turn_aborted in the file) ends the eternal Working")
+        check(s.contextTokens == 41900 && s.contextWindowSize == 258400 && s.tokensIn == 30000 && s.tokensOut == 3200, "codex status: context window and tokens from the file")
+
+        let late = SessionStore()
+        let p2 = base.appendingPathComponent(rollName(ids[1])).path
+        let s2 = session(late, ids[1], path: p2)
+        hook(late, ids[1], "UserPromptSubmit")
+        write([event(Date().addingTimeInterval(-60), #"{"type":"task_complete","turn_id":"t0"}"#)], to: p2)
+        late.pollTranscripts()
+        spin { s2.transcriptChanged != nil }
+        check(s2.activity == .work, "codex status: a turn's end older than the hook's word changes nothing")
+
+        let start = SessionStore()
+        let p3 = base.appendingPathComponent(rollName(ids[2])).path
+        let s3 = session(start, ids[2], path: p3)
+        Thread.sleep(forTimeInterval: 0.05)
+        write([event(Date(), #"{"type":"task_started","turn_id":"t1"}"#)], to: p3)
+        start.pollTranscripts()
+        spin { s3.activity == .work }
+        check(s3.activity == .work, "codex status: task_started alone is at work")
+    }
+
+    // Bounded reads
+    do {
+        let path = base.appendingPathComponent(rollName(ids[3])).path
+        var head = [line(t0, "session_meta", #"{"id":"\#(ids[3])","cwd":"/Users/me/big","originator":"codex_cli_rs","source":"cli"}"#),
+                    line(t0, "turn_context", #"{"turn_id":"t1","model":"early-model","effort":"low"}"#)]
+        let filler = line(t0, "response_item", #"{"type":"message","role":"assistant","content":[{"type":"output_text","text":"\#(String(repeating: "x", count: 2000))"}]}"#)
+        head += Array(repeating: filler, count: 6000) // ~12 MB
+        head.append(counts(t0.addingTimeInterval(5), last: 60000, limits: windows()))
+        write(head, to: path)
+        let w = TranscriptWatcher()
+        var got: TranscriptWatcher.Update?
+        let began = Date()
+        w.poll([(id: "big", path: path)]) { got = $0.first }
+        spin { got != nil }
+        check(got?.contextTokens == 60000 && got?.codexFiveHour?.percent == 12, "codex files: a 12 MB file's end read")
+        check(got?.model == nil && got?.codexMeta?.cwd == "/Users/me/big" && got?.codexMeta?.host == "Terminal",
+              "codex files: only the last 3 MB on first sight (the early turn isn't read), the first line for who and where")
+        check(Date().timeIntervalSince(began) < 3, "codex files: a big file reads fast")
+        // a line still being written
+        let h = FileHandle(forWritingAtPath: path)!
+        h.seekToEndOfFile()
+        let whole = counts(t0.addingTimeInterval(9), last: 70000, limits: windows())
+        h.write(Data(whole.prefix(60).utf8))
+        got = nil
+        w.poll([(id: "big", path: path)]) { got = $0.first }
+        spin({ got != nil }, seconds: 0.5)
+        check(got?.contextTokens == nil || got?.contextTokens == 60000 && got?.model == nil, "codex files: half a line is waited for")
+        h.write(Data((String(whole.dropFirst(60)) + "\n").utf8))
+        try? h.close()
+        got = nil
+        w.poll([(id: "big", path: path)]) { got = $0.first }
+        spin { got != nil }
+        check(got?.contextTokens == 70000, "codex files: and read once whole")
+    }
+
+    // Finding the files without hooks
+    do {
+        let day = DateFormatter(); day.dateFormat = "yyyy/MM/dd"
+        let dir = base.appendingPathComponent("home/sessions/" + day.string(from: Date()), isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let archived = base.appendingPathComponent("home/archived_sessions", isDirectory: true)
+        try? fm.createDirectory(at: archived, withIntermediateDirectories: true)
+        setenv("CLOUDINGBAR_CODEX_HOME", base.appendingPathComponent("home").path, 1)
+        func meta(_ id: String, _ originator: String, _ source: String) -> String {
+            line(t0, "session_meta", #"{"id":"\#(id)","cwd":"/Users/me/proj","originator":"\#(originator)","cli_version":"0.164.0","source":\#(source),"git":{"branch":"main"}}"#)
+        }
+        let now = Date()
+        let fresh = dir.appendingPathComponent(rollName(ids[4])).path
+        write([meta(ids[4], "codex_vscode", #""vscode""#), event(now.addingTimeInterval(-30), #"{"type":"task_started","turn_id":"t1"}"#),
+               line(now.addingTimeInterval(-29), "turn_context", #"{"turn_id":"t1","cwd":"/Users/me/proj","model":"gpt-5.3-codex","effort":"high"}"#),
+               counts(now.addingTimeInterval(-20), limits: windows(five: #""used_percent":12,"window_minutes":300,"resets_at":\#(Int(now.timeIntervalSince1970) + 3600)"#,
+                                                                    week: #""used_percent":4,"window_minutes":10080,"resets_at":\#(Int(now.timeIntervalSince1970) + 86400)"#))], to: fresh, modified: now)
+        write([meta(ids[5], "codex_cli_rs", #"{"subagent":"review"}"#), event(now, #"{"type":"task_started","turn_id":"s"}"#)], to: dir.appendingPathComponent(rollName(ids[5])).path, modified: now)
+        write([meta(ids[6], "codex_exec", #""exec""#)], to: dir.appendingPathComponent(rollName(ids[6])).path, modified: now)
+        write([meta(ids[7], "codex_cli_rs", #""cli""#), event(now.addingTimeInterval(-9000), #"{"type":"task_complete","turn_id":"o"}"#)], to: dir.appendingPathComponent(rollName(ids[7])).path, modified: now.addingTimeInterval(-3 * 3600))
+        try? "zstd".write(toFile: dir.appendingPathComponent(rollName(ids[8]) + ".zst").path, atomically: true, encoding: .utf8)
+        write([meta(ids[8], "codex_cli_rs", #""cli""#)], to: archived.appendingPathComponent(rollName(ids[8])).path, modified: now.addingTimeInterval(-7200))
+
+        let finder = CodexRollouts()
+        var found: [CodexRollouts.Found] = []
+        var done = false
+        finder.scan { found = $0; done = true }
+        spin { done }
+        let names = Set(found.map { ($0.path as NSString).lastPathComponent })
+        check(names.contains(rollName(ids[4])) && !names.contains(where: { $0.hasSuffix(".zst") }), "codex files: rollouts found, compressed ones skipped")
+        check(!found.contains { $0.archived }, "codex files: an archived chat older than the newest isn't taken")
+        write([meta(ids[8], "codex_cli_rs", #""cli""#)], to: archived.appendingPathComponent(rollName(ids[8])).path, modified: now.addingTimeInterval(60))
+        done = false
+        CodexRollouts().scan { found = $0; done = true }
+        spin { done }
+        check(found.first?.archived == true, "codex files: an archived one newer than all is")
+        try? fm.removeItem(at: archived.appendingPathComponent(rollName(ids[8])))
+
+        let store = SessionStore()
+        store.pollCodexRollouts()
+        spin { store.sessions[ids[4]] != nil }
+        let list = store.alive
+        check(list.count == 1 && list[0].id == ids[4], "codex files: one chat shown — not the subagent's, `codex exec`'s, nor the idle old one")
+        let a = store.sessions[ids[4]]
+        check(a?.entrypoint == "codex" && a?.ambient == true && a?.codexHost == "VS Code" && a?.cwd == "/Users/me/proj" && a?.cwdBranch == "main",
+              "codex files: its folder, branch and where it runs read from session_meta")
+        spin { a?.model != nil }
+        check(a?.model == "gpt-5.3-codex" && a?.activity == .work && a?.contextPercent(windowOverride: nil) == 12,
+              "codex files: model, at work and context from the file, with no hook")
+        check(store.codexAccount.sessionPercent == 12 && store.codexAccount.weekPercent == 4, "codex files: its limits too")
+        let rec = a.map { Session(record: $0.record) }
+        check(rec?.ambient == true && rec?.codexHost == "VS Code", "codex files: kept across a restart")
+        store.apply(Inbound(raw: ["session_id": ids[4], "hook_event_name": "SessionEnd", "claude_entrypoint": "codex"]))
+        store.pollCodexRollouts()
+        spin({ store.sessions[ids[4]] != nil }, seconds: 0.6)
+        check(store.sessions[ids[4]] == nil, "codex files: a chat that ended isn't brought back by its file")
+        let known = SessionStore()
+        _ = session(known, ids[4], path: fresh)
+        known.pollCodexRollouts()
+        spin({ known.sessions.count > 1 }, seconds: 0.6)
+        check(known.sessions.count == 1 && known.sessions[ids[4]]?.ambient == false, "codex files: a chat a hook knows isn't added twice")
+        let idle = Session(id: "idle"); idle.entrypoint = "codex"; idle.ambient = true
+        idle.lastEvent = Date().addingTimeInterval(-1200); idle.transcriptChanged = Date().addingTimeInterval(-1200)
+        check(!idle.isAlive(), "codex files: a chat whose file stopped changing is gone after a quarter of an hour")
+        idle.activity = .work
+        check(idle.isAlive(), "codex files: an hour while a turn is on")
+
+        // Never typed into (review, 27.10): a shell or an editor on its folder isn't its window
+        let typing = SessionStore()
+        typing.pollCodexRollouts()
+        spin { typing.sessions[ids[4]] != nil }
+        check(typing.sessions[ids[4]]?.ambient == true && typing.session(inWindow: "proj — -zsh — 80×24") == nil
+              && typing.session(inWindow: "main.swift — proj") == nil, "codex files: a chat found in them is never the window in front")
+        typing.apply(Inbound(raw: ["session_id": "claude-cli", "hook_event_name": "SessionStart", "cwd": "/Users/me/proj",
+                                   "claude_entrypoint": "cli", "claude_pid": Int(getpid())]))
+        check(typing.session(inWindow: "proj — -zsh — 80×24")?.id == "claude-cli", "codex files: nor does it hide a Claude chat of that folder")
+        // Its Codex closed with no SessionEnd: pruned, and not brought back
+        let closed = SessionStore()
+        session(closed, ids[4], path: fresh).claudePid = 99_999
+        closed.prune()
+        closed.pollCodexRollouts()
+        spin({ closed.sessions[ids[4]] != nil }, seconds: 0.6)
+        check(closed.sessions[ids[4]] == nil, "codex files: a chat whose Codex closed without SessionEnd isn't brought back by its file")
+        // A first line written late is read on the next look
+        let lateId = "019a0000-0000-7000-8000-000000000010"
+        let latePath = dir.appendingPathComponent(rollName(lateId)).path
+        write([], to: latePath, modified: Date())
+        let looker = CodexRollouts()
+        done = false
+        looker.scan { found = $0; done = true }
+        spin { done }
+        write([meta(lateId, "codex_cli_rs", #""cli""#)], to: latePath, modified: Date())
+        done = false
+        looker.scan { found = $0; done = true }
+        spin { done }
+        check(found.first { $0.path == latePath }?.meta?.interactive == true, "codex files: a file whose first line came late is read again")
+        try? fm.removeItem(atPath: latePath)
+    }
+
+    // Connect: only what's new is added
+    do {
+        let home = base.appendingPathComponent("connect")
+        try? fm.createDirectory(at: home, withIntermediateDirectories: true)
+        setenv("CLOUDINGBAR_CODEX_HOME", home.path, 1)
+        let url = home.appendingPathComponent("hooks.json")
+        try Setup.connectCodex()
+        var file = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        var hooks = file["hooks"] as! [String: Any]
+        hooks["Interrupt"] = nil // as an older version left it
+        hooks["Stop"] = [["hooks": [["type": "command", "command": "/usr/local/bin/mine"]]]] + (hooks["Stop"] as! [[String: Any]])
+        file["hooks"] = hooks
+        try JSONSerialization.data(withJSONObject: file, options: [.prettyPrinted, .sortedKeys]).write(to: url)
+        check(!Setup.codexConnected, "codex connect: a connection from before lacks Interrupt")
+        let before = (try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any])["hooks"] as! [String: Any]
+        try Setup.connectCodex()
+        let after = (try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any])["hooks"] as! [String: Any]
+        let untouched = before.keys.allSatisfy { NSArray(array: before[$0] as! [Any]).isEqual(to: after[$0] as! [Any]) }
+        check(untouched && after["Interrupt"] != nil && Setup.codexConnected, "codex connect: Interrupt added, every entry that was there as it was (yours too)")
+        let bytes = try Data(contentsOf: url)
+        try Setup.connectCodex()
+        check(try Data(contentsOf: url) == bytes, "codex connect: nothing to add, the file isn't rewritten")
+    }
+
+    // The permission card for apply_patch
+    let patch = "*** Begin Patch\n*** Update File: Sources/App.swift\n@@\n-old\n+new\n*** Add File: docs/new.md\n+hi\n*** Delete File: old.txt\n*** End Patch"
+    let ap = PendingRequest(Inbound(raw: ["hook_event_name": "PermissionRequest", "session_id": "x", "tool_name": "apply_patch",
+                                          "tool_input": ["command": patch], "claude_entrypoint": "codex"]), responder: Responder())!
+    check(ap.summary.verb == "Edit" && ap.summary.detail == "App.swift, new.md, old.txt", "codex card: apply_patch names its files")
+    check(ap.fullDetail == "Update Sources/App.swift\nAdd docs/new.md\nDelete old.txt" && !ap.canRemember, "codex card: the list with what happens to each; no Always")
+    let claudeAsk = PendingRequest(Inbound(raw: ["hook_event_name": "PermissionRequest", "session_id": "x", "tool_name": "Bash", "tool_input": ["command": "ls"]]), responder: Responder())!
+    check(claudeAsk.canRemember && claudeAsk.summary.verb == "Run", "claude card: Always stays, Bash as before")
 }
 
 // MARK: Safety
