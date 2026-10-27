@@ -21,10 +21,11 @@ struct SettingsView: View {
     static let width: CGFloat = 600
 
     /// A tab asked for by name. Cowork lives in General → Connections now
-    /// (owner, 27.10): asked for, it opens General with that More… open.
+    /// (owner, 27.10): asked for, it opens General with that group and its More… open.
     static func resolve(_ request: String) -> String {
         guard request == "cowork" else { return request }
         UserDefaults.standard.set(true, forKey: "settings.more.connections")
+        SettingsFolds.shared.show("Connections")
         return "general"
     }
 
@@ -59,6 +60,7 @@ struct SettingsView: View {
                 // The tour's stop in view, once its tab is drawn.
                 .onChange(of: model.tourStep) { step in
                     guard let step, SettingsTour.stops.indices.contains(step) else { return }
+                    if let group = SettingsTour.stops[step].group { SettingsFolds.shared.show(group) }
                     let id = "tour." + SettingsTour.stops[step].anchor
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .center) }
@@ -77,7 +79,10 @@ struct SettingsView: View {
         .background(Color.sBackground)
         .onAppear {
             cloud.start()
-            if let step = model.tourStep { tab = SettingsTour.stops[step].tab }
+            if let step = model.tourStep {
+                tab = SettingsTour.stops[step].tab
+                if let group = SettingsTour.stops[step].group { SettingsFolds.shared.show(group) }
+            }
             if let request = model.settingsTabRequest {
                 tab = Self.resolve(request)
                 model.settingsTabRequest = nil
@@ -564,7 +569,31 @@ struct SettingsGroup<Content: View>: View {
     }
 }
 
+/// Which General groups are open (owner, 27.10: "under groups, hidden by
+/// default, opened on a click"). Shared so it outlives the tab being drawn
+/// again; the window closing puts everything back (SettingsWindow).
+final class SettingsFolds: ObservableObject {
+    static let shared = SettingsFolds()
+    @Published private(set) var open: Set<String> = []
+
+    func toggle(_ title: String) {
+        if open.contains(title) { open.remove(title) } else { open.insert(title) }
+    }
+    func show(_ title: String) { open.insert(title) }
+    func reset() { open = [] }
+}
+
+private struct FoldSectionsKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// Sections below fold under their heading (only General sets it).
+    var foldSections: Bool {
+        get { self[FoldSectionsKey.self] }
+        set { self[FoldSectionsKey.self] = newValue }
+    }
+}
+
 /// A titled group: a small heading over the rounded box, and a note under it.
+/// Where `foldSections` is set, only the heading shows until it is clicked.
 struct SettingsSection<Content: View>: View {
     let title: String
     var note = ""
@@ -572,20 +601,54 @@ struct SettingsSection<Content: View>: View {
     var icon: String? = nil
     var tint: UInt32 = 0x8E8E93
     @ViewBuilder let content: Content
+    @Environment(\.foldSections) private var folds
+    @ObservedObject private var state = SettingsFolds.shared
+
+    private var shown: Bool { !folds || state.open.contains(title) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                if let icon { SectionIcon(symbol: icon, tint: tint) }
-                Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.sSecondary)
+            if folds {
+                CloudButton(action: {
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { state.toggle(title) }
+                }) {
+                    heading(chevron: true)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                }
+                .modifier(BuddyHover())
+                .accessibilityLabel(title)
+                .accessibilityValue(shown ? "expanded" : "collapsed")
+            } else {
+                heading(chevron: false)
             }
-            .padding(.leading, icon == nil ? 12 : 4)
-            SettingsGroup { content }
-            if !note.isEmpty {
-                Text(note).font(.system(size: 11)).foregroundColor(.sMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
+            if shown {
+                VStack(alignment: .leading, spacing: 6) {
+                    SettingsGroup { content }
+                    if !note.isEmpty {
+                        Text(note).font(.system(size: 11)).foregroundColor(.sMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 12)
+                    }
+                }
+                .transition(.opacity.combined(with: .offset(y: -6)))
             }
         }
+        .clipped()
+    }
+
+    private func heading(chevron: Bool) -> some View {
+        HStack(spacing: 7) {
+            if let icon { SectionIcon(symbol: icon, tint: tint) }
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.sSecondary)
+            if chevron {
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundColor(.sMuted)
+                    .rotationEffect(.degrees(shown ? 90 : 0))
+                    .padding(.trailing, 8)
+            }
+        }
+        .padding(.leading, icon == nil ? 12 : 4)
     }
 }
 
@@ -799,7 +862,9 @@ struct GeneralTab: View {
             .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
     }
 
-    var body: some View {
+    var body: some View { groups.environment(\.foldSections, true) }
+
+    private var groups: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "App", icon: "gearshape.fill", tint: 0x8E8E93) {
                 SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
