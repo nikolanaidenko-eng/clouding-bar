@@ -2042,8 +2042,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Claude has finished its reply there and asks nothing.
     private func isFree(_ session: Session) -> Bool {
         session.activity == .sleep && !session.waitingNotice && !requests.contains(where: { $0.sessionId == session.id })
-            && Date().timeIntervalSince(handedAt[session.id] ?? .distantPast) > 10
+            && Date().timeIntervalSince(handedAt[session.id] ?? .distantPast) > 10 && !codexSending.contains(session.id)
     }
+
+    /// Codex chats a message is on its way to (its server answers within
+    /// half a minute): busy till then, so the next one isn't added to its turn.
+    private var codexSending = Set<String>()
 
     /// Sends a chat's next queued message once Claude there has finished a
     /// reply: straight in where its chat takes that, else typed once its
@@ -2127,7 +2131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A Codex chat its own server has loaded (Terminal's codex, 0.164 on):
     /// its words go in by the chat's id — never typed, never a tab guessed.
     private func codexDirect(_ session: Session) -> Bool {
-        config.codexServer && session.entrypoint == "codex" && codexServer.canSend(to: session.id)
+        config.codexServer && session.entrypoint == "codex" && session.codexWindowOpen && codexServer.canSend(to: session.id)
     }
 
     /// Hands it to Claude's input (Inject): off the main thread, then the
@@ -2165,12 +2169,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// No answer: it may have gone in — not sent again, lest Codex get it twice.
     private func sendToCodex(_ text: String, files: [String], into session: Session, fallback: @escaping () -> Void) {
         let words = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
-        let name = session.displayName
-        codexServer.send(words, to: session.id) { [weak self] result in
+        let name = session.displayName, id = session.id
+        codexSending.insert(id)
+        codexServer.send(words, to: id) { [weak self] result in
+            self?.codexSending.remove(id)
             switch result {
             case .sent:
                 DebugLog.note("sent straight to Codex (\(name))")
                 self?.queueSentAt = Date()
+                self?.handedAt[id] = Date()
                 self?.setNeedsRefresh()
             case .kept(let why):
                 DebugLog.note("Codex's server didn't take it (\(name)): \(why) — kept")
