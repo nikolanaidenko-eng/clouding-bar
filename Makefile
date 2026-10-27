@@ -100,6 +100,7 @@ test: $(TAP) $(HOOK)
 	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home
 	CLOUDINGBAR_DIR=build/test-home CLOUDINGBAR_PLUGIN=plugin ./build/coretest
+	sh tools/codex-plugin-test.sh
 
 # The Touch Bar in every mode as PNGs (build/snapshots), to compare with
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.

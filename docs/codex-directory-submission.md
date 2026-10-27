@@ -68,7 +68,7 @@ Nothing was found; ask OpenAI.
 - Category: Productivity
 - Developer: Nikola Naidenko
 - Website / support / source: https://github.com/nikolanaidenko-eng/clouding-bar (issues: https://github.com/nikolanaidenko-eng/clouding-bar/issues)
-- Privacy policy / terms: no page exists yet. The README section "Private by design" (https://github.com/nikolanaidenko-eng/clouding-bar#private-by-design) is the text; a standalone page is needed if the portal insists. Licence: MIT.
+- Privacy policy / terms: no page exists yet. The README section "Private by design" (https://github.com/nikolanaidenko-eng/clouding-bar#private-by-design) is the text; a standalone page is needed if the portal insists. Licence: PolyForm Shield 1.0.0.
 - Default prompt: "Install the Clouding Bar app on this Mac"
 - Icon: `packaging/` / `tools/icon` has the app icon; a 512 px PNG is needed in `assets/`.
 
@@ -81,7 +81,7 @@ Nothing was found; ask OpenAI.
 - Dictation: recognised on the Mac; audio goes to Apple only if the user ticks "Allow sending audio to Apple" (off by default).
 - Update check: once a day, a plain request to GitHub's public releases list; can be turned off.
 - Opt-in: live limit via claude.ai with the user's session key, kept in Keychain, sent only to claude.ai.
-- Files touched on the Mac: `~/.cloudingbar` (app data, backups), and with Connect `~/.codex/hooks.json` (merged, backed up first).
+- Files touched on the Mac: `~/.cloudingbar` (app data, backups), and with Connect `~/.codex/hooks.json`, `~/.claude/settings.json` (hooks and status line) and VS Code's `settings.json` (`Code/User`, the Claude wrapper setting) — each merged into what is there, backed up first.
 - The skill runs a shell script, installs a signed program into /Applications (or ~/Applications), and opens it. Say this plainly in the listing.
 
 ## What the owner has to do
