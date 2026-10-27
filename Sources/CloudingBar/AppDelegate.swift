@@ -983,7 +983,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard claudeAppInFront, safeToType() else { NSSound.beep(); return }
             if !KeySender.press(spec.value) { NSSound.beep() }
         case .link:
-            guard let url = URL(string: spec.value) else { NSSound.beep(); return }
+            // A path works too ("~/Applications/Some.app"): the way it's
+            // written down most often (owner, 27.10).
+            let value = spec.value.trimmingCharacters(in: .whitespaces)
+            let url = value.hasPrefix("/") || value.hasPrefix("~")
+                ? URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+                : URL(string: value)
+            guard let url else { NSSound.beep(); return }
             NSWorkspace.shared.open(url)
         }
     }

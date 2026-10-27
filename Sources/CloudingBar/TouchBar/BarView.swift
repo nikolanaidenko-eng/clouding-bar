@@ -224,6 +224,10 @@ final class BarView: NSView {
         slots.compactMap { s in s.key.flatMap { s.view.isHidden ? nil : ($0, s.view.frame) } }
     }
 
+    /// How wide each block may get before something has to leave the bar:
+    /// Settings stops a drag at that edge instead (owner, 27.10).
+    private(set) var widest: [String: CGFloat] = [:]
+
     // MARK: Building
 
     /// What decides the set of subviews; values change without a rebuild.
@@ -947,6 +951,11 @@ final class BarView: NSView {
         while need(shown) > available, let last = shown.lastIndex(where: { slots[$0].droppable }) {
             shown.remove(at: last)
         }
+        // Dragged wider, a block is fixed at that width: it may take the room
+        // left over plus what the others give way down to.
+        let used = need(shown)
+        widest = [:]
+        for i in shown { if let key = slots[i].key { widest[key] = available - used + need([i]) } }
         for i in slots.indices { slots[i].view.isHidden = !shown.contains(i) }
         let vis = shown.map { slots[$0] }
 
