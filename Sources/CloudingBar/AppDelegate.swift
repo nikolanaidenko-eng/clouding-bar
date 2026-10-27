@@ -1728,6 +1728,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return
         }
+        if session.ambient {
+            // Known only from Codex's files: which tab is its can't be told.
+            NSSound.beep()
+            DebugLog.note("open: \(session.displayName) is known only from Codex's files — no tab to bring up")
+            return
+        }
         if session.entrypoint != "claude-vscode" {
             // A terminal chat: its tab, else (VS Code's own terminal) its window.
             guard let tty = session.tty else { _ = raiseVSCodeWindow(for: session); return }

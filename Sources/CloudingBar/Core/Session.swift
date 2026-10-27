@@ -15,24 +15,13 @@ final class Session {
     /// The Claude process, when the hook could tell. Lets us notice a
     /// session is gone even when SessionEnd never arrived.
     var claudePid: Int32? {
-        didSet { if claudePid != oldValue { pidTTY = claudePid.flatMap(Tty.of(pid:)) } }
+        didSet { if claudePid != oldValue { tty = claudePid.flatMap(Tty.of(pid:)) } }
     }
-    private var pidTTY: String?
-    /// A chat found in Codex's files: the tab of the Codex program that
-    /// writes it (SessionStore.findCodexTerminals).
-    private var codexTab: (tty: String, pid: Int32)?
-
     /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
-    /// A tab given a chat from Codex's files counts while its Codex runs: a
-    /// shell left there takes nothing.
-    var tty: String? {
-        guard ambient, let t = codexTab else { return pidTTY }
-        return kill(t.pid, 0) == 0 || errno == EPERM ? t.tty : nil
-    }
-
-    func setCodexTerminal(_ tab: (tty: String, pid: Int32)?) {
-        codexTab = ambient && claudePid == nil ? tab : nil
-    }
+    /// None for a chat found only in Codex's files: one Codex server keeps
+    /// the files of every tab's chats, so which tab is whose can't be told
+    /// (review, 27.10) — and words never go to a guess.
+    private(set) var tty: String?
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT); "codex" for Codex
     var entrypoint: String?
     /// A Codex chat found in its session files, no hook has spoken for it:
