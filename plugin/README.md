@@ -4,6 +4,16 @@ The link between Claude and [Clouding Bar](https://github.com/nikolanaidenko-eng
 a Mac menu bar app that shows Claude Code at a glance — on the Touch Bar, in a floating pill
 or in the notch — and lets you answer permissions and questions from there.
 
+## Install
+
+- Claude Code: `/plugin install clouding-bar --marketplace nikolanaidenko-eng/clouding-bar`, then `/reload-plugins`
+  and `/clouding-bar:install`. (Older Claude Code: `/plugin marketplace add nikolanaidenko-eng/clouding-bar`,
+  then `/plugin install clouding-bar@clouding-bar`.)
+- Claude Desktop: Customize → Plugins → Add → Add marketplace → `nikolanaidenko-eng/clouding-bar`, then
+  install **clouding-bar** (it works in Cowork; the Chat tab ignores hooks).
+
+## What it does
+
 - **`/clouding-bar:install`** gets the app: the newest release from GitHub, checked (signed
   with Clouding Bar's Developer ID, notarized by Apple) before it goes into Applications. Run
   it again to update; a build of your own is left alone.
@@ -20,5 +30,7 @@ or in the notch — and lets you answer permissions and questions from there.
 
 The 5-hour limit and the context reach the app through its status line, which a plugin can't
 set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, backed up).
+
+Source: <https://github.com/nikolanaidenko-eng/clouding-bar>. License: PolyForm Shield 1.0.0.
 
 No network, except `/clouding-bar:install` downloading the app from GitHub.
