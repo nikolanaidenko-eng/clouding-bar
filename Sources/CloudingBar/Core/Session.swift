@@ -19,8 +19,13 @@ final class Session {
     }
     /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
     private(set) var tty: String?
-    /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT)
+    /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT); "codex" for Codex
     var entrypoint: String?
+    /// A Codex chat found in its session files, no hook has spoken for it:
+    /// alive while its file keeps changing (CodexRollouts.freshness).
+    var ambient = false
+    /// Where a Codex chat runs: "Terminal", "VS Code", "App" (its session_meta).
+    var codexHost: String?
     var activity: Activity = .sleep {
         didSet {
             if activity != oldValue { activitySince = Date() }
@@ -73,7 +78,7 @@ final class Session {
     /// "Opus 5.5 1M", from "claude-opus-5-5[1m]".
     var modelName: String? {
         guard let m = model, !m.isEmpty else { return nil }
-        return Self.displayName(m)
+        return entrypoint == "codex" ? CodexRollout.modelName(m) : Self.displayName(m)
     }
 
     /// "claude-opus-5-5[1m]" → "Opus 5.5 1M"; a date stamp is dropped.
@@ -131,6 +136,8 @@ final class Session {
 
     func contextPercent(windowOverride: Int?) -> Double? {
         guard let tokens = contextTokens else { return statusContextPercent }
+        // Codex shows how much is left from a baseline of its own; so do we.
+        if entrypoint == "codex", let window = contextWindowSize { return CodexRollout.contextUsedPercent(tokens: tokens, window: window) }
         return min(100, Double(tokens) / Double(contextWindow(override: windowOverride)) * 100)
     }
 
@@ -147,6 +154,10 @@ final class Session {
     func isAlive(now: Date = Date()) -> Bool {
         if let pid = claudePid, pid > 1 {
             return kill(pid, 0) == 0 || errno == EPERM
+        }
+        // Found in Codex's files: as long as they change (a turn on: longer).
+        if ambient {
+            return now.timeIntervalSince(lastSeen) < (activity == .work ? CodexRollouts.freshness : CodexRollouts.freshness / 4)
         }
         // Cowork reports only now and then; without news for 3 hours it's over.
         return now.timeIntervalSince(lastSeen) < (entrypoint == "cowork" ? 3 : 12) * 3600
@@ -171,6 +182,9 @@ final class Session {
         var workPath: String?
         var desktopChat: String?
         var desktopTitle: String?
+        var ambient: Bool?
+        var codexHost: String?
+        var activitySince: Date?
     }
 
     var record: Record {
@@ -178,7 +192,8 @@ final class Session {
                entrypoint: entrypoint, activity: activity, lastEvent: lastEvent, model: model,
                contextTokens: contextTokens, contextWindowSize: contextWindowSize,
                statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath,
-               desktopChat: desktopChat, desktopTitle: desktopTitle)
+               desktopChat: desktopChat, desktopTitle: desktopTitle,
+               ambient: ambient ? true : nil, codexHost: codexHost, activitySince: activitySince)
     }
 
     convenience init(record r: Record) {
@@ -197,6 +212,11 @@ final class Session {
         workPath = r.workPath
         desktopChat = r.desktopChat
         desktopTitle = r.desktopTitle
+        ambient = r.ambient ?? false
+        codexHost = r.codexHost
+        // Kept, not the restart's time: a Codex turn that ended while the
+        // app was away (its task_complete) still counts.
+        activitySince = r.activitySince ?? r.lastEvent
     }
 }
 
@@ -210,6 +230,13 @@ final class Account {
     var weekResetsAt: Date?
     /// When the limit was last reported ("Session · 2 h ago").
     var updatedAt: Date?
+    /// Codex's plan ("plus", "pro"), as its files say.
+    var plan: String?
+    /// When a file said each window's number was true (Codex's): an older
+    /// report never replaces a newer one. Not `updatedAt`, which an older
+    /// version set to when it read any line, of any limit.
+    private var reportedAt: Date?
+    private var weekUpdatedAt: Date?
 
     /// Claude's (last-status.json) or Codex's (last-status-codex.json).
     private let fileName: String
@@ -228,6 +255,9 @@ final class Account {
         var updatedAt: Date?
         var weekPercent: Double?
         var weekResetsAt: Date?
+        var weekUpdatedAt: Date?
+        var plan: String?
+        var reportedAt: Date?
     }
 
     func load() {
@@ -238,28 +268,54 @@ final class Account {
         updatedAt = snap.updatedAt
         weekPercent = snap.weekPercent
         weekResetsAt = snap.weekResetsAt
+        weekUpdatedAt = snap.weekUpdatedAt
+        reportedAt = snap.reportedAt
+        plan = snap.plan
         expireIfNeeded()
     }
 
     private func save() {
         let snap = Snapshot(sessionPercent: sessionPercent, sessionResetsAt: resetsAt, updatedAt: updatedAt,
-                            weekPercent: weekPercent, weekResetsAt: weekResetsAt)
+                            weekPercent: weekPercent, weekResetsAt: weekResetsAt,
+                            weekUpdatedAt: weekUpdatedAt, plan: plan, reportedAt: reportedAt)
         if let data = try? JSONEncoder().encode(snap) {
             try? data.write(to: fileURL, options: .atomic)
         }
     }
 
-    func apply(used: Double?, resetsAt reset: Double?) {
+    /// `reported`: when a file says it was true (Codex's lines). An older
+    /// report never replaces a newer one, and a window whose reset has passed
+    /// by then reads as reset: 0 %, no number from before (owner, 26.10).
+    /// Without it (Claude's status line) the report is now.
+    func apply(used: Double?, resetsAt reset: Double?, reported: Date? = nil) {
+        var used = used, reset = reset
+        if let reported {
+            if let known = reportedAt, reported < known { return }
+            if let r = reset, Date(timeIntervalSince1970: r) <= Date() { used = 0; reset = nil; resetsAt = nil }
+            reportedAt = reported
+        }
         if let used { sessionPercent = used }
         if let reset { resetsAt = Date(timeIntervalSince1970: reset) }
-        updatedAt = Date()
+        updatedAt = reported ?? Date()
         save()
         if let used, keepsHistory { LimitHistory.record(used) }
     }
 
-    func applyWeek(used: Double?, resetsAt reset: Double?) {
+    func applyWeek(used: Double?, resetsAt reset: Double?, reported: Date? = nil) {
+        var used = used, reset = reset
+        if let reported {
+            if let known = weekUpdatedAt, reported < known { return }
+            if let r = reset, Date(timeIntervalSince1970: r) <= Date() { used = 0; reset = nil; weekResetsAt = nil }
+            weekUpdatedAt = reported
+        }
         if let used { weekPercent = used }
         if let reset { weekResetsAt = Date(timeIntervalSince1970: reset) }
+        save()
+    }
+
+    func setPlan(_ p: String) {
+        guard plan != p else { return }
+        plan = p
         save()
     }
 
@@ -355,7 +411,7 @@ extension Session {
             attach(id, type: m.agentType, now: now)
         } else if event == "SubagentStop", let id = m.agentId {
             agents.removeAll { $0.agentId == id }
-        } else if event == "Stop" {
+        } else if event == "Stop" || event == "Interrupt" {
             agents.removeAll { !$0.background }
         } else if event == "SessionStart" {
             agents.removeAll()

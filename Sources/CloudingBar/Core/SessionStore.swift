@@ -8,6 +8,12 @@ final class SessionStore {
     /// Codex's limits, from its rollouts: a different account from Claude's.
     let codexAccount = Account(fileName: "last-status-codex.json", keepsHistory: false)
     private let transcripts = TranscriptWatcher()
+    /// Codex's own files, read without any hook (CodexRollouts): the freshest
+    /// give its limits whether a chat is known or not.
+    private let rollouts = CodexRollouts()
+    private let limitWatcher = TranscriptWatcher()
+    /// Chats whose SessionEnd came, so their still-fresh file doesn't bring them back.
+    private var ended: [String: Date] = [:]
     private var saveScheduled = false
 
     /// Fires after anything changed.
@@ -35,6 +41,7 @@ final class SessionStore {
         }
         if m.event == "SessionEnd" {
             sessions[id] = nil
+            ended[id] = now
             scheduleSave()
             onChange?()
             return
@@ -50,7 +57,7 @@ final class SessionStore {
         if let cwd = m.cwd { session.cwd = cwd }
         if m.event != nil, m.cwd != nil { session.cwdBranch = m.gitBranch }
         if let path = m.transcriptPath { session.transcriptPath = path }
-        if let pid = m.claudePid { session.claudePid = pid }
+        if let pid = m.claudePid { session.claudePid = pid; session.ambient = false }
         if let entry = m.entrypoint { session.entrypoint = entry }
         if let p = m.contextUsedPercent { session.statusContextPercent = p }
         if let size = m.contextWindowSize { session.contextWindowSize = size }
@@ -73,12 +80,18 @@ final class SessionStore {
                 DebugLog.note("subagents in \(session.projectName ?? id): \(session.agents.map(\.type)) (after \(event))")
             }
             switch event {
-            case "SessionStart", "Stop":
+            case "SessionStart", "Stop", "Interrupt":
+                // Interrupt is Codex's: you stopped a turn, and no Stop follows.
                 session.activity = .sleep
                 session.waitingNotice = false
             case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure":
                 session.activity = .work
-                session.waitingNotice = false
+                // Codex has no Notification: its PermissionRequest says it's asking
+                // (below), and only the tool's end, Stop, Interrupt or a new prompt
+                // say it's over (owner, 26.10); another call's start doesn't.
+                if !(event == "PreToolUse" && session.entrypoint == "codex") { session.waitingNotice = false }
+            case "PermissionRequest":
+                if session.entrypoint == "codex" { session.waitingNotice = true }
             case "Notification":
                 switch m.notificationType {
                 case "permission_prompt", "elicitation_dialog", "agent_needs_input":
@@ -221,7 +234,10 @@ final class SessionStore {
     func session(inWindow title: String?, tty: String? = nil) -> Session? {
         if let tty, let s = alive.first(where: { $0.tty == tty }) { return s }
         guard let title else { return nil }
-        let ranked = Self.ranked(title: title, in: alive)
+        // A chat found only in Codex's files has no tab or process to tell
+        // its window by: a folder's name alone matched a shell or an editor
+        // there, and words went into it. Never in front.
+        let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient })
         guard let top = ranked.first else { return nil }
         if top.score == 3 { return top.session }
         return ranked.filter { $0.score == top.score }.count == 1 ? top.session : nil
@@ -274,9 +290,15 @@ final class SessionStore {
     @discardableResult
     func prune() -> [String] {
         let now = Date()
+        ended = ended.filter { now.timeIntervalSince($0.value) < 24 * 3600 }
         let dead = sessions.values.filter { !$0.isAlive(now: now) }.map(\.id)
         guard !dead.isEmpty else { return [] }
-        for id in dead { sessions[id] = nil }
+        for id in dead {
+            // A Codex chat closed with no SessionEnd: its file, still fresh,
+            // would bring it back as found in the files.
+            if sessions[id]?.entrypoint == "codex" { ended[id] = now }
+            sessions[id] = nil
+        }
         scheduleSave()
         onChange?()
         return dead
@@ -289,30 +311,103 @@ final class SessionStore {
         transcripts.poll(list) { [weak self] updates in
             guard let self else { return }
             for u in updates {
+                self.applyCodexLimits(u)
                 guard let s = self.sessions[u.sessionId] else { continue }
-                if let t = u.contextTokens { s.contextTokens = t }
-                s.tokensIn = u.tokensIn
-                s.tokensOut = u.tokensOut
-                s.linesAdded = u.linesAdded
-                s.linesRemoved = u.linesRemoved
-                if let m = u.model { s.model = m }
-                if let e = u.effort { s.effort = e }
-                if let w = u.contextWindow { s.contextWindowSize = w }
-                if let t = u.title { s.title = t }
-                if let l = u.codexFiveHour { self.codexAccount.apply(used: l.percent, resetsAt: l.resetsAt) }
-                if let l = u.codexWeek { self.codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt) }
-                s.transcriptChanged = u.modified
-                if u.waved { self.onCloudWave?() }
-                // Interrupted: Claude's permission menu, if any, is gone.
-                if u.interrupted == true { s.waitingNotice = false }
-                if u.interrupted == true && s.activity == .work {
-                    s.activity = .sleep
-                    s.agents.removeAll { !$0.background }
-                }
+                self.apply(u, to: s)
             }
             self.scheduleSave()
             self.onChange?()
         }
+    }
+
+    private func apply(_ u: TranscriptWatcher.Update, to s: Session) {
+        if let t = u.contextTokens { s.contextTokens = t }
+        s.tokensIn = u.tokensIn
+        s.tokensOut = u.tokensOut
+        s.linesAdded = u.linesAdded
+        s.linesRemoved = u.linesRemoved
+        if let m = u.model { s.model = m }
+        if let e = u.effort { s.effort = e }
+        if let w = u.contextWindow { s.contextWindowSize = w }
+        if let t = u.title { s.title = t }
+        if let meta = u.codexMeta {
+            s.codexHost = meta.host
+            if s.cwd == nil { s.cwd = meta.cwd }
+        }
+        s.transcriptChanged = u.modified
+        if u.waved { onCloudWave?() }
+        // Interrupted: Claude's permission menu, if any, is gone.
+        if u.interrupted == true { s.waitingNotice = false }
+        if u.interrupted == true && s.activity == .work {
+            s.activity = .sleep
+            s.agents.removeAll { !$0.background }
+        }
+        // Codex's turns: what its file says, unless a hook has said more since
+        // (a Stop comes before the file's task_complete; the older line changes nothing).
+        if let t = u.codexTurn, t.at > s.activitySince, Date().timeIntervalSince(t.at) < CodexRollouts.freshness {
+            switch t.state {
+            case .started:
+                if s.activity != .work { s.activity = .work; s.activitySince = t.at }
+            case .done, .aborted:
+                s.waitingNotice = false
+                if s.activity == .work {
+                    s.activity = .sleep
+                    s.finishedAt = t.at
+                    s.agents.removeAll { !$0.background }
+                }
+            }
+        }
+    }
+
+    /// Codex's limits are the account's, whichever chat's file they were read
+    /// from: the newest report wins.
+    private func applyCodexLimits(_ u: TranscriptWatcher.Update) {
+        if let l = u.codexFiveHour { codexAccount.apply(used: l.percent, resetsAt: l.resetsAt, reported: l.reported) }
+        if let l = u.codexWeek { codexAccount.applyWeek(used: l.percent, resetsAt: l.resetsAt, reported: l.reported) }
+        if let p = u.codexPlan { codexAccount.setPlan(p) }
+    }
+
+    // MARK: Codex without hooks
+
+    /// Looks at Codex's newest session files (every few seconds from the
+    /// app): their limits go to `codexAccount`, and a chat of a person that
+    /// is at work there and that no hook has spoken for is added, marked
+    /// `ambient` (no permissions to answer, no process to watch). Nothing
+    /// is shown for a Mac without Codex.
+    func pollCodexRollouts(now: Date = Date()) {
+        rollouts.scan(now: now) { [weak self] found in
+            guard let self else { return }
+            // Subagents' files too: the limits are the account's, and they may be the newest.
+            let probes = found.prefix(4).map { (id: "codex-file:" + $0.path, path: $0.path) }
+            if !probes.isEmpty {
+                self.limitWatcher.poll(probes) { [weak self] updates in
+                    guard let self else { return }
+                    updates.forEach(self.applyCodexLimits)
+                    self.onChange?()
+                }
+            }
+            var added = false
+            for f in found where !f.archived { added = self.adopt(f, now: now) || added }
+            if added { self.scheduleSave(); self.onChange?(); self.pollTranscripts() }
+        }
+    }
+
+    private func adopt(_ f: CodexRollouts.Found, now: Date) -> Bool {
+        guard let meta = f.meta, meta.interactive,
+              sessions[f.id] == nil, !sessions.values.contains(where: { $0.transcriptPath == f.path }),
+              now.timeIntervalSince(f.modified) < CodexRollouts.freshness / 4 else { return false }
+        if let end = ended[f.id], f.modified <= end.addingTimeInterval(30) { return false }
+        let s = newSession(f.id, now: f.modified)
+        s.entrypoint = "codex"
+        s.ambient = true
+        s.cwd = meta.cwd
+        s.cwdBranch = meta.branch
+        s.codexHost = meta.host
+        s.transcriptPath = f.path
+        s.transcriptChanged = f.modified
+        s.activitySince = .distantPast // what its file says about the turn counts
+        sessions[f.id] = s
+        return true
     }
 
     // MARK: Persistence

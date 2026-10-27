@@ -233,7 +233,7 @@ struct NotchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 6) {
                     answer("Allow", style: .primary) { model.perform(.allow) }
-                    answer("Always allow") { model.perform(.always) }
+                    if r.offersAlways { answer("Always allow") { model.perform(.always) } }
                     answer("Deny", style: .deny) { model.perform(.deny) }
                 }
             }

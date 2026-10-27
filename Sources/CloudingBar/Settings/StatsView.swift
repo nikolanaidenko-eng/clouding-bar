@@ -88,19 +88,22 @@ struct StatsTab: View {
     // MARK: Limits
 
     private var limits: some View {
+        // A Codex chat in front: the numbers are Codex's (its own files), so
+        // they're called so, and Claude's charts stay out from under them.
+        let agent = model.agentName
         let week = model.weekPercent.map { (percent: $0, note: model.weekReset.map { "Resets \($0)" } ?? "") }
-            ?? LimitHistory.latestWeek().flatMap { s in
+            ?? (agent != nil ? nil : LimitHistory.latestWeek().flatMap { s in
                 Date().timeIntervalSince(s.time) < 24 * 3600
                     ? (percent: s.percent, note: "From Claude Desktop, \(AppModel.ago(s.time))") : nil
-            }
+            })
         return HStack(alignment: .top, spacing: 12) {
-            card("5-hour limit", model.sessionPercent,
+            card(agent.map { "\($0) 5-hour limit" } ?? "5-hour limit", model.sessionPercent,
                  model.resetLong.map { "Resets in \($0)" } ?? model.limitAge.map { "Last seen \($0)" } ?? "Not reported yet") {
-                sparkline(stats?.limitLine ?? [])
+                if agent == nil { sparkline(stats?.limitLine ?? []) }
             }
-            card("Weekly limit", week?.percent,
-                 week?.note ?? "Shows once Claude Code reports it") {
-                days(stats)
+            card(agent.map { "\($0) weekly limit" } ?? "Weekly limit", week?.percent,
+                 week?.note ?? "Shows once \(agent ?? "Claude Code") reports it") {
+                if agent == nil { days(stats) }
             }
         }
     }

@@ -23,10 +23,21 @@ final class TranscriptWatcher {
         /// The chat's title: the one you gave it, else the one Claude Code made up.
         var title: String?
         /// Codex rollouts: the model's context window, and Codex's own limits
-        /// (used %, resets at in unix seconds) for its 5-hour and weekly windows.
+        /// (used %, resets at in unix seconds, when reported) for its 5-hour
+        /// and weekly windows, and its plan.
         var contextWindow: Int?
-        var codexFiveHour: (percent: Double, resetsAt: Double?)?
-        var codexWeek: (percent: Double, resetsAt: Double?)?
+        var codexFiveHour: CodexRollout.Window?
+        var codexWeek: CodexRollout.Window?
+        var codexPlan: String?
+        /// Limits of the other buckets Codex meters apart (a model of its
+        /// own): kept aside, nothing shows them yet.
+        var codexOther: [String: CodexRollout.Limits] = [:]
+        /// The latest turn event, and when: working, done, or stopped by you.
+        var codexTurn: (state: CodexRollout.Turn, at: Date)?
+        /// Fresh input and output of the whole chat, from total_token_usage.
+        var codexTokens: (input: Int, output: Int)?
+        /// The file's first line, read when it is first looked at.
+        var codexMeta: CodexRollout.Meta?
         /// A reply of the last minute with ☁️ in its words, the chat's first:
         /// Claude waving at Cloud (see the note in MascotView.swift).
         var waved = false
@@ -79,6 +90,10 @@ final class TranscriptWatcher {
     /// Codex's rollout: usage and limits, and each turn's model and effort.
     private static let codexUsageMark = Data(#""type":"token_count""#.utf8)
     private static let codexTurnMark = Data(#""type":"turn_context""#.utf8)
+    private static let codexMarks = ["task_started", "task_complete", "turn_aborted"].map { Data(#""type":"\#($0)""#.utf8) }
+    /// A Codex rollout is read from its last 3 MB on first sight: a chat's
+    /// file can run to hundreds, and what is wanted is at its end.
+    static let codexTail: UInt64 = 3 << 20
     /// The chat's title, as VS Code's tab and the terminal show it.
     private static let aiTitleMark = Data(#""type":"ai-title""#.utf8)
     private static let customTitleMark = Data(#""type":"custom-title""#.utf8)
@@ -108,17 +123,34 @@ final class TranscriptWatcher {
         if state.path != path { state = State(path: path, offset: UInt64.max) }
         if state.offset != UInt64.max && size == state.size && mtime == state.mtime { return nil }
 
+        let codex = CodexRollout.isRollout(path)
+        var first = false
         if state.offset == UInt64.max || size < state.offset {
             // First look, or the file was rewritten: read it all once.
             state = State(path: path, offset: 0)
+            first = true
         }
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }
+        if codex && first && size > Self.codexTail {
+            // Only its end, from the next whole line.
+            state.offset = size - Self.codexTail
+            handle.seek(toFileOffset: state.offset)
+            var skipped: UInt64 = 0
+            while skipped < 8 << 20 {
+                let d = handle.readData(ofLength: 1 << 20)
+                if d.isEmpty { break }
+                if let nl = d.firstIndex(of: 0x0A) { skipped += UInt64(nl - d.startIndex + 1); break }
+                skipped += UInt64(d.count)
+            }
+            state.offset += skipped
+        }
         handle.seek(toFileOffset: state.offset)
         state.size = size
         state.mtime = mtime
 
         var update = Update(sessionId: id, modified: mtime ?? Date())
+        if codex && first { update.codexMeta = CodexRollout.meta(at: path) }
         var carry = Data()
         var sawLines = false
         while true {
@@ -156,9 +188,10 @@ final class TranscriptWatcher {
         }
     }
 
-    /// One line of a Codex rollout ({"type", "payload"}): a token_count event
-    /// (the latest reply's usage over the model's window, and the limits),
-    /// or a turn's context (its model and effort).
+    /// One line of a Codex rollout ({"timestamp", "type", "payload"}): a
+    /// token_count event (the latest reply's usage over the model's window,
+    /// and the limits), a turn's start or end, or a turn's context (its model
+    /// and effort).
     static func scanCodex(_ line: Data.SubSequence, into update: inout Update) {
         guard let obj = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
               let payload = obj["payload"] as? [String: Any] else { return }
@@ -167,30 +200,48 @@ final class TranscriptWatcher {
             if let e = payload["effort"] as? String { update.effort = e }
             return
         }
-        guard payload["type"] as? String == "token_count" else { return }
-        if let info = payload["info"] as? [String: Any] {
-            if let last = info["last_token_usage"] as? [String: Any],
-               let total = (last["total_tokens"] as? NSNumber)?.intValue {
-                update.contextTokens = total
+        guard obj["type"] as? String == "event_msg" else { return }
+        let at = (obj["timestamp"] as? String).flatMap(CodexRollout.date) ?? Date()
+        switch payload["type"] as? String {
+        case "task_started":
+            update.codexTurn = (.started, at)
+            if let window = (payload["model_context_window"] as? NSNumber)?.intValue { update.contextWindow = window }
+        case "task_complete":
+            update.codexTurn = (.done, at)
+        case "turn_aborted":
+            update.codexTurn = (.aborted, at)
+        case "token_count":
+            if let info = payload["info"] as? [String: Any] {
+                if let last = info["last_token_usage"] as? [String: Any],
+                   let total = (last["total_tokens"] as? NSNumber)?.intValue {
+                    update.contextTokens = total
+                }
+                if let window = (info["model_context_window"] as? NSNumber)?.intValue { update.contextWindow = window }
+                if let all = info["total_token_usage"] as? [String: Any] {
+                    func n(_ k: String) -> Int { (all[k] as? NSNumber)?.intValue ?? 0 }
+                    update.codexTokens = (max(0, n("input_tokens") - n("cached_input_tokens")), n("output_tokens"))
+                }
             }
-            if let window = (info["model_context_window"] as? NSNumber)?.intValue { update.contextWindow = window }
-        }
-        // The windows go by their length: 300 minutes, a week (10080).
-        if let limits = payload["rate_limits"] as? [String: Any] {
-            for key in ["primary", "secondary"] {
-                guard let w = limits[key] as? [String: Any],
-                      let used = (w["used_percent"] as? NSNumber)?.doubleValue else { continue }
-                let minutes = (w["window_minutes"] as? NSNumber)?.intValue ?? 0
-                let value = (percent: used, resetsAt: (w["resets_at"] as? NSNumber)?.doubleValue)
-                if minutes >= 7 * 24 * 60 - 60 { update.codexWeek = value } else if minutes > 0 { update.codexFiveHour = value }
+            if let rl = payload["rate_limits"] as? [String: Any], let (bucket, limits) = CodexRollout.limits(from: rl, at: at) {
+                if bucket == "codex" {
+                    if let w = limits.fiveHour { update.codexFiveHour = w }
+                    if let w = limits.week { update.codexWeek = w }
+                    if let p = limits.plan { update.codexPlan = p }
+                } else {
+                    update.codexOther[bucket] = limits
+                }
             }
+        default:
+            break
         }
     }
 
     private func scan(_ complete: Data, into update: inout Update, state: inout State) {
         for line in complete.split(separator: 0x0A) {
-            if line.range(of: Self.codexUsageMark) != nil || line.range(of: Self.codexTurnMark) != nil {
+            if line.range(of: Self.codexUsageMark) != nil || line.range(of: Self.codexTurnMark) != nil
+                || Self.codexMarks.contains(where: { line.range(of: $0) != nil }) {
                 Self.scanCodex(line, into: &update)
+                if let t = update.codexTokens { state.tokensIn = t.input; state.tokensOut = t.output }
                 continue
             }
             if line.range(of: Self.aiTitleMark) != nil || line.range(of: Self.customTitleMark) != nil {

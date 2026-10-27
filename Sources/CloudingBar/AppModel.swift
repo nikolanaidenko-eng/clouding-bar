@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
         var picked: Set<Int> = []
         var index = 0
         var count = 1
+        /// "Always allow" is Claude's; Codex can't remember an allow.
+        var offersAlways = true
     }
 
     struct SessionRow: Identifiable, Equatable {

@@ -67,7 +67,11 @@ struct Inbound {
         ((raw["context_window"] as? [String: Any])?["context_window_size"] as? NSNumber)?.intValue
     }
 
-    var modelId: String? { (raw["model"] as? [String: Any])?["id"] as? String }
+    /// The status line's model object, or Codex's hooks' plain string.
+    var modelId: String? {
+        if let id = (raw["model"] as? [String: Any])?["id"] as? String { return id }
+        return entrypoint == "codex" ? raw["model"] as? String : nil
+    }
 
     var costUSD: Double? {
         ((raw["cost"] as? [String: Any])?["total_cost_usd"] as? NSNumber)?.doubleValue
