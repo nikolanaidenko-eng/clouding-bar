@@ -64,6 +64,19 @@ final class MascotView: NSView {
     var activity: Activity = .sleep {
         didSet { if activity != oldValue { refresh() } }
     }
+    /// A chat's Cloud (owner, 27.10): its `colorIndex` picks the skin and the
+    /// little extra (CloudGear). nil — no chat — is Cloud in the colour the
+    /// user picked in Settings.
+    var variant: Int? {
+        didSet { if variant != oldValue { refresh(force: true) } }
+    }
+    private var skin: NSColor { variant.map(CloudGear.skin) ?? Self.color.skin }
+    private var asleepSkin: NSColor { variant == nil ? Self.color.asleep : skin.blended(withFraction: 0.27, of: .black) ?? skin }
+    /// The extra on top of a body drawn `dy` higher or lower than usual.
+    private func gear(_ dy: CGFloat = 0, asleep: Bool = false) -> CALayer? {
+        variant.map { CloudGear.layer($0, dy: dy, asleep: asleep) }
+    }
+
     /// Idle, but awake rather than asleep (the island's Cloud after a hop).
     var awake = false {
         didSet { if awake != oldValue { refresh(stretch: awake) } }
@@ -254,9 +267,10 @@ final class MascotView: NSView {
             let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
             stage.addSublayer(shadow)
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.asleep))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: asleepSkin))
             body.addSublayer(arcEye(x: 13.6))
             body.addSublayer(arcEye(x: 21.6))
+            gear(asleep: true).map(body.addSublayer)
             stage.addSublayer(body)
             // Three z's, small to big, each rising up and to the right in turn.
             let zs = [(4.0, 27.0, 9.0), (5.0, 30.0, 6.0), (6.0, 33.0, 2.5)].map { size, x, y -> CATextLayer in
@@ -295,7 +309,7 @@ final class MascotView: NSView {
             setAccessibilityLabel(pose == .happy ? "Happy" : "Awake")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: skin))
             stage.addSublayer(body)
             if pose == .happy {
                 body.addSublayer(arcEye(x: 13.6, y: 21.8, bend: -2.2, color: ink))
@@ -323,12 +337,13 @@ final class MascotView: NSView {
                     }
                 }
             }
+            gear().map(body.addSublayer)
 
         case .dizzy:
             setAccessibilityLabel("Dizzy")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: skin))
             for cx in [16.0, 24.0] {
                 let ring = ellipse(cx: cx, cy: 21, rx: 2.4, ry: 2.4, color: .clear)
                 ring.fillColor = nil
@@ -338,6 +353,7 @@ final class MascotView: NSView {
                 body.addSublayer(ellipse(cx: cx + 0.6, cy: 20.6, rx: 0.8, ry: 0.8, color: ink))
             }
             body.addSublayer(ellipse(cx: 20, cy: 27.4, rx: 1.4, ry: 1.1, color: ink)) // "o"
+            gear().map(body.addSublayer)
             stage.addSublayer(body)
             if motion {
                 let deg = CGFloat.pi / 180
@@ -351,11 +367,12 @@ final class MascotView: NSView {
             // Eyes shut tight, a blush, turned a little away (in a group of
             // its own, so breathing doesn't undo the turn).
             let turned = group(anchorX: 20, anchorY: 34)
-            turned.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
+            turned.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: skin))
             turned.addSublayer(squint(tipX: 15.6, backX: 12.4, y: 21.2, color: ink)) // >
             turned.addSublayer(squint(tipX: 24.4, backX: 27.6, y: 21.2, color: ink)) // <
             turned.addSublayer(ellipse(cx: 12.6, cy: 26, rx: 2.2, ry: 1.2, color: NSColor(hex: 0xFF8A95), opacity: 0.55))
             turned.addSublayer(ellipse(cx: 25.4, cy: 26, rx: 2.2, ry: 1.2, color: NSColor(hex: 0xFF8A95), opacity: 0.55))
+            gear().map(turned.addSublayer)
             turned.transform = CATransform3DMakeRotation(-7 * .pi / 180, 0, 0, 1)
             body.addSublayer(turned)
             stage.addSublayer(body)
@@ -368,12 +385,14 @@ final class MascotView: NSView {
             let shadow = ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35)
             stage.addSublayer(shadow)
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 10, w: 26, h: 23, r: 11.5, color: Self.color.skin))
+            body.addSublayer(rect(x: 7, y: 10, w: 26, h: 23, r: 11.5, color: skin))
             let eyes = [ellipse(cx: 16, cy: 20.5, rx: 2, ry: 2.8, color: ink),
                         ellipse(cx: 24, cy: 20.5, rx: 2, ry: 2.8, color: ink)]
             eyes.forEach(body.addSublayer)
+            gear(-1).map(body.addSublayer)
             stage.addSublayer(body)
-            let dots = [14, 20, 26].map { ellipse(cx: CGFloat($0), cy: 4.5, rx: 1.5, ry: 1.5, color: Palette.secondary) }
+            // Typing dots a little higher when there are hats about.
+            let dots = [14, 20, 26].map { ellipse(cx: CGFloat($0), cy: variant == nil ? 4.5 : 1.9, rx: 1.5, ry: 1.5, color: Palette.secondary) }
             dots.forEach(stage.addSublayer)
             if motion {
                 shadow.add(keyframes("transform.scale.x", [1, 7.0 / 9, 1], 0.7), forKey: "squash")
@@ -397,10 +416,11 @@ final class MascotView: NSView {
             setAccessibilityLabel("Waiting for you")
             stage.addSublayer(ellipse(cx: 20, cy: 35.5, rx: 9, ry: 1.6, color: .black, opacity: 0.35))
             body = group(anchorX: 20, anchorY: 34)
-            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: Self.color.skin))
+            body.addSublayer(rect(x: 7, y: 11, w: 26, h: 23, r: 11.5, color: skin))
             body.addSublayer(ellipse(cx: 16, cy: 20.5, rx: 2.2, ry: 3, color: ink))
             body.addSublayer(ellipse(cx: 24, cy: 20.5, rx: 2.2, ry: 3, color: ink))
             body.addSublayer(ellipse(cx: 20, cy: 27, rx: 1.6, ry: 1.2, color: ink))
+            gear().map(body.addSublayer)
             stage.addSublayer(body)
             let badge = ellipse(cx: 33, cy: 8, rx: 4.2, ry: 4.2, color: Palette.warning)
             stage.addSublayer(badge)
