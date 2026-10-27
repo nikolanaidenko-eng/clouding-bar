@@ -961,7 +961,7 @@ struct GeneralTab: View {
                                     ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
                                     : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
                         if model.codexConnected {
-                            Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
+                            Label(model.codexViaPlugin ? "Plugin" : "Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {
                             Button("Connect") { model.connectCodex() }
                         }

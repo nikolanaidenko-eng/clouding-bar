@@ -1299,7 +1299,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("connect to Codex")
             do {
                 try Setup.connectCodex()
-                self?.model.setupMessage = "Done. Codex runs the hooks only once you trust them: start it and choose Trust all (or run /hooks). A hook added later asks again, for itself only."
+                self?.model.setupMessage = Setup.codexPluginActive
+                    ? "Codex already has Clouding Bar's plugin, which brings the hooks: nothing to add. Codex runs them once you trust them (Trust all, or /hooks)."
+                    : "Done. Codex runs the hooks only once you trust them: start it and choose Trust all (or run /hooks). A hook added later asks again, for itself only."
             } catch {
                 self?.model.setupMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
             }
@@ -1331,6 +1333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.claudeConnected, Setup.isConnected)
         set(\.hasCodex, Setup.hasCodex)
         set(\.codexConnected, Setup.codexConnected)
+        set(\.codexViaPlugin, Setup.codexPluginActive && !Setup.codexHooksInFile)
         set(\.hasVSCode, Setup.hasVSCode)
         set(\.vscodeWrapped, Setup.vscodeWrapped)
         // The plugin installed in Claude Desktop is there for Cowork: Cowork
