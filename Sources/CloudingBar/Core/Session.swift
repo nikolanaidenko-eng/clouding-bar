@@ -108,6 +108,25 @@ final class Session {
         cwd.map { URL(fileURLWithPath: $0).lastPathComponent }
     }
 
+    /// The folder the chat was started in — its VS Code window's — which
+    /// `cwd` leaves once Claude moves on with `cd`: the one of cwd's folders
+    /// that Claude Code named its transcripts' folder after.
+    var startFolder: String? {
+        guard let cwd, let transcriptPath else { return nil }
+        let key = URL(fileURLWithPath: transcriptPath).deletingLastPathComponent().lastPathComponent
+        var url = URL(fileURLWithPath: cwd)
+        while url.pathComponents.count > 1 {
+            if Self.projectKey(url.path) == key { return url.path }
+            url.deleteLastPathComponent()
+        }
+        return nil
+    }
+
+    /// "/Users/me/my.app" → "-Users-me-my-app", as ~/.claude/projects names it.
+    static func projectKey(_ path: String) -> String {
+        String(path.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
+    }
+
     /// What the widget calls it: its title, else its project.
     var displayName: String { desktopTitle ?? title ?? projectName ?? "Claude" }
 
