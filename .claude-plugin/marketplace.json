@@ -11,8 +11,16 @@
     {
       "name": "clouding-bar",
       "source": "./plugin",
-      "description": "The Clouding Bar app's link to Claude Code and Cowork; /clouding-bar:install gets the app.",
-      "category": "productivity"
+      "description": "Clouding Bar for Claude on your Mac: every chat on the Touch Bar, a pill or the notch; answer permissions and questions from there.",
+      "category": "productivity",
+      "version": "1.2.1",
+      "keywords": [
+        "macos",
+        "menu-bar",
+        "touch-bar",
+        "notch",
+        "cowork"
+      ]
     }
   ]
 }

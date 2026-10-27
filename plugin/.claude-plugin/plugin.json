@@ -1,7 +1,7 @@
 {
   "name": "clouding-bar",
-  "version": "1.2.0",
-  "description": "Claude Code at a glance on your Mac: the Clouding Bar app's link to Claude Code and Cowork, and /clouding-bar:install to get the app.",
+  "version": "1.2.1",
+  "description": "Clouding Bar for Claude on your Mac: see every Claude Code and Cowork chat on the Touch Bar, a floating pill or the notch, and answer permissions and questions from there. /clouding-bar:install gets the app.",
   "author": {
     "name": "Nikola Naidenko",
     "url": "https://github.com/nikolanaidenko-eng/clouding-bar"
@@ -9,5 +9,17 @@
   "homepage": "https://github.com/nikolanaidenko-eng/clouding-bar",
   "repository": "https://github.com/nikolanaidenko-eng/clouding-bar",
   "license": "PolyForm-Shield-1.0.0",
-  "keywords": ["macos", "menu-bar", "touch-bar", "status", "cowork"]
+  "keywords": [
+    "macos",
+    "menu-bar",
+    "touch-bar",
+    "notch",
+    "status",
+    "permissions",
+    "notifications",
+    "cowork",
+    "claude-code"
+  ],
+  "displayName": "Clouding Bar",
+  "icon": "./.claude-plugin/icon.png"
 }
