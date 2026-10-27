@@ -16,6 +16,9 @@ struct TourStop {
     var tried: Tried? = nil
     /// Lit up when `anchor` isn't there (the notch switch, with the widget off).
     var fallback: String? = nil
+    /// The General group the anchor sits in: opened for the stop (groups
+    /// are folded, owner, 27.10).
+    var group: String? = nil
 
     enum Tried { case notch, more }
 }
@@ -25,10 +28,11 @@ enum SettingsTour {
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
                  text: "Seven stops, about a minute. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
-                 text: "Claude Code, VS Code, Codex and Cowork connect in this box. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first."),
+                 text: "Claude Code, VS Code, Codex and Cowork connect in this box. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first.",
+                 group: "Connections"),
         TourStop(tab: "general", anchor: "app.more", title: "Only the main rows",
                  text: "Each box shows what most people need. The rest, like colours, updates or the extra widget switches, waits behind More… in the same box. It stays open next time.",
-                 tryText: "Try it: click More…", tried: .more),
+                 tryText: "Try it: click More…", tried: .more, group: "App"),
         TourStop(tab: "widget", anchor: "widget.preview", title: "The floating widget, your way",
                  text: "A small pill over your windows: the 5-hour limit and how full the chat is. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. The notch and its place are in the box below."),
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
