@@ -1,0 +1,35 @@
+{
+  "name": "clouding-bar",
+  "version": "1.0.0",
+  "description": "The Clouding Bar app's link to Codex: sessions, permission requests and subagents on your Touch Bar, in a floating pill or in the notch. The install-app skill gets the app.",
+  "author": {
+    "name": "Nikola Naidenko",
+    "url": "https://github.com/nikolanaidenko-eng/clouding-bar"
+  },
+  "homepage": "https://github.com/nikolanaidenko-eng/clouding-bar",
+  "repository": "https://github.com/nikolanaidenko-eng/clouding-bar",
+  "license": "MIT",
+  "keywords": [
+    "touch-bar",
+    "macos",
+    "menu-bar",
+    "hooks"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Clouding Bar",
+    "shortDescription": "Codex at a glance on your Mac",
+    "longDescription": "Shows your Codex chats on the Touch Bar, in a floating pill or in the notch, and lets you answer permission requests from there. The plugin is the link to the Clouding Bar Mac app; the install-app skill gets the app.",
+    "developerName": "Nikola Naidenko",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/nikolanaidenko-eng/clouding-bar",
+    "defaultPrompt": [
+      "Install the Clouding Bar app on this Mac"
+    ],
+    "brandColor": "#7C5CFF"
+  }
+}

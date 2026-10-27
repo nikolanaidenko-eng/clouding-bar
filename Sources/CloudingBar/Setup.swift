@@ -233,7 +233,8 @@ enum Setup {
 
     static var hasCodex: Bool { FileManager.default.fileExists(atPath: codexHome.path) }
 
-    static var codexConnected: Bool {
+    /// Our hook is in ~/.codex/hooks.json for every event (Connect did it).
+    static var codexHooksInFile: Bool {
         guard let data = try? Data(contentsOf: codexHooksURL),
               let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let hooks = o["hooks"] as? [String: Any] else { return false }
@@ -244,10 +245,33 @@ enum Setup {
         }
     }
 
+    /// Clouding Bar's plugin is on in Codex (codex plugin add clouding-bar@clouding-bar,
+    /// or /plugins): ~/.codex/config.toml has [plugins."clouding-bar@…"] with
+    /// enabled = true. Its hooks are the link then, and Connect has nothing to add.
+    static var codexPluginActive: Bool {
+        guard let text = try? String(contentsOf: codexHome.appendingPathComponent("config.toml"), encoding: .utf8) else { return false }
+        var inOurs = false
+        for raw in text.split(whereSeparator: \.isNewline) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("[") {
+                inOurs = line.hasPrefix("[plugins.\"clouding-bar@") && line.hasSuffix("\"]")
+            } else if inOurs {
+                let compact = line.replacingOccurrences(of: " ", with: "")
+                if compact == "enabled=true" || compact.hasPrefix("enabled=true#") { return true }
+            }
+        }
+        return false
+    }
+
+    /// Codex reaches Clouding Bar: through the plugin, or our hooks in hooks.json.
+    static var codexConnected: Bool { codexHooksInFile || codexPluginActive }
+
     /// Adds our hook, for every event Codex has, to ~/.codex/hooks.json
     /// (merged, backed up first).
     static func connectCodex() throws {
         updateHelpers()
+        // The plugin brings the hooks: a second set would answer every event twice.
+        if codexPluginActive { return }
         let fm = FileManager.default
         let before = try? Data(contentsOf: codexHooksURL)
         var file: [String: Any] = [:]
