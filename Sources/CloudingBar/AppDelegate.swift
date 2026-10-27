@@ -79,6 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `composeDraft` while a request has the bar.
     private var composing = false
     private var composeDraft = ""
+    /// The chat the bar's message line is written for, picked from its chats
+    /// list — not the one followed (owner, 27.10). Kept while its words wait
+    /// (a request took the bar, back at the list to pick another).
+    private var composeTo: String?
     /// The templates were opened from the chat field: a pick goes into it.
     private var templatesIntoDraft = false
     private var barPanel: BarPanel?
@@ -499,7 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if composing, currentRequest(active: active) != nil {
             // A request takes the bar: the words wait for later.
             composeDraft = typingText
-            stopTyping()
+            stopTyping(keepDraft: true)
         }
         if let request = currentRequest(active: active) {
             bar.activity = .wait
@@ -520,6 +524,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                          multiSelect: q.multiSelect, picked: request.picked)
                 }
             }
+        } else if composing, let to = composeTo {
+            // Written for a chat picked from the list: its chip, its files.
+            let s = store.sessions[to]
+            bar.mode = .typing(text: typingText)
+            bar.typingTo = BarModel.Chat(id: to, name: s.map { Self.barName($0.displayName, id: to) } ?? "Chat ended",
+                                         color: s.map { Session.colors[$0.colorIndex % Session.colors.count] } ?? 0x8E8E93,
+                                         current: to == active?.id, waiting: false)
+            bar.typingFiles = attachments[to]?.count ?? 0
+            bar.typingPlaceholder = "Type on the keyboard…"
         } else if composing {
             bar.mode = .typing(text: typingText)
             bar.typingLabel = active.map { "To " + Self.short($0.displayName, 18) } ?? "Write"
@@ -674,12 +687,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // Into the message being written.
                 let draft = typingText.trimmingCharacters(in: .whitespaces)
                 composeDraft = (draft.isEmpty ? "" : draft + " ") + expand(spec.value)
-                stopTyping()
+                stopTyping(keepDraft: true)
                 perform(.write)
             } else if composing {
                 // The keys go back to your editor first; the words wait.
                 composeDraft = typingText
-                stopTyping()
+                stopTyping(keepDraft: true)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in self?.run(spec) }
             } else {
                 run(spec)
@@ -738,10 +751,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard request == nil else { return }
             DebugLog.tap("write (bar)")
             closeBarPicker()
-            composing = true
-            typingText = composeDraft
-            typing.begin(with: composeDraft)
-            setNeedsRefresh()
+            openLine()
+
+        case let .writeTo(id):
+            // A chat picked from the list: the line written for it, the chat
+            // followed and the windows as they are.
+            guard request == nil, store.sessions[id] != nil else { return }
+            DebugLog.tap("write to \(store.sessions[id]?.displayName ?? id) (bar)")
+            openLine(to: id)
+            closeBarPicker()
 
         case .cancelTyping:
             DebugLog.tap("cancel typing (bar)")
@@ -758,7 +776,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if composing {
                 composeDraft = typingText
                 templatesIntoDraft = true
-                stopTyping()
+                stopTyping(keepDraft: true)
             }
             barPanel = .templates
             closeBarPickerLater(after: 20)
@@ -778,6 +796,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 run(menu[i])
             }
+
+        case .send where composing && composeTo != nil:
+            // Written for a chat picked from the list: to that chat, as the
+            // Chats tab sends — straight in or its queue, nothing typed into
+            // a window (owner, 27.10). The bar back as it was.
+            guard let to = composeTo else { return }
+            let text = typingText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty || attachments[to]?.isEmpty == false else { return }
+            guard store.sessions[to]?.isAlive() == true else {
+                // It has ended: the line stays, its chip takes the words to another chat.
+                NSSound.beep()
+                DebugLog.note("send (bar): the chat picked has ended — not sent")
+                return
+            }
+            DebugLog.tap("send message (bar) to a chat picked")
+            composeDraft = ""
+            stopTyping()
+            send(text, to: to)
 
         case .send where composing:
             let text = typingText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -819,7 +855,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case .screenshot:
             DebugLog.tap("screenshot (bar)")
-            takeScreenshot()
+            // From the line written for a chat picked: for that chat.
+            if composing, let to = composeTo { takeScreenshot(into: to) } else { takeScreenshot() }
 
         case .compact:
             DebugLog.tap("compact (context warning)")
@@ -854,11 +891,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         case .chats:
             DebugLog.tap("chats (bar)")
+            if composing {
+                // The chip on the line: back to the list, the words kept for
+                // the chat picked next (dropped if none is).
+                composeDraft = typingText
+                stopTyping(keepDraft: true)
+            }
             barPanel = .chats
             closeBarPickerLater(after: 15)
             setNeedsRefresh()
 
         case let .pickChat(id):
+            if composing && composeTo == id {
+                // ↗ on the line written for it: that chat comes up (the keys
+                // go to it), the words wait for it on the bar.
+                composeDraft = typingText
+                stopTyping(keepDraft: true)
+            }
             closeBarPicker()
             if doneNow?.id == id { endDone() }
             model.focusSession(id)
@@ -1050,11 +1099,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setNeedsRefresh()
     }
 
-    private func stopTyping() {
+    /// Ends the bar's line. The line written for a chat picked from the
+    /// list takes its words with it, unless they're kept (`keepDraft`): words
+    /// for one chat never wait to go to another.
+    private func stopTyping(keepDraft: Bool = false) {
+        if composing, composeTo != nil, !keepDraft {
+            composeTo = nil
+            composeDraft = ""
+        }
         typing.end()
         composing = false
         typingFor = nil
         typingText = ""
+        setNeedsRefresh()
+    }
+
+    /// The bar's message line, with the words waiting; `to`: written for a
+    /// chat picked from the list. Words still waiting for such a chat (a
+    /// request took the bar) keep it.
+    private func openLine(to id: String? = nil) {
+        if let id { composeTo = id } else if composeDraft.isEmpty { composeTo = nil }
+        composing = true
+        typingText = composeDraft
+        typing.begin(with: composeDraft)
         setNeedsRefresh()
     }
 
@@ -1475,6 +1542,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.isAPI, store.account.sessionPercent == nil && active?.costUSD != nil)
         set(\.queue, queue)
         set(\.attachments, active.flatMap { attachments[$0.id] } ?? [])
+        set(\.chatFiles, attachments)
         set(\.chatInFront, active != nil && store.session(inWindow: frontTitle, tty: frontTTY)?.id == active?.id)
         // The widget's buttons; the bar has its own switch for them.
         set(\.buttons, config.widgetHides.contains("buttons") ? [] : currentButtons(active))
@@ -1843,6 +1911,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voice.onFinal = { [weak self] text in
             guard let self else { return }
+            if let id = self.voiceFor {
+                // Into that chat's composer in the Chats tab, to read over and send.
+                self.voiceFor = nil
+                if let text {
+                    self.model.chatDrafts[id] = Self.join(self.model.chatDrafts[id] ?? "", text)
+                } else {
+                    self.showNote(self.voiceMessageShown ? self.model.heard : "Didn't catch that — try again", for: id)
+                }
+                self.voiceMessageShown = false
+                self.model.listeningFor = nil
+                self.model.heard = ""
+                (self.config.widget ? self.widget.state : self.drawer.state).focusComposer += 1
+                return
+            }
             if self.voiceIntoBar {
                 // Stays in the line, to edit and send from the bar.
                 if let text { self.typing.set(Self.join(self.voiceBarBase, text)) }
@@ -1892,6 +1974,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Dictating into the Touch Bar's message line (it was open, or the
     /// Touch Bar is all there is): the words show there as they come.
     private var voiceIntoBar = false
+    /// Dictating into a chat's composer in the Chats tab (its mic, or right
+    /// ⌥ while it's open): the words land there, for that chat.
+    private var voiceFor: String?
     /// What the line held before you spoke.
     private var voiceBarBase = ""
 
@@ -1899,24 +1984,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         [a, b].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
     }
 
-    private func voiceBegin(stopAfterPause: TimeInterval? = nil) {
-        guard !voice.isRunning, !model.listening else { return }
+    private func voiceBegin(stopAfterPause: TimeInterval? = nil, into chat: String? = nil) {
+        guard !voice.isRunning, !model.listening, model.listeningFor == nil else { return }
         DebugLog.tap(stopAfterPause == nil ? "voice (hold ⌥)" : "voice (mic)")
         voice.stopAfterPause = stopAfterPause
+        // A chat's composer in the Chats tab: its words, there — unless the
+        // bar's line is open, which is where you're writing.
+        voiceFor = chat ?? (typing.isActive ? nil : composerOpen)
         // Only the Touch Bar (no widget): its message line opens for the words.
-        if !typing.isActive, !config.widget, barShouldShow, currentRequest(active: focusedSession) == nil {
-            composing = true
-            typingText = composeDraft
-            typing.begin(with: composeDraft)
+        if voiceFor == nil, !typing.isActive, !config.widget, barShouldShow, currentRequest(active: focusedSession) == nil {
+            openLine()
         }
-        voiceIntoBar = typing.isActive
-        voiceBarBase = typing.isActive ? typing.text : ""
-        model.listening = !voiceIntoBar // the widget shows it only when it's the widget's
+        voiceIntoBar = voiceFor == nil && typing.isActive
+        voiceBarBase = voiceIntoBar ? typing.text : ""
+        model.listeningFor = voiceFor
+        model.listening = !voiceIntoBar && voiceFor == nil // the widget shows it only when it's the widget's
         model.heard = ""
         widget.update()
         setNeedsRefresh()
         if let request = typingFor ?? currentRequest(active: nil), request.kind == .question { extendHold(request) }
         voice.start(language: config.voiceLanguage, allowServer: config.voiceAllowServer)
+    }
+
+    /// The Chats tab's composer open in the widget (or the island): its chat.
+    private var composerOpen: String? {
+        guard config.widget || drawer.shown else { return nil }
+        let state = config.widget ? widget.state : drawer.state
+        return state.mode == .chats ? state.composerChat : nil
     }
 
     /// Dictated text goes where you'd type it: the bar's answer field, the
@@ -2005,25 +2099,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         model.addToQueue = { [weak self] text in
             guard let self else { return }
-            let active = self.focusedSession
-            // Dropped files go along, after the words.
-            let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
-            let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
-            guard !full.isEmpty else { return }
-            // Straight in where its chat takes that (VS Code's Claude, through
-            // the wrapper; a chat Codex's server has loaded): no window, no
-            // keys, wherever you are — when the agent is free and nothing of
-            // yours waits before it. Else the queue, one at a time as it gets
-            // free (owner, 27.10), or until its chat is in front — never a
-            // window switched.
-            if let s = active, Delivery.route(direct: self.straightIn(s), free: self.isFree(s),
-                                              queuedBefore: self.queue.contains(where: { $0.sessionId == s.id }), waits: true) == .now {
-                DebugLog.tap("send straight to " + (s.entrypoint == "codex" ? "Codex" : "Claude") + (files.isEmpty ? "" : " with \(files.count) file(s)"))
-                self.inject(text, files: files, into: s) { [weak self] in self?.enqueue(full, for: active) }
-                return
+            self.queueOrSend(text, to: self.focusedSession)
+        }
+        model.sendTo = { [weak self] text, id in self?.send(text, to: id) }
+        model.screenshotTo = { [weak self] id in self?.takeScreenshot(into: id) }
+        model.dropFilesTo = { [weak self] urls, id in self?.attach(urls, to: id) ?? false }
+        model.removeAttachmentFrom = { [weak self] path, id in self?.detach(path, from: id) }
+        model.voiceTo = { [weak self] id in
+            guard let self else { return }
+            if self.voice.isRunning || self.model.listening || self.model.listeningFor != nil {
+                self.voice.stop()
+            } else {
+                self.voiceBegin(stopAfterPause: 5, into: id)
             }
-            self.enqueue(full, for: active)
-            DebugLog.tap("queue add (\(self.queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
         }
         model.removeFromQueue = { [weak self] id in
             DebugLog.tap("queue: removed by hand")
@@ -2037,9 +2125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.dropFiles = { [weak self] urls in self?.attach(urls) ?? false }
         model.removeAttachment = { [weak self] path in
             guard let self, let active = self.focusedSession else { return }
-            self.attachments[active.id]?.removeAll { $0 == path }
-            if self.attachments[active.id]?.isEmpty == true { self.attachments[active.id] = nil }
-            self.refresh()
+            self.detach(path, from: active.id)
         }
         model.insertAttachments = { [weak self] in self?.insertAttachments() }
         model.setModel = { [weak self] alias in self?.switchModel("/model " + alias) }
@@ -2050,14 +2136,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = try? JSONEncoder().encode(queue) { try? data.write(to: queueURL, options: .atomic) }
     }
 
+    /// The widget's words for a chat, the files dropped for it after them.
+    /// Straight in where its chat takes that (VS Code's Claude, through the
+    /// wrapper; a chat Codex's server has loaded): no window, no keys,
+    /// wherever you are — when the agent is free and nothing of yours waits
+    /// before it. Else the queue, one at a time as it gets free (owner,
+    /// 27.10), or until its chat is in front — never a window switched.
+    /// `kept`: Claude's side didn't take it after all, so it's queued.
+    @discardableResult
+    private func queueOrSend(_ text: String, to session: Session?, kept: (() -> Void)? = nil) -> Delivery? {
+        // Dropped files go along, after the words.
+        let files = session.flatMap { attachments.removeValue(forKey: $0.id) } ?? []
+        let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
+        guard !full.isEmpty else { return nil }
+        if let s = session, Delivery.route(direct: straightIn(s), free: isFree(s),
+                                           queuedBefore: queue.contains(where: { $0.sessionId == s.id }), waits: true) == .now {
+            DebugLog.tap("send straight to " + (s.entrypoint == "codex" ? "Codex" : "Claude") + (files.isEmpty ? "" : " with \(files.count) file(s)"))
+            inject(text, files: files, into: s) { [weak self] in
+                self?.enqueue(full, for: session)
+                kept?()
+            }
+            return .now
+        }
+        enqueue(full, for: session)
+        DebugLog.tap("queue add (\(queue.count))" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
+        return .queue
+    }
+
+    /// Words for a chat picked by name — the Chats tab's composer, the bar's
+    /// line opened from its list — whatever the widget follows (owner, 27.10:
+    /// write to any chat without switching to it). That chat's own rules
+    /// (queueOrSend): straight in, else its queue — a chat that takes only
+    /// keys gets them once it's surely in front, or with Send now. A chat
+    /// that has ended isn't swapped for another: nothing is sent.
+    private func send(_ text: String, to id: String) {
+        guard let target = Delivery.target(addressed: id, followed: focusedSession?.id,
+                                           isAlive: { [store] in store.sessions[$0]?.isAlive() ?? false }),
+              let session = store.sessions[target] else {
+            NSSound.beep()
+            showNote("That chat has ended — not sent", for: id)
+            DebugLog.note("send: the chat picked has ended — not sent")
+            return
+        }
+        let name = Self.short(session.displayName, 28)
+        let direct = straightIn(session)
+        let route = queueOrSend(text, to: session) { [weak self] in
+            self?.showNote(Delivery.note(.queue, direct: direct, to: name), for: id)
+        }
+        if let route { showNote(Delivery.note(route, direct: direct, to: name), for: id) }
+    }
+
+    /// The Chats tab's line after Send: where the words are, for a moment.
+    private func showNote(_ text: String, for chat: String) {
+        let note = AppModel.SentNote(chat: chat, text: text)
+        model.sentNote = note
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            if self?.model.sentNote == note { self?.model.sentNote = nil }
+        }
+    }
+
     /// When each chat was last handed a message: until its hook says Claude
     /// took it, the chat counts as busy, so the next one waits its turn.
     private var handedAt: [String: Date] = [:]
 
-    /// Claude has finished its reply there and asks nothing.
+    /// Claude has finished its reply there and asks nothing (Delivery.free).
     private func isFree(_ session: Session) -> Bool {
-        session.activity == .sleep && !session.waitingNotice && !requests.contains(where: { $0.sessionId == session.id })
-            && Date().timeIntervalSince(handedAt[session.id] ?? .distantPast) > 10 && !codexSending.contains(session.id)
+        Delivery.free(session, asking: requests.contains(where: { $0.sessionId == session.id }),
+                      handedAt: handedAt[session.id], sending: codexSending.contains(session.id))
     }
 
     /// Codex chats a message is on its way to (its server answers within
@@ -2140,7 +2285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Its words go straight in: Claude's input (VS Code, through the
     /// wrapper), or Codex's own server for a chat it has loaded.
     private func straightIn(_ session: Session) -> Bool {
-        Inject.available(pid: session.claudePid) || codexDirect(session)
+        Delivery.direct(session, codexLoaded: codexDirect(session))
     }
 
     /// A Codex chat its own server has loaded (Terminal's codex, 0.164 on):
@@ -2334,6 +2479,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func closeBarPicker() {
         barPickerClose?.cancel()
         templatesIntoDraft = false
+        // Back at the list from the line written for a chat, and none picked
+        // there: its words don't wait to go to another.
+        if barPanel == .chats, !composing, composeTo != nil {
+            composeTo = nil
+            composeDraft = ""
+        }
         guard barPanel != nil || barPendingModel != nil || barPendingEffort != nil else { return }
         barPanel = nil
         barPendingModel = nil
@@ -2341,9 +2492,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setNeedsRefresh()
     }
 
-    /// Files dropped on the widget wait for the session it shows.
-    private func attach(_ urls: [URL]) -> Bool {
-        guard let active = focusedSession else { return false }
+    /// Files dropped on the widget wait for the session it shows — or, `to`
+    /// a chat picked in the Chats tab, for that one (never the chat followed
+    /// in its place).
+    private func attach(_ urls: [URL], to id: String? = nil) -> Bool {
+        let target: Session?
+        if let id { target = store.sessions[id] } else { target = focusedSession }
+        guard let active = target else { return false }
         attachments = attachments.filter { store.sessions[$0.key] != nil } // sessions gone
         var list = attachments[active.id] ?? []
         for url in urls where !list.contains(url.path) { list.append(url.path) }
@@ -2351,6 +2506,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.tap("dropped \(urls.count) file(s) for \(active.projectName ?? active.id), \(list.count) waiting")
         refresh()
         return true
+    }
+
+    /// A file taken off a chat's.
+    private func detach(_ path: String, from id: String) {
+        attachments[id]?.removeAll { $0 == path }
+        if attachments[id]?.isEmpty == true { attachments[id] = nil }
+        refresh()
     }
 
     /// Insert: the paths go into the chat in front right away, without
@@ -2363,6 +2525,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         widget.releaseKey()
         KeySender.type(files.map(FileDrop.quoted).joined(separator: " ") + " ")
         refresh()
+    }
+
+    /// A screenshot for one chat — its composer in the Chats tab, or the
+    /// bar's line written for it: attached to that chat, never typed into the
+    /// app in front (it may not be that chat's window), and back in that
+    /// composer or line to go with your words. The chat followed stays.
+    private func takeScreenshot(into id: String) {
+        guard let session = store.sessions[id] else { NSSound.beep(); return }
+        DebugLog.tap("screenshot for \(session.displayName)")
+        widget.releaseKey()
+        Screenshot.take { [weak self] path in
+            guard let self, let path else { return } // cancelled
+            guard self.attach([URL(fileURLWithPath: path)], to: id) else { NSSound.beep(); return }
+            if self.composing && self.composeTo == id {
+                self.typing.refocus() // its chip counts the file; the keys back to the line
+            } else if self.config.widget {
+                self.widget.openComposer(id)
+            } else {
+                self.drawer.openComposer(id)
+            }
+            DebugLog.note("screenshot → attached to \(session.displayName)")
+        }
     }
 
     private func takeScreenshot() {

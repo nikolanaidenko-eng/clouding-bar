@@ -44,7 +44,7 @@ final class WidgetController: NSObject {
     private var leaveWatch: Timer?
     /// Being dragged over the notch: it shows docked, and docks on release.
     private var dockPreview = false
-    /// Switching between pill, panel and sessions: the window keeps the room
+    /// Switching between pill, panel and chats: the window keeps the room
     /// both need for the length of the animation (the clear part doesn't
     /// show), so the views slide and fade instead of being cut off by a
     /// window that jumped to its new size; it fits itself afterwards.
@@ -85,12 +85,21 @@ final class WidgetController: NSObject {
         state.openPanel = { [weak self] in self?.set(.panel) }
         state.startTyping = { [weak self] in self?.beginTyping() }
         state.endTyping = { [weak self] in self?.endTyping() }
+        state.composerKeyboard = { [weak self] in
+            guard let self else { return }
+            self.panel.allowsKey = true
+            self.panel.makeKey()
+        }
         host.acceptsFiles = { [weak model] in model?.hasSession ?? false }
         host.onFileDrag = { [weak self] over in self?.fileDrag(over) }
         host.onFileDrop = { [weak self] urls in self?.dropFiles(urls) ?? false }
         // Re-fit the window whenever what's shown changes.
         model.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
         state.objectWillChange.sink { [weak self] in self?.queueLayout() }.store(in: &subscriptions)
+        // A tab picked in the panel: the Chats tab's composers take the keyboard at once.
+        state.$mode.removeDuplicates().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateKeyAllowance() }
+        }.store(in: &subscriptions)
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification, object: nil)
         // Clicked away while writing in the pill: put the text box away (the
@@ -236,10 +245,11 @@ final class WidgetController: NSObject {
     private var wasReviewing = false
 
     private func updateKeyAllowance() {
-        // The queue's text field needs the keyboard too. Kept over the
-        // sessions list: giving it back hides the window and shows it again
-        // (releaseKey) — the list blinked on opening (owner, 27.10).
-        let wants = (state.mode == .panel || state.mode == .sessions) && (model.request != nil || model.config.taskQueue)
+        // The queue's text field needs the keyboard too, and so does the
+        // Chats tab, whose composers write to any chat. Kept over that list:
+        // giving it back hides the window and shows it again (releaseKey) —
+        // the list blinked on opening (owner, 27.10).
+        let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue) || state.mode == .chats
             || state.mode == .pill && (state.pillTyping || model.dictated != nil)
         panel.allowsKey = wants
         if !wants { releaseKey() }
@@ -284,6 +294,23 @@ final class WidgetController: NSObject {
             guard let self, self.state.mode == .panel else { return }
             if !self.panel.isKeyWindow { self.panel.makeKey() }
             self.state.focusMessage += 1
+        }
+    }
+
+    /// The Chats tab with that chat's composer open, and the keyboard: a
+    /// screenshot just attached for it goes with what you write there.
+    func openComposer(_ id: String) {
+        closeWork?.cancel()
+        pinned = true
+        state.composerChat = id
+        set(.chats)
+        panel.allowsKey = true
+        panel.makeKey()
+        state.focusComposer += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.state.mode == .chats else { return }
+            if !self.panel.isKeyWindow { self.panel.makeKey() }
+            self.state.focusComposer += 1
         }
     }
 
@@ -335,8 +362,19 @@ final class WidgetController: NSObject {
 
     /// Files let go over the widget: they wait for the session it shows,
     /// and the panel opens with them in its message box (the cursor in the
-    /// field, when writing is on).
+    /// field, when writing is on). With a chat's composer open in the Chats
+    /// tab, for that chat, and the tab stays.
     private func dropFiles(_ urls: [URL]) -> Bool {
+        if state.mode == .chats, let id = state.composerChat {
+            guard model.dropFilesTo(urls, id) else { return false }
+            closeWork?.cancel()
+            hovering = true
+            pinned = false
+            watchLeave()
+            state.composerKeyboard?()
+            state.focusComposer += 1
+            return true
+        }
         guard model.dropFiles(urls) else { return false }
         closeWork?.cancel()
         hovering = true
@@ -358,7 +396,7 @@ final class WidgetController: NSObject {
     private func watchLeave() {
         leaveWatch?.invalidate()
         leaveWatch = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] timer in
-            guard let self, self.state.mode == .panel else { timer.invalidate(); return }
+            guard let self, self.state.mode == .panel || self.state.mode == .chats else { timer.invalidate(); return }
             if !self.panel.frame.insetBy(dx: -2, dy: -2).contains(NSEvent.mouseLocation) {
                 timer.invalidate()
                 self.hover(false)
@@ -598,7 +636,7 @@ final class WidgetController: NSObject {
             size = host.fittingSize
         }
         guard size.width > 0, size.height > 0 else { return }
-        // Pill, panel, sessions — or the notch growing for a question, for
+        // Pill, panel, chats — or the notch growing for a question, for
         // writing, for dictation.
         let phase = "\(state.mode)|\(state.notched)|\(model.request?.id.uuidString ?? "")|\(state.pillTyping)|\(model.listening)|\(model.dictated != nil)"
         if phase != shownPhase {

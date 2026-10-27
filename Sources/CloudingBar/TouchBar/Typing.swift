@@ -195,6 +195,16 @@ final class TypingInput: NSObject, NSTextFieldDelegate, NSWindowDelegate {
         panel?.makeFirstResponder(field)
     }
 
+    /// The keyboard back to the line, the cursor at the end of its words
+    /// (after a screenshot taken from it).
+    func refocus() {
+        guard let panel, panel.isVisible else { return }
+        panel.makeKey()
+        panel.makeFirstResponder(field)
+        let end = (field.stringValue as NSString).length
+        (field.currentEditor() as? NSTextView)?.setSelectedRange(NSRange(location: end, length: 0))
+    }
+
     func end() {
         guard let panel, panel.isVisible else { return }
         panel.orderOut(nil)

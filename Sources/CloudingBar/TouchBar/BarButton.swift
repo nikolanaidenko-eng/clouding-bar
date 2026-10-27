@@ -26,12 +26,15 @@ final class BarButton: NSButton {
     /// bar) and weight; else the style's.
     private let tint: UInt32?
     private let weight: NSFont.Weight
+    /// An outline in a colour of its own (the chat a message line writes to).
+    private let border: UInt32?
 
     init(_ title: String, style: Style = .normal, fontSize: CGFloat = Palette.buttonFont,
          icon: NSImage? = nil, dot: UInt32? = nil, symbol: (name: String, tint: UInt32)? = nil,
-         tint: UInt32? = nil, weight: NSFont.Weight? = nil,
+         tint: UInt32? = nil, weight: NSFont.Weight? = nil, border: UInt32? = nil,
          marquee: Bool = false, onTap: (() -> Void)? = nil) {
         self.style = style
+        self.border = border
         self.fontSize = fontSize
         self.onTap = onTap
         self.marquee = marquee && symbol == nil && icon == nil
@@ -235,8 +238,8 @@ final class BarButton: NSButton {
             background = background.blended(withFraction: 0.25, of: .white) ?? background
         }
         layer?.backgroundColor = background.cgColor
-        layer?.borderWidth = style == .outline ? 1 : 0
-        layer?.borderColor = Palette.border.cgColor
+        layer?.borderWidth = style == .outline || border != nil ? 1 : 0
+        layer?.borderColor = (border.map { NSColor(hex: $0) } ?? Palette.border).cgColor
     }
 
     @objc private func fire() { onTap?() }

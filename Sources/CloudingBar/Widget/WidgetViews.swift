@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 // The floating widget, drawn to design/Main.dc.html and design/Widget-*.dc.html.
 // Sizes are in points; colors and timings come from the mockups.
 
-enum WidgetMode { case strip, pill, panel, sessions }
+/// `chats`: the open widget's Chats tab, every chat to write to.
+enum WidgetMode { case strip, pill, panel, chats }
 
 final class WidgetState: ObservableObject {
     @Published var mode: WidgetMode = .pill
@@ -52,6 +53,13 @@ final class WidgetState: ObservableObject {
     @Published var notchHeight: CGFloat = 32
     /// Goes up by one to put the cursor in the panel's message field.
     @Published var focusMessage = 0
+    /// The Chats tab: the chat whose composer is open under its row (one at
+    /// a time), and a nudge to put the cursor in it.
+    @Published var composerChat: String?
+    @Published var focusComposer = 0
+    /// Set by the controllers: the window takes the keyboard for that
+    /// composer (without activating the app, so your editor stays in front).
+    var composerKeyboard: (() -> Void)?
     /// How close to an end a press resizes instead of moving.
     static let pillEdge: CGFloat = 14
     /// How close to the top or bottom of the outline.
@@ -343,7 +351,7 @@ struct WidgetView: View {
             case .panel:
                 if model.request != nil && !preview { RequestCardView(model: model, state: state) }
                 else { MainPanel(model: model, state: state) }
-            case .sessions: SessionsPanel(model: model, state: state)
+            case .chats: ChatsPanel(model: model, state: state)
             }
         }
         .fixedSize()
@@ -353,13 +361,15 @@ struct WidgetView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    /// Files dragged over the open panel: where they'll go.
+    /// Files dragged over the open panel: where they'll go — with a chat's
+    /// composer open in the Chats tab, to that chat.
     @ViewBuilder private var dropTarget: some View {
-        if state.dropHover && (state.mode == .panel || state.mode == .sessions) {
+        if state.dropHover && (state.mode == .panel || state.mode == .chats) {
+            let composer = state.mode == .chats ? state.composerChat.flatMap { id in model.sessions.first { $0.id == id } } : nil
             RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.6))
                 .overlay(VStack(spacing: 6) {
                     Image(systemName: "paperclip").font(.system(size: 20))
-                    Text(model.project.map { "Attach for \($0)" } ?? "Attach").font(.system(size: 13, weight: .semibold))
+                    Text((composer?.name ?? model.project).map { "Attach for \($0)" } ?? "Attach").font(.system(size: 13, weight: .semibold))
                     Text("Sent to its chat with your next message").font(.system(size: 11)).foregroundColor(.cbSecondary)
                 }
                 .foregroundColor(.cbText))
@@ -385,7 +395,7 @@ struct WidgetWindow: View {
 }
 
 extension Animation {
-    /// Between the panel and the sessions: a soft spring, like a sheet.
+    /// Between the panel and the chats: a soft spring, like a sheet.
     static let cbSwap = Animation.spring(response: 0.42, dampingFraction: 0.88)
 }
 
@@ -832,19 +842,22 @@ struct MainPanel: View {
 
     // MARK: Header
 
-    /// Which chat this is: with several, all of them as tabs; with one,
-    /// its name. Under it where it runs and what it's doing.
+    /// The Panel and Chats tabs, then which chat this is: with several, all
+    /// of them as tabs; with one, its name. Under it where it runs and what
+    /// it's doing.
     private func header(inner: CGFloat) -> some View {
         let several = model.sessions.count > 1
         let character: CGFloat = state.hidesHeaderCharacter ? 0 : 28 + 10
+        let tabs: CGFloat = model.hasSession ? PanelTabs.width + 10 : 0
         // One line (a chat's name): centred on Cloud and the button.
         return HStack(alignment: several || !model.hasSession ? .top : .center, spacing: 10) {
             if !state.hidesHeaderCharacter {
                 MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
             }
+            if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
                 if several {
-                    ChatTabs(model: model, state: state, width: inner - character - 30 - 8)
+                    ChatTabs(model: model, state: state, width: inner - character - tabs - 30 - 8)
                 } else {
                     // Where it runs and what it's doing: on hover (owner, 26.10).
                     Text(model.hasSession ? model.chatName ?? model.statusTitle : "No chat open")
@@ -1228,7 +1241,7 @@ struct ChatTabs: View {
         HStack(spacing: 6) {
             ForEach(v.shown) { r in tab(r) }
             if v.hidden > 0 {
-                Button { withAnimation(.cbSwap) { state.mode = .sessions } } label: {
+                Button { withAnimation(.cbSwap) { state.mode = .chats } } label: {
                     Text("+\(v.hidden)").font(.system(size: 12)).foregroundColor(.cbSecondary)
                         .frame(width: 36, height: 26)
                         .background(Capsule().fill(Color.white.opacity(0.06)))
@@ -1736,73 +1749,262 @@ struct OptionRow: View {
     }
 }
 
-// MARK: - Sessions
+// MARK: - Chats
 
-struct SessionsPanel: View {
-    @ObservedObject var model: AppModel
+/// The open widget's two tabs (owner, 27.10): the panel for the chat it
+/// follows, and every chat to write to without switching to it.
+struct PanelTabs: View {
     @ObservedObject var state: WidgetState
+    @Namespace private var lit
+
+    static let width: CGFloat = 112
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                // As small as the chats' tabs (owner, 27.10).
-                Button { withAnimation(.cbSwap) { state.mode = .panel } } label: { Icon(kind: .chevronLeft, size: 12, lineWidth: 2) }
-                    .buttonStyle(IconButtonStyle(size: 26))
-                    .padding(.trailing, 4)
-                    .accessibilityLabel("Back")
-                Text("Sessions").font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Text("Session \(model.sessionPercent.map { "\(Int($0.rounded()))%" } ?? "—")")
-                    .font(.system(size: 12)).foregroundColor(.cbSecondary)
-            }
+        HStack(spacing: 2) {
+            tab("Panel", .panel)
+            tab("Chats", .chats)
+        }
+        .padding(3)
+        .frame(width: Self.width, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black.opacity(0.25)))
+    }
+
+    private func tab(_ title: String, _ mode: WidgetMode) -> some View {
+        let on = state.mode == mode
+        return Button { if !on { withAnimation(.cbSwap) { state.mode = mode } } } label: {
+            Text(title).font(.system(size: 12, weight: on ? .semibold : .regular))
+                .foregroundColor(on ? .cbText : .cbSecondary)
+                .frame(maxWidth: .infinity, minHeight: 20)
+                .background {
+                    if on {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.16))
+                            .matchedGeometryEffect(id: "tab", in: lit)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title + (on ? ", shown" : ""))
+    }
+}
+
+/// Every chat, to write to where it is (owner, 27.10: from "Status bar", a
+/// screenshot for another chat, nothing switching). A click on a chat opens
+/// a line under it — words, a screenshot of an area, your voice, Send — all
+/// for that chat, whatever the widget follows; no window comes forward.
+/// ↗ is the one way into a chat: followed here and opened, as a click on
+/// it did before.
+struct ChatsPanel: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var state: WidgetState
+    @Environment(\.cbPreview) private var preview
+    @FocusState private var typing: Bool
+
+    static let width: CGFloat = 440
+    private static let tool: CGFloat = 28
+    /// The composer under a row starts where the row's words do.
+    private static let indent: CGFloat = 8 + 28 + 10
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
             VStack(spacing: 0) {
                 ForEach(model.sessions) { s in
-                    Button {
-                        if s.waiting { model.showRequest(s.id) }
-                        model.focusSession(s.id)
-                        withAnimation(.cbSwap) { state.mode = .panel }
-                    } label: { row(s) }
-                    .buttonStyle(.plain)
+                    row(s)
                     Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+                }
+                if model.sessions.isEmpty {
+                    Text("No chat open").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                        .frame(maxWidth: .infinity, minHeight: 50)
                 }
             }
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.06)))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Text("Click one to follow it here and open it · % = context")
-                .font(.system(size: 11)).foregroundColor(.cbSecondary).padding(.horizontal, 2)
+            // Where the words went, a moment after Send; else what a click does.
+            Text(model.sentNote?.text ?? "Click a chat to write to it from here · ↗ opens it · % = context")
+                .font(.system(size: 11)).foregroundColor(model.sentNote == nil ? .cbSecondary : .cbText)
+                .lineLimit(1).padding(.horizontal, 2)
+                .animation(.easeOut(duration: 0.2), value: model.sentNote)
         }
         .foregroundColor(.cbText)
-        .padding(EdgeInsets(top: 8, leading: 14, bottom: 14, trailing: 14))
-        .frame(width: 320)
+        .padding(EdgeInsets(top: 10, leading: 12, bottom: 12, trailing: 12))
+        .frame(width: Self.width)
         .modifier(PanelMaterial())
         // In from the right as the panel fades back, like a page turning.
         .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: 24)).combined(with: .scale(scale: 0.98, anchor: .top)),
                                 removal: .opacity.combined(with: .offset(x: 24))))
+        // A composer just opened (a click, a screenshot back): the cursor in it.
+        .onChange(of: state.focusComposer) { _ in DispatchQueue.main.async { typing = true } }
+    }
+
+    /// Cloud, the tabs, the chat the widget follows, the collapse button.
+    private var header: some View {
+        HStack(spacing: 10) {
+            if !state.hidesHeaderCharacter {
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
+            }
+            PanelTabs(state: state)
+            Spacer(minLength: 0)
+            if let name = model.chatName {
+                Text("Following: \(name)").font(.system(size: 12)).foregroundColor(.cbSecondary)
+                    .lineLimit(1).truncationMode(.tail)
+            }
+            Button {
+                if let collapse = state.collapse { collapse() } else { withAnimation(.cb(0.22)) { state.mode = state.rest } }
+            } label: { Icon(kind: .chevronUp, size: 14) }
+                .buttonStyle(IconButtonStyle(size: 30))
+                .accessibilityLabel("Collapse")
+        }
+        .disabled(preview)
     }
 
     private func row(_ s: AppModel.SessionRow) -> some View {
-        HStack(spacing: 10) {
-            MascotIcon(activity: s.activity, size: 28).frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    ChatDot(color: s.color)
-                    Text(s.name).font(.system(size: 13, weight: s.current ? .semibold : .regular)).lineLimit(1)
-                    if s.current {
-                        Text("shown").font(.system(size: 10)).foregroundColor(.cbSecondary)
+        let open = state.composerChat == s.id
+        let queued = model.queue.filter { $0.sessionId == s.id }.count
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Button { toggle(s.id) } label: {
+                    HStack(spacing: 10) {
+                        MascotIcon(activity: s.activity, size: 28).frame(width: 28, height: 28)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                ChatDot(color: s.color)
+                                Text(s.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                                if s.current {
+                                    Text("followed").font(.system(size: 10)).foregroundColor(.cbSecondary)
+                                }
+                            }
+                            Text(([s.place, s.status] + (queued > 0 ? ["\(queued) queued"] : [])).filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.system(size: 11)).foregroundColor(s.waiting ? .cbWarningText : .cbSecondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .contentShape(Rectangle())
                 }
-                Text([s.place, s.status].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 11)).foregroundColor(s.waiting ? .cbWarningText : .cbSecondary).lineLimit(1)
+                .buttonStyle(.plain)
+                .help(open ? "Close" : "Write to \(s.name) from here — nothing switches")
+                .accessibilityLabel((open ? "Close the message to " : "Write to ") + s.name)
+                Text(s.context.map { "\(Int($0.rounded()))%" } ?? "—")
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundColor((s.context ?? 0) >= 90 ? .cbDeny : (s.context ?? 0) >= 70 ? .cbWarningText : .cbSecondary)
+                // Today's click on a chat: followed here and opened.
+                Button {
+                    if s.waiting { model.showRequest(s.id) }
+                    model.focusSession(s.id)
+                    withAnimation(.cbSwap) { state.mode = .panel }
+                } label: { Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .semibold)) }
+                    .buttonStyle(IconButtonStyle(size: 26))
+                    .help("Follow it here and open it")
+                    .accessibilityLabel("Open \(s.name)")
             }
-            Spacer(minLength: 0)
-            Text(s.context.map { "\(Int($0.rounded()))%" } ?? "—")
-                .font(.system(size: 12).monospacedDigit())
-                .foregroundColor((s.context ?? 0) >= 90 ? .cbDeny : (s.context ?? 0) >= 70 ? .cbWarningText : .cbSecondary)
+            .padding(.leading, 8).padding(.trailing, 8)
+            .frame(height: 50)
+            if open { composer(s).transition(.opacity) }
         }
-        .padding(.leading, 8).padding(.trailing, 12)
-        .frame(height: 52)
-        .background(s.waiting ? Color.cbWarning.opacity(0.10) : s.current ? Color(hex: s.color).opacity(0.12) : Color.clear)
-        .contentShape(Rectangle())
+        .background(open ? Color.white.opacity(0.05) : s.waiting ? Color.cbWarning.opacity(0.10) : Color.clear)
+        .disabled(preview) // Settings' copy: nothing sent or opened from it
+    }
+
+    /// The line under an open row: its queue (Send now brings that chat up),
+    /// its files, then the field, a screenshot and the mic for it, Send.
+    private func composer(_ s: AppModel.SessionRow) -> some View {
+        let width = Self.width - 24 - Self.indent - 8
+        let files = model.chatFiles[s.id] ?? []
+        let queued = model.queue.filter { $0.sessionId == s.id }
+        let listening = model.listeningFor == s.id
+        let draft = Binding(get: { model.chatDrafts[s.id] ?? "" }, set: { model.chatDrafts[s.id] = $0 })
+        let sendable = !(model.chatDrafts[s.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !files.isEmpty
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(queued) { item in
+                HStack(spacing: 6) {
+                    Image(systemName: "clock").font(.system(size: 9)).foregroundColor(.cbSecondary)
+                    Text(item.text).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button { model.sendQueuedNow(item.id) } label: {
+                        Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
+                    }
+                    .buttonStyle(.plain).foregroundColor(.cbMeter)
+                    .help("Opens its chat and sends it now")
+                    Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
+                        .buttonStyle(.plain).foregroundColor(.cbSecondary)
+                        .accessibilityLabel("Remove from queue")
+                }
+                .font(.system(size: 11))
+            }
+            if !files.isEmpty { fileChips(files, chat: s.id, width: width) }
+            if listening {
+                Text(model.heard.isEmpty ? "Listening… it stops after a pause" : model.heard)
+                    .font(.system(size: 11)).foregroundColor(.cbMeter).lineLimit(2)
+            }
+            HStack(spacing: 6) {
+                TextField("Write to \(s.name)…", text: draft)
+                    .textFieldStyle(.plain).font(.system(size: 12))
+                    .padding(.horizontal, 8)
+                    .frame(height: Self.tool)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(0.25)))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.white.opacity(typing ? 0.28 : 0.12), lineWidth: typing ? 1 : 0.5))
+                    .focused($typing)
+                    .onSubmit { send(s) }
+                    .onExitCommand { toggle(s.id) }
+                Button { model.screenshotTo(s.id) } label: { Image(systemName: "camera.viewfinder").font(.system(size: Self.tool * 0.44)) }
+                    .buttonStyle(IconButtonStyle(background: Color.white.opacity(0.1), foreground: .cbText, size: Self.tool))
+                    .help("Screenshot an area for \(s.name)")
+                    .accessibilityLabel("Screenshot for \(s.name)")
+                Button { model.voiceTo(s.id) } label: { Icon(kind: .mic, size: Self.tool * 0.5, lineWidth: 1.8) }
+                    .buttonStyle(IconButtonStyle(background: listening ? .cbAction : Color.white.opacity(0.1),
+                                                 foreground: listening ? .white : .cbText, size: Self.tool))
+                    .help("Dictate to \(s.name)")
+                    .accessibilityLabel("Dictate to \(s.name)")
+                // In the chat's colour, as the mockup has it; dark on a light one.
+                Button { send(s) } label: { Icon(kind: .send, size: 13, lineWidth: 2.4) }
+                    .buttonStyle(IconButtonStyle(background: sendable ? Color(hex: s.color) : Color.white.opacity(0.1),
+                                                 foreground: sendable && Self.light(s.color) ? .black : .white, size: Self.tool))
+                    .disabled(!sendable)
+                    .help("Send to \(s.name)")
+                    .accessibilityLabel("Send to \(s.name)")
+            }
+        }
+        .frame(width: width, alignment: .leading)
+        .padding(.leading, Self.indent).padding(.bottom, 10)
+    }
+
+    private func fileChips(_ files: [String], chat id: String, width: CGFloat) -> some View {
+        let board = flowSlots(files.map { (id: $0, width: AttachmentChip.width($0)) }, width: width, rowHeight: 24, gap: 6, rowGap: 6)
+        return ZStack(alignment: .topLeading) {
+            ForEach(files, id: \.self) { path in
+                let slot = board.slots[path] ?? .zero
+                AttachmentChip(path: path) { model.removeAttachmentFrom(path, id) }
+                    .frame(width: slot.width, height: 24)
+                    .offset(x: slot.minX, y: slot.minY)
+            }
+        }
+        .frame(width: width, height: board.size.height, alignment: .topLeading)
+    }
+
+    /// One composer open at a time; a click on its row again closes it.
+    private func toggle(_ id: String) {
+        let opening = state.composerChat != id
+        withAnimation(.cb(0.22)) { state.composerChat = opening ? id : nil }
+        if opening {
+            state.composerKeyboard?()
+            state.focusComposer += 1
+        } else {
+            typing = false
+        }
+    }
+
+    private func send(_ s: AppModel.SessionRow) {
+        let text = (model.chatDrafts[s.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty || !(model.chatFiles[s.id] ?? []).isEmpty else { return }
+        model.sendTo(text, s.id)
+        model.chatDrafts[s.id] = nil
+    }
+
+    /// A chat colour light enough for a dark icon on it (yellow, mint).
+    static func light(_ hex: UInt32) -> Bool {
+        let r = Double((hex >> 16) & 0xFF), g = Double((hex >> 8) & 0xFF), b = Double(hex & 0xFF)
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7
     }
 }
 

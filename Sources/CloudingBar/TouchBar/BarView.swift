@@ -12,7 +12,8 @@ struct BarModel: Equatable {
         case models
         /// The subagents at work, opened from the subagents button.
         case agents
-        /// The live chats, opened from the chat button: pick one to follow.
+        /// The live chats, opened from the chat button: pick one to write to
+        /// it without following it (owner, 27.10).
         case chats
         /// Your templates, opened from the templates button: tap one to
         /// type it into the chat.
@@ -64,6 +65,11 @@ struct BarModel: Equatable {
     /// Writing to the chat (not answering): your buttons and templates
     /// stay at hand beside the field.
     var typingCommands = false
+    /// The line is written for a chat picked from the list, not the one
+    /// followed: its chip before the words, ↗ to open it at the end. And
+    /// the files waiting for it (a screenshot taken from the line).
+    var typingTo: Chat?
+    var typingFiles = 0
     /// Dictating into the line: the mic lit, the words arriving as you speak.
     var listening = false
     /// The chat the bar shows, for the chat field: "Status bar".
@@ -103,8 +109,10 @@ enum BarAction {
     case models, pickModel(String), pickEffort(String)
     /// The subagents button shows who's working.
     case agents
-    /// The chat button shows the chats; a pick follows that one.
-    case chats, pickChat(String)
+    /// The chat button shows the chats; a pick opens the message line for
+    /// that one (`writeTo`), without following it. `pickChat` follows a
+    /// chat and opens it (↗ on that line, "Open" on another's "done").
+    case chats, writeTo(String), pickChat(String)
     /// Write: a message to the chat, typed on the keyboard or dictated,
     /// sent when Claude is free (like the widget's message box).
     case write, cancelTyping
@@ -127,6 +135,8 @@ enum BarAction {
 ///   permission  [character] · ● Run `command` · Allow · Always · Deny
 ///   question    [character] · ● Question? · option · option · Other…
 ///   typing      [character] · ═ · Other [answer________] · Send · 🎤
+///   written to  [character] · → Lead bot · [words________] · 📷 · 🎤 · Send · ↗
+///               (a chat picked from the chats list, not the one followed)
 ///   context     [character] · Session ─── · Context ── (red) · Compact · Later
 ///   models      [character] · Model  Opus 1M · Opus · … · Effort  low · … · Done
 ///   agents      [character] · Subagents  Explore · Find the hook code · … · Done
@@ -237,7 +247,8 @@ final class BarView: NSView {
             // The question as asked, not its short form: that swaps in place.
             return "question|\(m.questionKey.isEmpty ? text : m.questionKey)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
         case .typing:
-            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)|\(m.listening)"
+            let to = m.typingTo.map { "\($0.id)|\($0.name)|\($0.color)|\(m.typingFiles)" } ?? ""
+            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)|\(m.listening)|\(to)|\(m.short)"
         }
     }
 
@@ -513,12 +524,13 @@ final class BarView: NSView {
 
         case .chats:
             var group: [NSView] = []
-            let word = sectionLabel("Chats")
+            // A tap writes to that chat from here; ↗ on its line goes there.
+            let word = sectionLabel("Write to")
             add(word, .fixed(ceil(word.intrinsicContentSize.width) + 2))
             for chat in model.chats {
                 // A whole name stands still; one that didn't get the room slides.
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
-                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.writeTo(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
                 // No slide-in for the chats: a name that slides (too long, or
                 // squeezed among many) came out empty with both on the Touch
@@ -572,6 +584,10 @@ final class BarView: NSView {
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
 
         case .typing:
+            if let to = model.typingTo {
+                addLine(to: to)
+                break
+            }
             let mini = MiniMetersView()
             self.mini = mini
             add(mini, .fixed(60))
@@ -611,6 +627,35 @@ final class BarView: NSView {
             }
         }
         needsLayout = true
+    }
+
+    /// The message line written for a chat picked from the list (owner,
+    /// 27.10): "→ chat" in its colour — a tap goes back to the list — the
+    /// words, a screenshot and the mic for that chat, Send, and ↗ at the end,
+    /// the one way into that chat (followed and opened, as a pick was before).
+    private func addLine(to chat: BarModel.Chat) {
+        let files = model.typingFiles == 0 ? "" : model.typingFiles == 1 ? " · 1 file" : " · \(model.typingFiles) files"
+        let chip = BarButton("→ " + chat.name + files, style: .outline, fontSize: 12, dot: chat.color,
+                             weight: .semibold, border: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
+        chip.setAccessibilityLabel("To \(chat.name)\(files) — back to the chats")
+        add(chip, .shrinkable(min(model.short ? 130 : 190, chip.fittingWidth(padding: 10))))
+        let field = TypingFieldView()
+        field.placeholder = model.listening ? "Listening… speak" : model.typingPlaceholder
+        self.field = field
+        add(field, .flex(weight: 1, min: 120))
+        animate(field) { $0.slideIn(duration: 0.24) }
+        if let icon = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Screenshot") {
+            add(BarButton("Screenshot for \(chat.name)", icon: icon) { [weak self] in self?.onAction?(.screenshot) },
+                .fixed(model.short ? 40 : 48))
+        }
+        add(BarButton("Dictate", style: model.listening ? .primary : .normal, icon: Self.micImage()) {
+            [weak self] in self?.onAction?(.mic)
+        }, .fixed(model.short ? 40 : 48))
+        add(BarButton("Send", style: .primary) { [weak self] in self?.onAction?(.send) }, .fixed(model.short ? 64 : 85))
+        if let icon = NSImage(systemSymbolName: "arrow.up.right", accessibilityDescription: "Open \(chat.name)") {
+            add(BarButton("Open \(chat.name)", style: .outline, icon: icon) { [weak self] in self?.onAction?(.pickChat(chat.id)) },
+                .fixed(40))
+        }
     }
 
     /// Your buttons, small, for inside the chat field (if the bar shows them).
