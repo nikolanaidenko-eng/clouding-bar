@@ -2250,7 +2250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             queueSentAt = Date()
             handedAt[id] = Date()
             DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
-            typeAfterReleasingKey(next.text)
+            typeAfterReleasingKey(next.text, for: session)
             return
         }
     }
@@ -2371,7 +2371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if Date().timeIntervalSince(started) > 1, Date().timeIntervalSince(self.frontSince.at) > 0.5,
                self.chatInFront(id) {
                 self.queueSentAt = Date()
-                if self.typeAfterReleasingKey(item.text) { DebugLog.note("queue: sent now") }
+                if self.typeAfterReleasingKey(item.text, for: self.store.sessions[id]) { DebugLog.note("queue: sent now") }
             } else if tries > 0 {
                 self.typeWhenInFront(item, session: id, tries: tries - 1, since: started, requeue: requeue)
             } else {
@@ -2390,7 +2390,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Types into the chat in front — after a moment if the widget had the
     /// keyboard, so the first letters don't go missing on the way back.
     @discardableResult
-    private func typeAfterReleasingKey(_ text: String) -> Bool {
+    /// `chat`: the one the words are for — held back, they wait in its
+    /// queue, not a chat guessed from the window (review, 27.10).
+    private func typeAfterReleasingKey(_ text: String, for chat: Session?) -> Bool {
         // One of our own fields has the keyboard — the bar's line, the
         // island's, Settings: the keys would land there, and its Return send
         // them to whichever chat it's addressed to (review, 27.10).
@@ -2398,7 +2400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard safeToType(), !oursHasKeys else {
             // Claude's own permission menu may be open there: kept in the
             // queue, out once Claude has moved on — not lost.
-            let front = store.session(inWindow: frontTitle, tty: frontTTY) ?? focusedSession
+            let front = chat ?? store.session(inWindow: frontTitle, tty: frontTTY) ?? focusedSession
             queue.insert(.init(text: text, sessionId: front?.id, project: front?.projectName), at: 0)
             saveQueue()
             refresh()
@@ -2453,7 +2455,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DebugLog.note("send: Codex is at work — queued until its turn ends")
             }
         } else if chatInFront(session.id) {
-            typeAfterReleasingKey(text)
+            typeAfterReleasingKey(text, for: session)
         } else {
             enqueue(text, for: session) // goes once its chat is in front
             DebugLog.note("send: its chat isn't in front — queued")
