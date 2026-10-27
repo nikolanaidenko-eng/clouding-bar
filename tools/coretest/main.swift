@@ -468,6 +468,26 @@ do { // the watcher picks both up from a transcript
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
 }
+do { // a turn that ended on an API error: no Stop comes, the chat is free again (review, 27.10)
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let file = dir.appendingPathComponent("api-error.jsonl")
+    let lines = [
+        #"{"type":"assistant","message":{"id":"a1","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+        #"{"type":"assistant","isApiErrorMessage":true,"message":{"id":"e1","model":"<synthetic>","content":[{"type":"text","text":"API Error: Your computer went to sleep"}],"usage":{"input_tokens":0,"output_tokens":0}}}"#,
+    ]
+    try? (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let store = SessionStore()
+    store.apply(Inbound(raw: ["session_id": "ae", "hook_event_name": "UserPromptSubmit", "cwd": "/Users/me/p",
+                              "transcript_path": file.path, "claude_pid": Int(getpid())]))
+    let busy = store.sessions["ae"]?.activity == .work
+    store.pollTranscripts()
+    let end = Date().addingTimeInterval(5)
+    while store.sessions["ae"]?.activity != .sleep && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    check(busy && store.sessions["ae"]?.activity == .sleep, "watcher: a turn ended on an API error (the Mac slept) leaves the chat free, not working for ever")
+    store.apply(Inbound(raw: ["session_id": "sf", "hook_event_name": "UserPromptSubmit", "cwd": "/Users/me/p", "claude_pid": Int(getpid())]))
+    store.apply(Inbound(raw: ["session_id": "sf", "hook_event_name": "StopFailure", "cwd": "/Users/me/p", "claude_pid": Int(getpid())]))
+    check(store.sessions["sf"]?.activity == .sleep, "hooks: StopFailure ends the turn like Stop")
+}
 do { // ☁️ in Claude's words just now: Cloud waves back, once a chat; old replies and code don't count
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
     let f = ISO8601DateFormatter()
