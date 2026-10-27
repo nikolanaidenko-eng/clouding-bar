@@ -314,6 +314,9 @@ final class WidgetController: NSObject {
         }
     }
 
+    /// The widget has the keyboard (a field of its own is being written in).
+    var ownsKey: Bool { panel?.isKeyWindow ?? false }
+
     /// Hands the keyboard back to the app in front, if the widget has it.
     /// True if it had it: the app in front needs a moment to take it back.
     @discardableResult

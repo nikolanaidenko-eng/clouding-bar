@@ -306,6 +306,8 @@ do { // Cloud tells another chat is done
 
 widget("w-strip", .strip, size: NSSize(width: 200, height: 60))
 widget("w-pill", .pill, size: NSSize(width: 400, height: 90))
+widget("w-pill-cloud-out", .pill, size: NSSize(width: 1000, height: 90)) { $0.cloudOut = 1 } // out saying another chat is done
+widget("w-pill-cloud-home", .pill, size: NSSize(width: 1000, height: 90))
 widget("w-pill-cost", .pill, size: NSSize(width: 400, height: 90)) { $0.config.pillShows = ["context", "reset", "cost"]; $0.cost = 0.84 }
 widget("w-pill-minimal", .pill, size: NSSize(width: 400, height: 90)) { $0.hasSession = false; $0.activity = .sleep }
 widget("w-pill-request", .pill, size: NSSize(width: 400, height: 90)) {

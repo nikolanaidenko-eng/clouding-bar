@@ -852,7 +852,7 @@ struct MainPanel: View {
         // One line (a chat's name): centred on Cloud and the button.
         return HStack(alignment: several || !model.hasSession ? .top : .center, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
@@ -1841,7 +1841,7 @@ struct ChatsPanel: View {
     private var header: some View {
         HStack(spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28)
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             PanelTabs(state: state)
             Spacer(minLength: 0)
@@ -2005,6 +2005,18 @@ struct ChatsPanel: View {
     static func light(_ hex: UInt32) -> Bool {
         let r = Double((hex >> 16) & 0xFF), g = Double((hex >> 8) & 0xFF), b = Double(hex & 0xFF)
         return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7
+    }
+}
+
+extension View {
+    /// The widget's Cloud while it's out saying another chat is done
+    /// (DoneBubble): gone from here, the way it went, back as that one ducks
+    /// in — not two Clouds at once (owner, 27.10).
+    func cloudOut(_ way: Int) -> some View {
+        offset(y: CGFloat(-way) * 14)
+            .scaleEffect(way == 0 ? 1 : 0.4, anchor: way > 0 ? .top : .bottom)
+            .opacity(way == 0 ? 1 : 0)
+            .animation(Palette.reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.8), value: way)
     }
 }
 
