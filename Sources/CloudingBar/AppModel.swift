@@ -244,6 +244,8 @@ final class AppModel: ObservableObject {
     var connectClaude: () -> Void = {}
     @Published var hasCodex = false
     @Published var codexConnected = false
+    /// Codex's link is the plugin (no hooks of ours in hooks.json).
+    @Published var codexViaPlugin = false
     /// Codex's own server: "Connected", "Codex's server isn't running", "Off"…
     @Published var codexServerState = "Off"
     var connectCodex: () -> Void = {}

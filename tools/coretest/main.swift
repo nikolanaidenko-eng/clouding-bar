@@ -986,6 +986,27 @@ do {
         check(try Data(contentsOf: url) == bytes, "codex connect: nothing to add, the file isn't rewritten")
     }
 
+    // The plugin in Codex: Connect adds nothing a second time
+    do {
+        let home = base.appendingPathComponent("connect-plugin")
+        try? fm.removeItem(at: home)
+        try? fm.createDirectory(at: home, withIntermediateDirectories: true)
+        setenv("CLOUDINGBAR_CODEX_HOME", home.path, 1)
+        let toml = home.appendingPathComponent("config.toml")
+        check(!Setup.codexPluginActive && !Setup.codexConnected, "codex plugin: nothing yet")
+        try "[plugins.\"clouding-bar@clouding-bar\"]\nenabled = false\n".write(to: toml, atomically: true, encoding: .utf8)
+        check(!Setup.codexPluginActive, "codex plugin: installed but switched off is not on")
+        try "[marketplaces.clouding-bar]\nsource_type = \"local\"\n\n[plugins.\"other@x\"]\nenabled = true\n".write(to: toml, atomically: true, encoding: .utf8)
+        check(!Setup.codexPluginActive, "codex plugin: another plugin's enabled is not ours")
+        try "[marketplaces.clouding-bar]\nsource_type = \"local\"\n\n[plugins.\"clouding-bar@clouding-bar\"]\nenabled = true\n".write(to: toml, atomically: true, encoding: .utf8)
+        check(Setup.codexPluginActive && Setup.codexConnected && !Setup.codexHooksInFile, "codex plugin: on, so Codex is connected")
+        try Setup.connectCodex()
+        check(!fm.fileExists(atPath: home.appendingPathComponent("hooks.json").path), "codex plugin: Connect writes no hooks.json")
+        try "[plugins.\"clouding-bar@clouding-bar\"]\nenabled = false\n".write(to: toml, atomically: true, encoding: .utf8)
+        try Setup.connectCodex()
+        check(Setup.codexHooksInFile && Setup.codexConnected, "codex plugin: off again, Connect writes the hooks as before")
+    }
+
     // The permission card for apply_patch
     let patch = "*** Begin Patch\n*** Update File: Sources/App.swift\n@@\n-old\n+new\n*** Add File: docs/new.md\n+hi\n*** Delete File: old.txt\n*** End Patch"
     let ap = PendingRequest(Inbound(raw: ["hook_event_name": "PermissionRequest", "session_id": "x", "tool_name": "apply_patch",
