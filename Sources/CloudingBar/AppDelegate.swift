@@ -175,7 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             accept(message, responder)
         } else if let id = message.sessionId {
             switch message.event {
-            case "Stop", "UserPromptSubmit", "SessionEnd", "Interrupt":
+            case "Stop", "UserPromptSubmit", "SessionEnd", "Interrupt", "StopFailure":
                 // Claude moved on, so whatever it asked was answered elsewhere.
                 for r in requests where r.sessionId == id { finish(r, "\(message.event ?? "") → dropped") }
             case "PostToolUse", "PostToolUseFailure":
@@ -2023,9 +2023,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = try? JSONEncoder().encode(queue) { try? data.write(to: queueURL, options: .atomic) }
     }
 
+    /// When each chat was last handed a message: until its hook says Claude
+    /// took it, the chat counts as busy, so the next one waits its turn.
+    private var handedAt: [String: Date] = [:]
+
     /// Claude has finished its reply there and asks nothing.
     private func isFree(_ session: Session) -> Bool {
         session.activity == .sleep && !session.waitingNotice && !requests.contains(where: { $0.sessionId == session.id })
+            && Date().timeIntervalSince(handedAt[session.id] ?? .distantPast) > 10
     }
 
     /// Sends a chat's next queued message once Claude there has finished a
@@ -2062,6 +2067,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             queue.remove(at: i)
             saveQueue()
             queueSentAt = Date()
+            handedAt[id] = Date()
             DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
             typeAfterReleasingKey(next.text)
             return
@@ -2105,6 +2111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fallback()
             return
         }
+        handedAt[session.id] = Date()
         let name = session.displayName
         DispatchQueue.global(qos: .userInitiated).async {
             let ok = Inject.send(data, pid: pid)

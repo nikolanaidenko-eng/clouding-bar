@@ -80,8 +80,9 @@ final class SessionStore {
                 DebugLog.note("subagents in \(session.projectName ?? id): \(session.agents.map(\.type)) (after \(event))")
             }
             switch event {
-            case "SessionStart", "Stop", "Interrupt":
+            case "SessionStart", "Stop", "Interrupt", "StopFailure":
                 // Interrupt is Codex's: you stopped a turn, and no Stop follows.
+                // StopFailure: a turn that ended on an API error.
                 session.activity = .sleep
                 session.waitingNotice = false
             case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure":
