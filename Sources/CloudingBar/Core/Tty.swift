@@ -13,13 +13,19 @@ enum Tty {
         return "/dev/" + String(cString: name)
     }
 
-    /// The terminals of the Codex programs working in `folder` (its
-    /// background helpers have none).
-    static func codex(in folder: String) -> Set<String> {
-        let want = URL(fileURLWithPath: folder).resolvingSymlinksInPath().path
+    /// A Codex program in a terminal: its tab, its folder, when it started.
+    struct Program {
+        let tty: String
+        let pid: Int32
+        let cwd: String
+        let started: Date
+    }
+
+    /// The Codex programs in a terminal (its background helpers have none).
+    static func codexPrograms() -> [Program] {
         var pids = [pid_t](repeating: 0, count: 4096)
-        let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
-        var found = Set<String>()
+        let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))) // a count of pids
+        var found: [Program] = []
         for pid in pids.prefix(max(0, min(n, pids.count))) where pid > 1 {
             var info = kinfo_proc()
             var size = MemoryLayout<kinfo_proc>.stride
@@ -35,8 +41,17 @@ enum Tty {
             let cwd = withUnsafePointer(to: &path.pvi_cdir.vip_path) {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
             }
-            if cwd == want { found.insert(tty) }
+            let t = info.kp_proc.p_un.__p_starttime
+            found.append(Program(tty: tty, pid: pid, cwd: cwd,
+                                 started: Date(timeIntervalSince1970: Double(t.tv_sec) + Double(t.tv_usec) / 1_000_000)))
         }
         return found
+    }
+
+    /// The path as the kernel gives a process's folder ("/private/tmp/x").
+    static func real(_ path: String) -> String {
+        guard let p = realpath(path, nil) else { return path }
+        defer { free(p) }
+        return String(cString: p)
     }
 }

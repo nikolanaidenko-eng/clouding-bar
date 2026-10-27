@@ -15,16 +15,23 @@ final class Session {
     /// The Claude process, when the hook could tell. Lets us notice a
     /// session is gone even when SessionEnd never arrived.
     var claudePid: Int32? {
-        didSet { if claudePid != oldValue { tty = claudePid.flatMap(Tty.of(pid:)) } }
+        didSet { if claudePid != oldValue { pidTTY = claudePid.flatMap(Tty.of(pid:)) } }
     }
-    /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
-    private(set) var tty: String?
+    private var pidTTY: String?
+    /// A chat found in Codex's files: the tab of the Codex program that
+    /// writes it (SessionStore.findCodexTerminals).
+    private var codexTab: (tty: String, pid: Int32)?
 
-    /// A chat found in Codex's files has no pid to read its terminal from:
-    /// it's given one (SessionStore.findCodexTerminals), or none.
-    func setCodexTerminal(_ t: String?) {
-        guard ambient, claudePid == nil else { return }
-        tty = t
+    /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
+    /// A tab given a chat from Codex's files counts while its Codex runs: a
+    /// shell left there takes nothing.
+    var tty: String? {
+        guard ambient, let t = codexTab else { return pidTTY }
+        return kill(t.pid, 0) == 0 || errno == EPERM ? t.tty : nil
+    }
+
+    func setCodexTerminal(_ tab: (tty: String, pid: Int32)?) {
+        codexTab = ambient && claudePid == nil ? tab : nil
     }
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT); "codex" for Codex
     var entrypoint: String?

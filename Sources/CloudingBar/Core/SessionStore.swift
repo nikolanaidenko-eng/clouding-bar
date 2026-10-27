@@ -393,25 +393,36 @@ final class SessionStore {
         }
     }
 
-    /// Codex programs in a terminal, by folder (tests stand in for it).
-    var codexTerminals: (String) -> Set<String> = Tty.codex(in:)
+    /// The Codex programs in a terminal (tests stand in for it).
+    var codexPrograms: () -> [Tty.Program] = Tty.codexPrograms
 
-    /// A Codex chat found in its files, in a terminal, gets its tab — the
-    /// one Codex program in a terminal in its folder, it the one chat
-    /// there — so it opens and takes words like one a hook told of (owner,
-    /// 27.10). Two programs or two chats there, or a tab a hooked chat has:
-    /// none, never a guess.
+    /// A Codex chat found in its files, in a terminal, gets its tab, so it
+    /// opens and takes words like one a hook told of (owner, 27.10): the
+    /// Codex program in its folder that started before its file was made
+    /// — Codex makes it at the first message, so a program started since
+    /// is another chat's. One such program, it no other chat's: else none,
+    /// never a guess (an old chat still fresh, `/new`, two in one folder).
     func findCodexTerminals() {
         let live = alive
-        for s in live where s.ambient {
-            guard s.codexHost == nil || s.codexHost == "Terminal", let cwd = s.cwd,
-                  live.filter({ $0.entrypoint == "codex" && $0.cwd == cwd }).count == 1 else {
+        let chats = live.filter { $0.ambient }
+        guard !chats.isEmpty else { return }
+        let inTerminal = chats.filter { $0.codexHost == nil || $0.codexHost == "Terminal" }
+        let programs = inTerminal.isEmpty ? [] : codexPrograms()
+        let hooked = Set(live.filter { !$0.ambient }.compactMap(\.tty))
+        var claims: [String: [Tty.Program]] = [:]
+        for s in inTerminal {
+            guard let cwd = s.cwd.map(Tty.real), let path = s.transcriptPath,
+                  let made = (try? FileManager.default.attributesOfItem(atPath: path))?[.creationDate] as? Date else { continue }
+            claims[s.id] = programs.filter { $0.cwd == cwd && $0.started <= made.addingTimeInterval(1) && !hooked.contains($0.tty) }
+        }
+        var claimed: [Int32: Int] = [:]
+        for list in claims.values { for p in list { claimed[p.pid, default: 0] += 1 } }
+        for s in chats {
+            if let list = claims[s.id], list.count == 1, claimed[list[0].pid] == 1 {
+                s.setCodexTerminal((list[0].tty, list[0].pid))
+            } else {
                 s.setCodexTerminal(nil)
-                continue
             }
-            let ttys = codexTerminals(cwd)
-            let tty = ttys.count == 1 ? ttys.first : nil
-            s.setCodexTerminal(live.contains { !$0.ambient && $0.tty == tty } ? nil : tty)
         }
     }
 

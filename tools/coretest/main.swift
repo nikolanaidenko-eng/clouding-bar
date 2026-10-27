@@ -891,29 +891,43 @@ do {
         check(found.first { $0.path == latePath }?.meta?.interactive == true, "codex files: a file whose first line came late is read again")
         try? fm.removeItem(atPath: latePath)
 
-        // Its tab (owner, 27.10): the one Codex program in a terminal in its folder
+        // Its tab (owner, 27.10): the Codex program in its folder that started before its file
         func termMeta(_ id: String) -> String {
             line(t0, "session_meta", #"{"id":"\#(id)","cwd":"/Users/me/term","originator":"codex_cli_rs","cli_version":"0.164.0","source":"cli"}"#)
+        }
+        func program(_ tty: String, pid: Int32 = getpid(), started: TimeInterval = -60) -> Tty.Program {
+            Tty.Program(tty: tty, pid: pid, cwd: "/Users/me/term", started: Date().addingTimeInterval(started))
         }
         let termId = "019a0000-0000-7000-8000-000000000011", twinId = "019a0000-0000-7000-8000-000000000012"
         let termPath = dir.appendingPathComponent(rollName(termId)).path, twinPath = dir.appendingPathComponent(rollName(twinId)).path
         write([termMeta(termId)], to: termPath, modified: Date())
         let tabs = SessionStore()
-        var running: Set<String> = ["/dev/ttys042"]
-        tabs.codexTerminals = { $0 == "/Users/me/term" ? running : [] }
+        var running = [program("/dev/ttys042")]
+        tabs.codexPrograms = { running }
         tabs.pollCodexRollouts()
         spin { tabs.sessions[termId]?.tty != nil }
         check(tabs.sessions[termId]?.tty == "/dev/ttys042" && tabs.session(inWindow: "zsh", tty: "/dev/ttys042")?.id == termId,
-              "codex files: a chat in a terminal gets the tab of the one Codex in its folder — it opens, and takes words there")
+              "codex files: a chat in a terminal gets the tab of the Codex in its folder — it opens, and takes words there")
         check(tabs.sessions[ids[4]].map { $0.tty == nil } != false, "codex files: one in VS Code gets none")
-        running = ["/dev/ttys042", "/dev/ttys043"]
+        // review, 27.10: Codex makes the file at the first message — a program started since is another chat's
+        running = [program("/dev/ttys042", started: 60)]
+        tabs.findCodexTerminals()
+        check(tabs.sessions[termId]?.tty == nil && tabs.session(inWindow: "zsh", tty: "/dev/ttys042") == nil,
+              "codex files: a Codex started after the chat's file (a new chat, not yet written) isn't its tab")
+        running = [program("/dev/ttys042", pid: 99_999)]
+        tabs.findCodexTerminals()
+        check(tabs.sessions[termId]?.tty == nil, "codex files: its Codex gone, a shell left in the tab takes nothing")
+        running = [program("/dev/ttys042"), program("/dev/ttys043", pid: getppid())]
         tabs.findCodexTerminals()
         check(tabs.sessions[termId]?.tty == nil, "codex files: two Codex programs in its folder: no tab, never a guess")
-        running = ["/dev/ttys042"]
+        running = [program("/dev/ttys042")]
+        tabs.findCodexTerminals()
+        check(tabs.sessions[termId]?.tty == "/dev/ttys042", "codex files: one again: its tab again")
         write([termMeta(twinId)], to: twinPath, modified: Date())
         tabs.pollCodexRollouts()
         spin { tabs.sessions[twinId] != nil }
-        check(tabs.sessions[termId]?.tty == nil && tabs.sessions[twinId]?.tty == nil, "codex files: two chats in that folder: no tab for either")
+        check(tabs.sessions[termId]?.tty == nil && tabs.sessions[twinId]?.tty == nil,
+              "codex files: one Codex two chats could be (its /new): no tab for either")
         try? fm.removeItem(atPath: termPath)
         try? fm.removeItem(atPath: twinPath)
     }
