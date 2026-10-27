@@ -367,6 +367,16 @@ final class SessionStore {
         if let p = u.codexPlan { codexAccount.setPlan(p) }
     }
 
+    /// Codex's limits as its own server says them now (CodexServer): the
+    /// same account and rules as the files' — the newest report wins,
+    /// whichever way it came.
+    func applyCodexServerLimits(_ l: CodexRollout.Limits) {
+        if let w = l.fiveHour { codexAccount.apply(used: w.percent, resetsAt: w.resetsAt, reported: w.reported) }
+        if let w = l.week { codexAccount.applyWeek(used: w.percent, resetsAt: w.resetsAt, reported: w.reported) }
+        if let p = l.plan { codexAccount.setPlan(p) }
+        onChange?()
+    }
+
     // MARK: Codex without hooks
 
     /// Looks at Codex's newest session files (every few seconds from the

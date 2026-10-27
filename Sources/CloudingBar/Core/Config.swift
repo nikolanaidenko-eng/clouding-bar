@@ -214,6 +214,9 @@ struct Config: Equatable {
     var autoCompact = false
     /// Requests queued in the widget go out one by one after each reply.
     var taskQueue = false
+    /// Codex's own server, while one runs: its limits as they are now, and
+    /// the widget's words straight into a chat it has loaded (CodexServer).
+    var codexServer = true
     /// The template phrases a config with templates on but none of its own
     /// had; they move into the menu (`moveTemplates`).
     static let oldTemplates = [
@@ -334,6 +337,7 @@ struct Config: Equatable {
         if let v = obj["contextWarning"] as? Bool { config.contextWarning = v }
         if let v = obj["autoCompact"] as? Bool { config.autoCompact = v }
         if let v = obj["taskQueue"] as? Bool { config.taskQueue = v }
+        if let v = obj["codexServer"] as? Bool { config.codexServer = v }
         if let v = obj["screenshot"] as? Bool { config.screenshot = v }
         if let v = obj["metrics"] as? [String] { config.metrics = v }
         if let v = obj["coworkMode"] as? String { config.coworkMode = v; config.coworkModeSet = true }

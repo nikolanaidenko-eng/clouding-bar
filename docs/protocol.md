@@ -150,6 +150,56 @@ OpenAI's Codex runs the same hook, from `~/.codex/hooks.json`, as
   keeps it from coming back.
 - While a Codex chat is in front, the widget and the bar show Codex's limits.
 
+### Codex's own server
+
+Codex 0.164 runs one app-server per user (`codex app-server daemon`, marked
+experimental), which every `codex` in a terminal is a client of; it holds
+their chats' files. Settings → General → Codex → *Live limits and sending*
+(`codexServer`, on) uses it, and only it (`Core/CodexServer.swift`):
+
+- **Only when it runs.** Its socket is `~/.codex/app-server-control/app-server-control.sock`
+  (a link into `/tmp/codex-daemon-<uid>/`); its pid is in
+  `~/.codex/app-server-daemon/daemon.pid`. Both there and the process alive:
+  `codex app-server proxy --sock <that socket>` is run — the copy in
+  `~/.codex/packages/app-server-daemon/current/bin`, else Homebrew's,
+  `/usr/local/bin`, `~/.local/bin`. The proxy only relays bytes to the
+  socket and starts nothing. No server, or a Codex without `proxy`: nothing
+  is run, and everything works from the files as before. Lost: tried again
+  after 5 s, doubling to 5 minutes.
+- **Framing.** A WebSocket over the proxy's stdin and stdout (an HTTP upgrade
+  to `/` — `/daemon/shutdown` on the same socket stops the server — then
+  masked text frames), one JSON-RPC message per frame, without `"jsonrpc"`.
+- **What we send.** `initialize` (`clientInfo.name` `clouding-bar`), then
+  `initialized`; `account/rateLimits/read` (`excludeResetCreditDetails`) on
+  connect and every 5 minutes — Codex asks its backend each time;
+  `thread/loaded/list` every 10 s and right before sending; `turn/start`
+  `{threadId, input: [{type: "text", text}]}`. Nothing else: no
+  `thread/resume`, `thread/start`, fork or `turn/steer`.
+- **Limits.** The `codex` bucket of `rateLimitsByLimitId` (else `rateLimits`),
+  read by the files' rules (windows by length, newest wins, a passed reset
+  reads as reset), reported now. `account/rateLimits/updated` is taken too,
+  but 0.164 sends it only to a chat's own clients, and we join no chat: the
+  files still bring each reply's numbers.
+- **Sending.** `turn/start` finds only a chat the server has loaded — one it
+  hasn't is "thread not found", never read from disk — so no second writer of
+  a chat's file and no copy of it. While a turn runs it joins that turn
+  (codex-rs `start_or_steer_turn`), so the queue holds the words until the
+  chat's file or hooks say the turn ended; *Send now* sends at once. Errors
+  keep the words in the queue; no answer in 15 s may mean they went in, so
+  they aren't sent again. The chat's id goes as the server spells it; dropped
+  files go as quoted paths in the words.
+- **Approvals.** Codex sends them to the clients that joined the chat
+  (`thread/resume`), never to whoever started the turn — so a turn we start
+  asks in its own window, and with hooks on the bar as before. Anything the
+  server asks us anyway (approvals, `requestUserInput`, elicitations, tool
+  calls, `account/chatgptAuthTokens/refresh`, attestation) gets a JSON-RPC
+  error: an approval reads that as declined. No credentials are read or
+  given; if `account/updated` says another app supplies Codex's sign-in
+  (`chatgptAuthTokens`, whose refreshes go to every client), we disconnect.
+- A chat whose tab closed stays loaded in the server for up to 30 minutes
+  (`thread_unload_delay`): words sent then run with no tab to see them; the
+  chat shows them when resumed.
+
 ## Requests: answers from the bar
 
 Two hook events wait for an answer:

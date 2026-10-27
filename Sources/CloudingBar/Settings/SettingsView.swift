@@ -823,13 +823,17 @@ struct GeneralTab: View {
                     SettingsRow(title: "Codex · beta",
                                 hint: model.codexConnected
                                     ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
-                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)",
-                                divider: model.hasVSCode || model.setupMessage != nil) {
+                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
                         if model.codexConnected {
                             Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {
                             Button("Connect") { model.connectCodex() }
                         }
+                    }
+                    SettingsRow(title: "Codex: live limits and sending",
+                                hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)",
+                                divider: model.hasVSCode || model.setupMessage != nil) {
+                        CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
                     }
                 }
                 if model.hasVSCode {
