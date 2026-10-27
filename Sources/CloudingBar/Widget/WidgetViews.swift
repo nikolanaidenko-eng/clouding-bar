@@ -1745,9 +1745,10 @@ struct SessionsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
-                Button { withAnimation(.cbSwap) { state.mode = .panel } } label: { Icon(kind: .chevronLeft, lineWidth: 2.2) }
-                    .buttonStyle(IconButtonStyle())
-                    .padding(.leading, -12)
+                // As small as the chats' tabs (owner, 27.10).
+                Button { withAnimation(.cbSwap) { state.mode = .panel } } label: { Icon(kind: .chevronLeft, size: 12, lineWidth: 2) }
+                    .buttonStyle(IconButtonStyle(size: 26))
+                    .padding(.trailing, 4)
                     .accessibilityLabel("Back")
                 Text("Sessions").font(.system(size: 13, weight: .semibold))
                 Spacer()

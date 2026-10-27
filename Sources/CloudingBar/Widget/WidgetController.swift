@@ -236,8 +236,10 @@ final class WidgetController: NSObject {
     private var wasReviewing = false
 
     private func updateKeyAllowance() {
-        // The queue's text field needs the keyboard too.
-        let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue)
+        // The queue's text field needs the keyboard too. Kept over the
+        // sessions list: giving it back hides the window and shows it again
+        // (releaseKey) — the list blinked on opening (owner, 27.10).
+        let wants = (state.mode == .panel || state.mode == .sessions) && (model.request != nil || model.config.taskQueue)
             || state.mode == .pill && (state.pillTyping || model.dictated != nil)
         panel.allowsKey = wants
         if !wants { releaseKey() }

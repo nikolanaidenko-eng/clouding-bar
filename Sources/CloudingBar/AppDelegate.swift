@@ -1985,9 +1985,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
             guard !full.isEmpty else { return }
             // Straight into Claude where its chat takes that (VS Code, through
-            // the wrapper): no window, no keys, wherever you are. Else the
-            // queue, until its chat is in front — never a window switched.
-            if let s = active, Inject.available(pid: s.claudePid) {
+            // the wrapper): no window, no keys, wherever you are — when Claude
+            // is free and nothing of yours waits before it. Else the queue,
+            // one at a time as Claude gets free (owner, 27.10), or until its
+            // chat is in front — never a window switched.
+            if let s = active, Inject.available(pid: s.claudePid), self.isFree(s),
+               !self.queue.contains(where: { $0.sessionId == s.id }) {
                 DebugLog.tap("send straight to Claude" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
                 self.inject(text, files: files, into: s) { [weak self] in self?.enqueue(full, for: active) }
                 return
@@ -2020,29 +2023,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let data = try? JSONEncoder().encode(queue) { try? data.write(to: queueURL, options: .atomic) }
     }
 
-    /// Sends the next queued request once its session has finished a
-    /// reply and its window is in front (it's typed, like a button).
+    /// Claude has finished its reply there and asks nothing.
+    private func isFree(_ session: Session) -> Bool {
+        session.activity == .sleep && !session.waitingNotice && !requests.contains(where: { $0.sessionId == session.id })
+    }
+
+    /// Sends a chat's next queued message once Claude there has finished a
+    /// reply: straight in where its chat takes that, else typed once its
+    /// window is in front (like a button). Each chat's own in order; one
+    /// chat waiting doesn't hold up another's.
     private func dispatchQueue() {
-        guard let next = queue.first else { return }
-        guard let session = next.sessionId.flatMap({ store.sessions[$0] }) else {
-            queue.removeFirst() // its session is gone
+        let gone = queue.filter { $0.sessionId.flatMap { store.sessions[$0] } == nil }
+        if !gone.isEmpty {
+            queue.removeAll { $0.sessionId.flatMap { store.sessions[$0] } == nil }
             saveQueue()
-            DebugLog.note("queue: dropped, its chat is gone (\(next.project ?? next.sessionId ?? "no chat"))")
+            for g in gone { DebugLog.note("queue: dropped, its chat is gone (\(g.project ?? g.sessionId ?? "no chat"))") }
+        }
+        guard Date().timeIntervalSince(queueSentAt ?? .distantPast) > 10 else { return }
+        var seen = Set<String>()
+        for (i, next) in queue.enumerated() {
+            guard let id = next.sessionId, let session = store.sessions[id], seen.insert(id).inserted,
+                  isFree(session), Date().timeIntervalSince(session.activitySince) > 1.5 else { continue }
+            if Inject.available(pid: session.claudePid) {
+                queue.remove(at: i)
+                saveQueue()
+                queueSentAt = Date()
+                DebugLog.note("queue: sent straight to \(session.displayName), \(queue.count) left")
+                inject(next.text, into: session) { [weak self] in
+                    self?.queue.insert(next, at: 0)
+                    self?.saveQueue()
+                    self?.setNeedsRefresh()
+                }
+                return
+            }
+            // In front a moment already: just switched to, its field may not
+            // take the first letters yet.
+            guard chatInFront(id), Date().timeIntervalSince(frontSince.at) > 1.2 else { continue }
+            queue.remove(at: i)
+            saveQueue()
+            queueSentAt = Date()
+            DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
+            typeAfterReleasingKey(next.text)
             return
         }
-        guard session.activity == .sleep, !session.waitingNotice,
-              !requests.contains(where: { $0.sessionId == session.id }),
-              chatInFront(session.id),
-              // In front a moment already: just switched to, its field may not
-              // take the first letters yet.
-              Date().timeIntervalSince(frontSince.at) > 1.2,
-              Date().timeIntervalSince(session.activitySince) > 1.5,
-              Date().timeIntervalSince(queueSentAt ?? .distantPast) > 10 else { return }
-        queue.removeFirst()
-        saveQueue()
-        queueSentAt = Date()
-        DebugLog.note("queue: sent to \(session.projectName ?? session.id), \(queue.count) left")
-        typeAfterReleasingKey(next.text)
     }
 
     /// Send now: its chat brought to the front, then the words typed in at
