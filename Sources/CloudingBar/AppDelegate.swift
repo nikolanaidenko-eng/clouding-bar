@@ -2135,6 +2135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A Codex chat's go to Codex's server instead.
     private func inject(_ text: String, files: [String] = [], into session: Session, fallback: @escaping () -> Void) {
         if codexDirect(session) {
+            handedAt[session.id] = Date()
             sendToCodex(text, files: files, into: session, fallback: fallback)
             return
         }
