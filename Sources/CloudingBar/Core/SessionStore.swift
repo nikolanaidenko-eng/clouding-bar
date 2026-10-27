@@ -251,6 +251,9 @@ final class SessionStore {
         for separator in [" — ", " – ", " - "] {
             pieces = pieces.flatMap { $0.components(separatedBy: separator) }
         }
+        // Codex names its tab "<what it does> | <folder>" (owner, 27.10):
+        // both halves too, the whole kept for a chat's title with a "|".
+        pieces += pieces.flatMap { p in p.contains(" | ") ? p.components(separatedBy: " | ") : [] }
         return pieces.compactMap { piece in
             let t = String(piece.replacingOccurrences(of: " (Workspace)", with: "")
                 .drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces)

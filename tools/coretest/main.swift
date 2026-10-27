@@ -37,6 +37,13 @@ check(focus(nil, ["a"]) == "a", "no title: the one followed before stays")
 check(focus("notes.txt - Untitled (Workspace) - Visual Studio Code", ["b"]) == "b", "no match: the one followed before stays")
 check(focus("● main.swift — claudebar (Workspace) — Visual Studio Code") == "b",
       "dirty marker and (Workspace) suffix don't get in the way")
+// Codex's tab: "<what it does> | <folder>" (owner, 27.10)
+event("x", "/Users/me/codex-test")
+check(SessionStore.titleParts("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63").contains("codex-test")
+      && focus("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63") == "x",
+      "a Codex tab's title names its folder after a |: followed")
+check(SessionStore.titleParts("Fix A | B — GitHub").contains("Fix A | B"), "a chat's title with a | still matches whole")
+event("x", "/Users/me/codex-test", "SessionEnd")
 
 // Two chats in one project: told apart by their titles.
 event("a2", "/Users/me/Documents/GitHub")
