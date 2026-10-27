@@ -37,6 +37,13 @@ check(focus(nil, ["a"]) == "a", "no title: the one followed before stays")
 check(focus("notes.txt - Untitled (Workspace) - Visual Studio Code", ["b"]) == "b", "no match: the one followed before stays")
 check(focus("● main.swift — claudebar (Workspace) — Visual Studio Code") == "b",
       "dirty marker and (Workspace) suffix don't get in the way")
+// Codex's tab: "<what it does> | <folder>" (owner, 27.10)
+event("x", "/Users/me/codex-test")
+check(SessionStore.titleParts("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63").contains("codex-test")
+      && focus("nikola — Написать стихотворение об облаке | codex-test — codex ▸ codex — 202×63") == "x",
+      "a Codex tab's title names its folder after a |: followed")
+check(SessionStore.titleParts("Fix A | B — GitHub").contains("Fix A | B"), "a chat's title with a | still matches whole")
+event("x", "/Users/me/codex-test", "SessionEnd")
 
 // Two chats in one project: told apart by their titles.
 event("a2", "/Users/me/Documents/GitHub")
@@ -467,6 +474,26 @@ do { // the watcher picks both up from a transcript
     watcher.poll([(id: "m", path: file.path)]) { got = $0; done.signal() }
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
     check(got.first?.model == "claude-opus-5-5[1m]" && got.first?.effort == "max", "watcher: /model and /effort switch the session")
+}
+do { // a turn that ended on an API error: no Stop comes, the chat is free again (review, 27.10)
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let file = dir.appendingPathComponent("api-error.jsonl")
+    let lines = [
+        #"{"type":"assistant","message":{"id":"a1","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+        #"{"type":"assistant","isApiErrorMessage":true,"message":{"id":"e1","model":"<synthetic>","content":[{"type":"text","text":"API Error: Your computer went to sleep"}],"usage":{"input_tokens":0,"output_tokens":0}}}"#,
+    ]
+    try? (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let store = SessionStore()
+    store.apply(Inbound(raw: ["session_id": "ae", "hook_event_name": "UserPromptSubmit", "cwd": "/Users/me/p",
+                              "transcript_path": file.path, "claude_pid": Int(getpid())]))
+    let busy = store.sessions["ae"]?.activity == .work
+    store.pollTranscripts()
+    let end = Date().addingTimeInterval(5)
+    while store.sessions["ae"]?.activity != .sleep && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+    check(busy && store.sessions["ae"]?.activity == .sleep, "watcher: a turn ended on an API error (the Mac slept) leaves the chat free, not working for ever")
+    store.apply(Inbound(raw: ["session_id": "sf", "hook_event_name": "UserPromptSubmit", "cwd": "/Users/me/p", "claude_pid": Int(getpid())]))
+    store.apply(Inbound(raw: ["session_id": "sf", "hook_event_name": "StopFailure", "cwd": "/Users/me/p", "claude_pid": Int(getpid())]))
+    check(store.sessions["sf"]?.activity == .sleep, "hooks: StopFailure ends the turn like Stop")
 }
 do { // ☁️ in Claude's words just now: Cloud waves back, once a chat; old replies and code don't count
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
