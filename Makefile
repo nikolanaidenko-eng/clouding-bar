@@ -7,7 +7,7 @@ SOURCES = $(wildcard Sources/CloudingBar/*.swift Sources/CloudingBar/*/*.swift)
 TAP = build/cloudingbar-tap
 TAP_SOURCES = $(wildcard Sources/CloudingBarTap/*.swift)
 HOOK = build/cloudingbar-hook
-HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift) Sources/CloudingBar/Core/Git.swift
+HOOK_SOURCES = $(wildcard Sources/CloudingBarHook/*.swift) Sources/CloudingBar/Core/Git.swift Sources/CloudingBar/Core/SessionTitle.swift
 KEY = build/cloudingbar-key
 KEY_SOURCES = $(wildcard Sources/CloudingBarKey/*.swift)
 # Pin the deployment target: newer Command Line Tools otherwise stamp the
@@ -95,7 +95,7 @@ icon:
 	iconutil -c icns build/AppIcon.iconset -o packaging/AppIcon.icns
 
 # Checks for the core: session picked by window title, hook output, config.
-test: $(TAP)
+test: $(TAP) $(HOOK)
 	mkdir -p build
 	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift tools/coretest/main.swift -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home

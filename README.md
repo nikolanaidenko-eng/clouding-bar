@@ -321,6 +321,18 @@ The protocol is written down in [docs/protocol.md](docs/protocol.md).
 Clouding Bar talks only to Claude Code on your Mac. There is no account,
 no analytics, no server. It never reads Claude Code's credentials.
 
+**Short chat names.** To keep a chat's name short enough for a button, the
+app asks Claude Code's own small model (Haiku), once per chat, for a name of
+one to three words. For that it runs your own `claude -p` (no tools, no hooks,
+nothing saved), and the chat's title and the first 400 letters of its first
+message go to Anthropic through it — the same place the chat itself already
+goes. The name is kept in `~/.cloudingbar/names`, and Claude Code is handed
+it as the chat's title (the next time you write in the chat, by the hook)
+unless you have named the chat yourself. It never replaces a name you gave.
+To switch it off, set `"shortNames": false` in `~/.cloudingbar/config.json`:
+no call is made, the bar cuts a long title with "…", and the hook stops
+handing names back.
+
 Two exceptions. The **update check**: once a day a plain request to
 GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →

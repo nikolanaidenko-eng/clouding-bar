@@ -243,6 +243,10 @@ struct Config: Equatable {
     /// The plugin opens the app when a Claude session starts (its
     /// hooks/run.sh reads this key from the file).
     var openWithClaude = true
+    /// Short names for chats (owner, 27.10): Claude Code's Haiku, through
+    /// your own `claude -p`, makes up 1–3 words from the chat's title and
+    /// first message. Off: no call is made, the bar cuts the long title.
+    var shortNames = true
 
     // Voice: hold the right Option key alone, or the widget's mic.
     var voiceLanguage = Config.defaultVoiceLanguage
@@ -343,6 +347,7 @@ struct Config: Equatable {
         if let v = obj["coworkMode"] as? String { config.coworkMode = v; config.coworkModeSet = true }
         if let v = obj["checkUpdates"] as? Bool { config.checkUpdates = v }
         if let v = obj["openWithClaude"] as? Bool { config.openWithClaude = v }
+        if let v = obj["shortNames"] as? Bool { config.shortNames = v }
         if let v = obj["coworkFolder"] as? String { config.coworkFolder = v }
         if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
         if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }

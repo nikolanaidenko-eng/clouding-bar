@@ -302,7 +302,13 @@ final class BarView: NSView {
                 // capital (owner, 24.10); a tap lists the chats by name.
                 let initial = (model.widths["name"] ?? .infinity) < 70 || short
                 let letter = chat.name.first(where: { $0.isLetter || $0.isNumber }).map { String($0).uppercased() } ?? "•"
-                let b = BarButton(initial ? letter : chat.name, fontSize: short ? 11 : 12, dot: chat.color, marquee: true) {
+                // On the whole bar, dragged narrow: the dot and the letter are one —
+                // a bold capital in the chat's colour, no dot (owner, 27.10). The
+                // short bar keeps the dot and the letter.
+                let merged = initial && !short
+                let b = BarButton(initial ? letter : chat.name, fontSize: short ? 11 : merged ? 14 : 12,
+                                  dot: merged ? nil : chat.color, tint: merged ? chat.color : nil,
+                                  weight: merged ? .bold : nil, marquee: true, slide: false) {
                     [weak self] in self?.onAction?(.chats)
                 }
                 b.setAccessibilityLabel(chat.name)
@@ -424,7 +430,7 @@ final class BarView: NSView {
             // Cloud jumps twice and says which chat finished.
             let short = model.short
             let name = BarButton("✓ " + chat.name + " — done", style: .outline, fontSize: short ? 12 : 13,
-                                 dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                                 dot: chat.color, marquee: true, slide: false) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
             add(name, .flex(weight: 1, min: short ? 140 : 200))
             let open = BarButton("Open", style: .primary) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
             let ok = BarButton("OK") { [weak self] in self?.onAction?(.dismissDone) }
@@ -536,7 +542,7 @@ final class BarView: NSView {
             for chat in model.chats {
                 // A whole name stands still; one that didn't get the room slides.
                 let b = BarButton(chat.name + (chat.waiting ? " ●" : ""), style: chat.current ? .selected : .normal,
-                                  fontSize: 12, dot: chat.color, marquee: true) { [weak self] in self?.onAction?(.writeTo(chat.id)) }
+                                  fontSize: 12, dot: chat.color, marquee: true, slide: false) { [weak self] in self?.onAction?(.writeTo(chat.id)) }
                 add(b, .shrinkable(min(200, b.fittingWidth(padding: 12))))
                 // No slide-in for the chats: a name that slides (too long, or
                 // squeezed among many) came out empty with both on the Touch
@@ -642,7 +648,7 @@ final class BarView: NSView {
     private func addLine(to chat: BarModel.Chat) {
         let files = model.typingFiles == 0 ? "" : model.typingFiles == 1 ? " · 1 file" : " · \(model.typingFiles) files"
         let chip = BarButton("→ " + chat.name + files, style: .outline, fontSize: 12, dot: chat.color,
-                             weight: .semibold, border: chat.color, marquee: true) { [weak self] in self?.onAction?(.chats) }
+                             weight: .semibold, border: chat.color, marquee: true, slide: false) { [weak self] in self?.onAction?(.chats) }
         chip.setAccessibilityLabel("To \(chat.name)\(files) — back to the chats")
         add(chip, .shrinkable(min(model.short ? 130 : 190, chip.fittingWidth(padding: 10))))
         let field = TypingFieldView()
@@ -677,7 +683,7 @@ final class BarView: NSView {
     /// Several chats: the one a request comes from, before it.
     private func addRequestChat() {
         guard model.chats.count > 1, let chat = model.requestChat else { return }
-        let b = BarButton(chat.name, style: .outline, fontSize: 12, dot: chat.color, marquee: true)
+        let b = BarButton(chat.name, style: .outline, fontSize: 12, dot: chat.color, marquee: true, slide: false)
         add(b, .shrinkable(min(130, b.fittingWidth(padding: 10))))
     }
 
