@@ -1272,7 +1272,9 @@ struct TouchBarEditor: View {
     /// While dragging: the order and widths as they'd be on letting go.
     @State private var order: [String]?
     @State private var widths: [String: Double]?
-    @State private var start: (order: [String], widths: [String: Double], frames: [String: NSRect])?
+    @State private var start: (order: [String], widths: [String: Double], frames: [String: NSRect], widest: [String: CGFloat])?
+    /// How wide each block may get with nothing leaving the bar.
+    @State private var widest: [String: CGFloat] = [:]
 
     private var which: String { short ? "short" : "whole" }
     private var barWidth: CGFloat { short ? BarView.narrowWidth : BarView.preferredWidth }
@@ -1302,8 +1304,9 @@ struct TouchBarEditor: View {
             }
             Group {
                 ZStack(alignment: .topLeading) {
-                    LiveBar(bar: bar, width: barWidth, scale: scale) { found in
+                    LiveBar(bar: bar, width: barWidth, scale: scale) { found, most in
                         if found.map(\.key) != blocks.map(\.key) || found.map(\.frame) != blocks.map(\.frame) { blocks = found }
+                        if most != widest { widest = most }
                     }
                     .frame(width: barWidth * scale, height: Palette.height * scale)
                     ForEach(blocks, id: \.key) { block in handle(block) }
@@ -1361,7 +1364,7 @@ struct TouchBarEditor: View {
     private func begin(_ key: String) {
         guard start == nil else { return }
         dragged = key
-        start = (blocks.map(\.key), savedWidths, Dictionary(blocks.map { ($0.key, $0.frame) }, uniquingKeysWith: { a, _ in a }))
+        start = (blocks.map(\.key), savedWidths, Dictionary(blocks.map { ($0.key, $0.frame) }, uniquingKeysWith: { a, _ in a }), widest)
     }
 
     /// Moving: where its middle comes to among the others' middles.
@@ -1380,7 +1383,10 @@ struct TouchBarEditor: View {
         guard let start, let frame = start.frames[key] else { return }
         var w = start.widths
         // Never past the bar: Cloud, "Whole bar" and a little room stay on it.
-        w[key] = Double(min(max(frame.width + dx, 24), barWidth - 120)).rounded()
+        // Nor past where something would leave it: the edge just stops there,
+        // an invisible wall (owner, 27.10).
+        let most = min(barWidth - 120, start.widest[key] ?? .infinity)
+        w[key] = Double(min(max(frame.width + dx, 24), max(most, 24))).rounded(.down)
         if w != widths { widths = w }
     }
 
@@ -1422,7 +1428,8 @@ struct LiveBar: NSViewRepresentable {
     let bar: BarModel
     let width: CGFloat
     let scale: CGFloat
-    let blocks: ([(key: String, frame: NSRect)]) -> Void
+    /// Where its blocks are, and how wide each may get with nothing leaving the bar.
+    let blocks: ([(key: String, frame: NSRect)], [String: CGFloat]) -> Void
 
     /// Shows its bar at full size scaled into its own: whatever frame it's
     /// given, the bar inside keeps its real width.
@@ -1455,8 +1462,8 @@ struct LiveBar: NSViewRepresentable {
         view.frame = NSRect(origin: .zero, size: holder.inner)
         view.update(bar)
         view.layoutSubtreeIfNeeded()
-        let found = view.blocks
-        DispatchQueue.main.async { blocks(found) }
+        let found = view.blocks, most = view.widest
+        DispatchQueue.main.async { blocks(found, most) }
     }
 }
 
@@ -1568,7 +1575,7 @@ struct ButtonsTab: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Touch Bar · your buttons in the message line, as on the bar").font(.system(size: 11)).foregroundColor(.sSecondary)
                 // The whole bar, fitted to the window: here it's only to look at.
-                LiveBar(bar: previewBar, width: BarView.preferredWidth, scale: 0.53) { _ in }
+                LiveBar(bar: previewBar, width: BarView.preferredWidth, scale: 0.53) { _, _ in }
                     .frame(width: BarView.preferredWidth * 0.53, height: Palette.height * 0.53)
                     .padding(6)
                     .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.black))
@@ -1680,7 +1687,7 @@ struct ButtonsTab: View {
         case .text: return "Text to put in the message, to finish there"
         case .command: return "/command"
         case .key: return "esc, cmd+k, shift+tab…"
-        case .link: return "vscode://… or https://…"
+        case .link: return "https://…, vscode://… or ~/path"
         case .screenshot: return "Nothing needed: it picks an area of the screen"
         }
     }
