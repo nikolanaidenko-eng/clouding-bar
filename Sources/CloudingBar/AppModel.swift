@@ -52,6 +52,9 @@ final class AppModel: ObservableObject {
     @Published var hasSession = false
     /// Each one makes the widget's Cloud wave (Claude's ☁️).
     @Published var cloudWaves = 0
+    /// Cloud has stepped out of the widget to say another chat is done:
+    /// 1 up (out over the pill), -1 down (out of the notch), 0 at home.
+    @Published var cloudOut = 0
     /// The settings window opens at this tab ("widget"), then forgets it.
     @Published var settingsTabRequest: String?
     @Published var activity: Activity = .sleep

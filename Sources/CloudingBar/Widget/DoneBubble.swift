@@ -21,6 +21,9 @@ final class DoneBubbleController {
 
     /// Cloud's bubble was clicked: go to that chat.
     var onOpen: ((String) -> Void)?
+    /// Cloud out of the widget (1 up, -1 down) and back home (0): the
+    /// widget's own Cloud leaves meanwhile, there aren't two (owner, 27.10).
+    var onAway: ((Int) -> Void)?
     private(set) var shown: Alert?
     private(set) var hovering = false
 
@@ -86,6 +89,8 @@ final class DoneBubbleController {
         anim.out = 0
         anim.bubble = 0
         panel.orderFrontRegardless()
+        // Out of the widget itself: its Cloud goes the way this one comes.
+        onAway?(anchor == nil ? 0 : fromAbove ? -1 : 1)
         let reduce = Palette.reduceMotion
         withAnimation(reduce ? nil : .cb(0.4)) { anim.out = 1 }
         if alert.kind == .done {
@@ -111,6 +116,8 @@ final class DoneBubbleController {
         let reduce = Palette.reduceMotion
         withAnimation(reduce ? nil : .cb(0.2)) { anim.bubble = 0 }
         step(reduce ? 0 : 0.18) { withAnimation(reduce ? nil : .cb(0.35)) { self.anim.out = 0 } }
+        // Home again as this one ducks back.
+        step(reduce ? 0 : 0.36) { self.onAway?(0) }
         step(reduce ? 0 : 0.58) {
             self.panel.orderOut(nil)
             self.shown = nil

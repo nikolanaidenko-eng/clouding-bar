@@ -1666,6 +1666,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.model.focusSession(id)
             }
         }
+        // The widget's own Cloud is the one that steps out (owner, 27.10).
+        bubble.onAway = { [weak self] way in self?.model.cloudOut = way }
         return bubble
     }()
 
@@ -2239,7 +2241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             // In front a moment already: just switched to, its field may not
             // take the first letters yet.
-            guard chatInFront(id), Date().timeIntervalSince(frontSince.at) > 1.2 else { continue }
+            // Never while you write in one of our fields: typing would take
+            // the keyboard from it mid-word (review, 27.10).
+            guard chatInFront(id), Date().timeIntervalSince(frontSince.at) > 1.2,
+                  !typing.isActive, NSApp.keyWindow == nil else { continue }
             queue.remove(at: i)
             saveQueue()
             queueSentAt = Date()
@@ -2386,14 +2391,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// keyboard, so the first letters don't go missing on the way back.
     @discardableResult
     private func typeAfterReleasingKey(_ text: String) -> Bool {
-        guard safeToType() else {
+        // One of our own fields has the keyboard — the bar's line, the
+        // island's, Settings: the keys would land there, and its Return send
+        // them to whichever chat it's addressed to (review, 27.10).
+        let oursHasKeys = typing.isActive || (NSApp.keyWindow != nil && !widget.ownsKey)
+        guard safeToType(), !oursHasKeys else {
             // Claude's own permission menu may be open there: kept in the
             // queue, out once Claude has moved on — not lost.
             let front = store.session(inWindow: frontTitle, tty: frontTTY) ?? focusedSession
             queue.insert(.init(text: text, sessionId: front?.id, project: front?.projectName), at: 0)
             saveQueue()
             refresh()
-            DebugLog.note("send: held in the queue while Claude asks for permission")
+            DebugLog.note(oursHasKeys ? "send: held in the queue while you write in one of our fields" : "send: held in the queue while Claude asks for permission")
             return false
         }
         let hadKey = widget.releaseKey()
@@ -2536,15 +2545,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.tap("screenshot for \(session.displayName)")
         widget.releaseKey()
         Screenshot.take { [weak self] path in
-            guard let self, let path else { return } // cancelled
-            guard self.attach([URL(fileURLWithPath: path)], to: id) else { NSSound.beep(); return }
-            if self.composing && self.composeTo == id {
-                self.typing.refocus() // its chip counts the file; the keys back to the line
-            } else if self.config.widget {
-                self.widget.openComposer(id)
-            } else {
-                self.drawer.openComposer(id)
+            guard let self else { return }
+            // Taken or cancelled, the keys go back to where you write to that
+            // chat: left with none, its field still looked ready and your
+            // words went to the app in front (review, 27.10).
+            defer {
+                if self.composing && self.composeTo == id {
+                    self.typing.refocus() // its chip counts the file; the keys back to the line
+                } else if self.config.widget {
+                    self.widget.openComposer(id)
+                } else {
+                    self.drawer.openComposer(id)
+                }
             }
+            guard let path else { return } // cancelled
+            guard self.attach([URL(fileURLWithPath: path)], to: id) else { NSSound.beep(); return }
             DebugLog.note("screenshot → attached to \(session.displayName)")
         }
     }
