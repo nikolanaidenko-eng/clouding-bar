@@ -1481,11 +1481,12 @@ struct TemplatesButton: View {
     var plain = false
     var width: CGFloat?
     @Environment(\.cbPreview) private var preview
+    @Environment(\.clickGate) private var gate
 
     var body: some View {
         // A plain button, the menu at the pointer (as the chats'): a SwiftUI
         // Menu drew its icon off the middle (owner, 27.10).
-        Button { CommandMenu.show(model) } label: {
+        Button { if gate() { CommandMenu.show(model) } } label: {
             Image(systemName: "text.bubble").font(.system(size: size * 0.44))
                 .frame(width: max(size, width ?? size), height: size)
                 .contentShape(Rectangle())

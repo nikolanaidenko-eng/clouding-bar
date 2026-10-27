@@ -526,8 +526,13 @@ final class BarView: NSView {
                 // slid in, and showed.
             }
             add(NSView(), .flex(weight: 1, min: 0))
-            let done = BarButton("Done", style: .outline) { [weak self] in self?.onAction?(.closePanel) }
-            add(done, .fixed(done.fittingWidth(padding: 14)))
+            // A small ✕, more room for the chats (owner, 27.10).
+            let done = BarButton("Done", style: .outline,
+                                 icon: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Done")?
+                                    .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))) { [weak self] in
+                self?.onAction?(.closePanel)
+            }
+            add(done, .fixed(40))
             group.append(done)
             group.forEach { b in animate(b) { $0.slideIn(delay: 0.04) } }
 

@@ -19,6 +19,13 @@ final class Session {
     }
     /// Its terminal ("/dev/ttys003"): a terminal chat is told apart by it.
     private(set) var tty: String?
+
+    /// A chat found in Codex's files has no pid to read its terminal from:
+    /// it's given one (SessionStore.findCodexTerminals), or none.
+    func setCodexTerminal(_ t: String?) {
+        guard ambient, claudePid == nil else { return }
+        tty = t
+    }
     /// "claude-vscode", "cli", … (CLAUDE_CODE_ENTRYPOINT); "codex" for Codex
     var entrypoint: String?
     /// A Codex chat found in its session files, no hook has spoken for it:
@@ -114,10 +121,11 @@ final class Session {
     var startFolder: String? {
         guard let cwd, let transcriptPath else { return nil }
         let key = URL(fileURLWithPath: transcriptPath).deletingLastPathComponent().lastPathComponent
-        var url = URL(fileURLWithPath: cwd)
-        while url.pathComponents.count > 1 {
-            if Self.projectKey(url.path) == key { return url.path }
-            url.deleteLastPathComponent()
+        let parts = URL(fileURLWithPath: cwd).standardized.pathComponents
+        guard parts.count > 1 else { return nil }
+        for n in stride(from: parts.count, to: 1, by: -1) {
+            let path = "/" + parts[1..<n].joined(separator: "/")
+            if Self.projectKey(path) == key { return path }
         }
         return nil
     }

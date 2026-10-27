@@ -1775,7 +1775,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             var score = 0
             if let t = session.title, parts.contains(t) { score = 3 }
             else if let start, parts.contains(start) { score = 2 }
-            else if let last = folders.last, parts.contains(last) { score = 2 }
+            // Where cd went has a window only by chance: the start folder's wins.
+            else if let last = folders.last, parts.contains(last) { score = start == nil ? 2 : 1 }
             else if folders.contains(where: parts.contains) { score = 1 }
             if score > (best?.score ?? 0) { best = (score, window) }
         }

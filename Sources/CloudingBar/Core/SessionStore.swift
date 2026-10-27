@@ -388,7 +388,30 @@ final class SessionStore {
             }
             var added = false
             for f in found where !f.archived { added = self.adopt(f, now: now) || added }
+            self.findCodexTerminals()
             if added { self.scheduleSave(); self.onChange?(); self.pollTranscripts() }
+        }
+    }
+
+    /// Codex programs in a terminal, by folder (tests stand in for it).
+    var codexTerminals: (String) -> Set<String> = Tty.codex(in:)
+
+    /// A Codex chat found in its files, in a terminal, gets its tab — the
+    /// one Codex program in a terminal in its folder, it the one chat
+    /// there — so it opens and takes words like one a hook told of (owner,
+    /// 27.10). Two programs or two chats there, or a tab a hooked chat has:
+    /// none, never a guess.
+    func findCodexTerminals() {
+        let live = alive
+        for s in live where s.ambient {
+            guard s.codexHost == nil || s.codexHost == "Terminal", let cwd = s.cwd,
+                  live.filter({ $0.entrypoint == "codex" && $0.cwd == cwd }).count == 1 else {
+                s.setCodexTerminal(nil)
+                continue
+            }
+            let ttys = codexTerminals(cwd)
+            let tty = ttys.count == 1 ? ttys.first : nil
+            s.setCodexTerminal(live.contains { !$0.ambient && $0.tty == tty } ? nil : tty)
         }
     }
 
