@@ -331,7 +331,9 @@ it as the chat's title (the next time you write in the chat, by the hook)
 unless you have named the chat yourself. It never replaces a name you gave.
 To switch it off, set `"shortNames": false` in `~/.cloudingbar/config.json`:
 no call is made, the bar cuts a long title with "…", and the hook stops
-handing names back.
+handing names back. Only Claude chats are named — a Codex chat's words never
+go to Anthropic through this. A name already handed to a Claude Code tab stays
+in that chat after you switch the setting off.
 
 Two exceptions. The **update check**: once a day a plain request to
 GitHub's public list of this project's releases — nothing about you, no

@@ -119,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DebugLog.tap("launch")
 
         store.load()
+        SessionTitle.prune(base: Config.directory)
         store.onChange = { [weak self] in self?.setNeedsRefresh() }
         store.onCloudWave = { [weak self] in self?.cloudWavesBack() }
 
@@ -1891,7 +1892,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                   let text = title as? String else { continue }
             let parts = SessionStore.titleParts(text)
             var score = 0
-            if session.windowTitles.contains(where: parts.contains) { score = 3 }
+            // A name another chat has too raises no window by it (review, 27.10).
+            if session.windowTitles.contains(where: parts.contains),
+               !store.alive.contains(where: { $0 !== session && $0.windowTitles.contains(where: parts.contains) }) { score = 3 }
             else if let start, parts.contains(start) { score = 2 }
             // Where cd went has a window only by chance: the start folder's wins.
             else if let last = folders.last, parts.contains(last) { score = start == nil ? 2 : 1 }

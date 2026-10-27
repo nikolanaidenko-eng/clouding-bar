@@ -177,7 +177,8 @@ final class SessionStore {
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
         let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates, halves: true) } ?? []
         if let top = ranked.first {
-            if top.score == 3 { return top.session }
+            // The same name on two chats ("Review"): not told apart by it, so on to
+            // the one picked or last seen, never the first found (review, 27.10).
             let best = ranked.filter { $0.score == top.score }.map(\.session)
             for id in sticky { if let s = best.first(where: { $0.id == id }) { return s } }
             return best.max { $0.lastSeen < $1.lastSeen }
@@ -252,7 +253,8 @@ final class SessionStore {
         // there, and words went into it. Never in front.
         let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient })
         guard let top = ranked.first else { return nil }
-        if top.score == 3 { return top.session }
+        // Short names made two chats' titles equal: words go only to the one chat
+        // the title tells, at any score (review, 27.10).
         return ranked.filter { $0.score == top.score }.count == 1 ? top.session : nil
     }
 

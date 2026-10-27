@@ -1618,15 +1618,20 @@ do { // short names for chats (owner, 27.10)
     spin(0.5)
     namer.consider([a, b, c, d])
     spin(0.5)
-    check(asked.count == 2 && a.shortName == "Login test" && d.shortName == "Login test" && b.shortName == nil && c.shortName == nil,
-          "namer: one call a chat, none for the person's own name or a title already short")
+    check(asked.count == 1 && a.shortName == "Login test" && d.shortName == nil && b.shortName == nil && c.shortName == nil,
+          "namer: one call a chat, none for the person's own name, a title already short, or a Codex chat (its words don't go to Anthropic)")
     check(asked.first?.hasPrefix("Title: Fix flaky login test in CI\nFirst message: The login test fails") == true, "namer: asked with the title and the first message")
-    check(SessionTitle.entry("q1", base: base) == .init(name: "Login test", claude: true)
-          && SessionTitle.entry("q4", base: base) == .init(name: "Login test", claude: false),
-          "namer: kept on disk; Codex's only for the app")
+    check(SessionTitle.entry("q1", base: base) == .init(name: "Login test", claude: true) && SessionTitle.entry("q4", base: base) == nil,
+          "namer: kept on disk; none for Codex")
+    let ambientCodex = Session(id: "q5", now: Date())
+    ambientCodex.aiTitle = "Fix flaky login test in CI"; ambientCodex.title = ambientCodex.aiTitle; ambientCodex.ambient = true
+    let before = asked.count
+    namer.consider([ambientCodex])
+    spin(0.3)
+    check(asked.count == before && ambientCodex.shortName == nil, "namer: a Codex chat known only from its files gets no call either")
     namer.consider([a, b, c, d])
     spin(0.2)
-    check(asked.count == 2, "namer: not asked again")
+    check(asked.count == 1, "namer: not asked again")
     // A failing call: pause after three, no storm.
     let failing = ShortNamer()
     var tries = 0
@@ -1648,6 +1653,57 @@ do { // short names for chats (owner, 27.10)
     off.consider(many)
     spin(0.3)
     check(offTries == 0, "namer: switched off, no call")
+    // Switched off while chats wait: the queue is dropped, nothing more is asked.
+    let offLater = ShortNamer()
+    var laterTries = 0
+    var laterOn = true
+    offLater.base = base
+    offLater.enabled = { laterOn }
+    offLater.ask = { _ in laterTries += 1; Thread.sleep(forTimeInterval: 0.3); return "Name \(laterTries)" }
+    let six = (0..<6).map { i -> Session in
+        let s = Session(id: "o\(i)", now: Date()); s.aiTitle = "A long title about chat \(i) here"; s.title = s.aiTitle; return s
+    }
+    offLater.chats = { six }
+    offLater.consider(six)
+    laterOn = false
+    spin(1.0)
+    check(laterTries == 1, "namer: switched off with 6 waiting, no call after the one in flight")
+    // A name another live chat has, or the folder's, is not taken: the long title stands.
+    let dup = ShortNamer()
+    dup.base = base
+    dup.ask = { _ in "Review" }
+    let first = Session(id: "r1", now: Date()), second = Session(id: "r2", now: Date()), third = Session(id: "r3", now: Date())
+    first.aiTitle = "Review the settings change before release"; first.title = first.aiTitle; first.shortName = "review"
+    second.aiTitle = "Review the settings change before release"; second.title = second.aiTitle
+    third.aiTitle = "Review the settings change before release"; third.title = third.aiTitle; third.cwd = "/Users/me/Documents/GitHub/Review"
+    dup.chats = { [first, second, third] }
+    dup.consider([second])
+    spin(0.4)
+    check(second.shortName == nil && SessionTitle.entry("r2", base: base) == nil, "namer: a name another live chat has (any case) is not accepted")
+    dup.consider([third])
+    spin(0.4)
+    first.shortName = nil
+    check(third.shortName == nil && SessionTitle.entry("r3", base: base) == nil, "namer: the project folder's name is not accepted")
+
+    // Same name on two chats (review's probe): the window does not pick one.
+    let twins = SessionStore()
+    twins.apply(Inbound(raw: ["hook_event_name": "UserPromptSubmit", "session_id": "t1", "cwd": "/Users/me/Documents/GitHub/app-a", "prompt": "hi"]))
+    twins.apply(Inbound(raw: ["hook_event_name": "UserPromptSubmit", "session_id": "t2", "cwd": "/Users/me/Documents/GitHub/app-b", "prompt": "hi"]))
+    twins.sessions["t1"]?.shortName = "Review"; twins.sessions["t1"]?.title = "Review"
+    twins.sessions["t2"]?.shortName = "Review"; twins.sessions["t2"]?.title = "Review"
+    check(twins.session(inWindow: "Review — app-a") == nil, "window: two chats called Review, none is picked by the name (text isn't typed into the wrong chat)")
+    twins.sessions["t2"]?.shortName = "Cart"; twins.sessions["t2"]?.title = "Cart"
+    check(twins.session(inWindow: "Review — app-a")?.id == "t1", "window: the name picks the chat once it is the only one")
+    twins.sessions["t2"]?.shortName = "Review"; twins.sessions["t2"]?.title = "Review"
+    check(twins.focus(windowTitle: "Review — app-a", sticky: ["t2"])?.id == "t2", "focus: equal names fall to the chat picked, not the first")
+
+    // Old names are swept at launch.
+    SessionTitle.save(.init(name: "Old", claude: true), for: "old1", base: base)
+    SessionTitle.save(.init(name: "New", claude: true), for: "new1", base: base)
+    try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-31 * 86400)],
+                                           ofItemAtPath: SessionTitle.directory(base: base).appendingPathComponent("old1.json").path)
+    SessionTitle.prune(base: base)
+    check(SessionTitle.entry("old1", base: base) == nil && SessionTitle.entry("new1", base: base) != nil, "names: files older than 30 days are removed at launch")
     check(ShortNamer.result(from: Data(#"{"type":"result","is_error":false,"result":"Login test"}"#.utf8)) == "Login test"
           && ShortNamer.result(from: Data(#"{"is_error":true,"result":"Login test"}"#.utf8)) == nil
           && ShortNamer.result(from: Data("nope".utf8)) == nil, "namer: the CLI's JSON read, an error not used")

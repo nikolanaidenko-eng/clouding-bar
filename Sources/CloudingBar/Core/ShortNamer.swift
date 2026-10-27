@@ -40,6 +40,9 @@ final class ShortNamer {
         for s in sessions where !handled.contains(s.id) && s.shortName == nil {
             // Named by the person, or by Cowork's own first words: not ours.
             guard s.customTitle == nil, s.entrypoint != "cowork" else { continue }
+            // Codex's chats get no name: their words would go to Anthropic, a
+            // recipient they never had (review, 27.10).
+            guard s.entrypoint != "codex", !s.ambient else { continue }
             if let at = retryAt[s.id], now < at { later = min(later ?? .infinity, at.timeIntervalSince(now)); continue }
             let title = s.aiTitle ?? s.title ?? s.desktopTitle
             // A message alone is asked for after a moment: Claude Code's title
@@ -55,7 +58,7 @@ final class ShortNamer {
             // Already short: nothing to make up.
             if let title, ShortName.accept(title) != nil { handled.insert(s.id); continue }
             handled.insert(s.id)
-            let claude = s.transcriptPath != nil && s.entrypoint != "codex" && !s.inDesktopApp
+            let claude = s.transcriptPath != nil && !s.inDesktopApp
             queue.append((s.id, input, claude))
         }
         if let later { DispatchQueue.main.asyncAfter(deadline: .now() + later) { [weak self] in self?.recheck() } }
@@ -67,6 +70,12 @@ final class ShortNamer {
     private func recheck() { consider(chats()) }
 
     private func next(now: Date = Date()) {
+        // Switched off while chats waited: the queue goes, nothing is asked (review, 27.10).
+        guard enabled() else {
+            for job in queue { handled.remove(job.id) }
+            queue.removeAll()
+            return
+        }
         guard !running, now >= pausedUntil, !queue.isEmpty else { return }
         let job = queue.removeFirst()
         running = true
@@ -96,9 +105,23 @@ final class ShortNamer {
             return
         }
         failures = 0
+        guard enabled() else { return }
         // The chat may have been named by the person while Haiku thought.
-        let chat = chats().first { $0.id == job.id }
+        let all = chats()
+        let chat = all.first { $0.id == job.id }
         if let chat, chat.customTitle != nil { return }
+        // A name another live chat has, or the folder's, tells nothing apart and
+        // would make the window ambiguous: none, and the bar cuts the long title
+        // with "…" (review, 27.10).
+        var taken = Set<String>()
+        for other in all where other.id != job.id {
+            for t in [other.shortName, other.title, other.customTitle] { if let t { taken.insert(t.lowercased()) } }
+        }
+        if let folder = chat?.projectName { taken.insert(folder.lowercased()) }
+        if taken.contains(name.lowercased()) {
+            DebugLog.note("short names: the name is taken, none for this chat")
+            return
+        }
         SessionTitle.save(SessionTitle.Entry(name: name, claude: job.claude), for: job.id, base: base)
         chat?.shortName = name
         DebugLog.note("short names: made one")
@@ -107,8 +130,19 @@ final class ShortNamer {
 
     // MARK: Claude Code
 
+    /// Where `claude` was found (the shell is asked once).
+    private static var found: URL?
+    private static let foundLock = NSLock()
+
     /// Claude Code itself, without a shell's PATH.
     static func executable() -> URL? {
+        foundLock.lock(); defer { foundLock.unlock() }
+        if let found, FileManager.default.isExecutableFile(atPath: found.path) { return found }
+        found = locate()
+        return found
+    }
+
+    private static func locate() -> URL? {
         let user = FileManager.default.homeDirectoryForCurrentUser.path
         let candidates = [user + "/.local/bin/claude", user + "/.claude/local/claude", "/opt/homebrew/bin/claude",
                           "/usr/local/bin/claude", user + "/.npm-global/bin/claude", user + "/.bun/bin/claude"]
@@ -121,6 +155,10 @@ final class ShortNamer {
         sh.standardOutput = out
         sh.standardError = FileHandle.nullDevice
         guard (try? sh.run()) != nil else { return nil }
+        // A login shell can hang on the person's profile: 5 s, then none (review, 27.10).
+        let killer = DispatchWorkItem { if sh.isRunning { sh.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: killer)
+        defer { killer.cancel() }
         let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             .split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces)
         sh.waitUntilExit()
