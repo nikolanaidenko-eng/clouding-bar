@@ -12,7 +12,7 @@
 
 https://github.com/user-attachments/assets/ac4b3e46-2d3a-4ece-a3a6-631e319ae3c9
 
-<sub>1½ minutes: the Touch Bar, the notch, the pill and the panel, answering Claude, Cowork, dictation, stats.</sub>
+<sub>2 minutes: the Touch Bar, the notch, the pill and the panel, answering Claude, Cowork, dictation, stats.</sub>
 
 Clouding Bar is a small macOS menu bar app for people who work with
 [Claude Code](https://code.claude.com). It shows what Claude is doing —
@@ -34,9 +34,11 @@ A first version for **Windows** is in [windows/](windows/README.md).
 ## What it does
 
 **See where you are**
-- **Which chat.** Every chat gets its own colour and goes by its title (the
-  one VS Code's tab shows, or the one you gave it), so two chats in one
-  project are told apart. Clouding Bar follows the chat in front — VS
+- **Which chat.** Every chat gets its own colour and its own Cloud — ten of
+  them, one in glasses, one a pirate, one with a crown — and a short name of
+  a word or two that fits a button (VS Code's tab gets it too; a name you
+  gave the chat yourself always wins), so two chats in one project are told
+  apart at a glance. Clouding Bar follows the chat in front — VS
   Code's chat tab, a Terminal or iTerm tab — and stays with it when you
   switch to another app. With Claude Desktop in front, it's the chat open
   there. Pick another one in the widget, the menu or the Touch Bar, and
@@ -71,13 +73,15 @@ A first version for **Windows** is in [windows/](windows/README.md).
   Apple's brightness and volume: a bar of its own, by default the chat's
   first letter, the limits, the chat line with your commands, the
   screenshot and the mic, and a button that opens the whole bar): which
-  chat (tap it for the others; a long name slides), meters, the model,
+  chat (tap it for the others; a name that doesn't fit ends in "…", and
+  narrowed right down it's the first letter in the chat's colour), meters, the model,
   subagents, lines, branch, cost, **Write** (a message to the chat, typed
   or dictated, your buttons inside it), **Commands** with all your
   buttons, the mic — each one optional.
 - **Arrange them your way.** Settings shows the widget and the Touch Bar
   themselves, live: drag a block to move it, its right edge to make it
-  wider or narrower. The short bar has its own list and fixed sizes —
+  wider or narrower — on the Touch Bar it stops where something else would
+  have to leave the bar. The short bar has its own list and fixed sizes —
   something in, something out; Settings says when there's no room.
 - Limits are blue, orange from 70%, red from 90% — everywhere.
 
@@ -329,8 +333,8 @@ message go to Anthropic through it — the same place the chat itself already
 goes. The name is kept in `~/.cloudingbar/names`, and Claude Code is handed
 it as the chat's title (the next time you write in the chat, by the hook)
 unless you have named the chat yourself. It never replaces a name you gave.
-To switch it off, set `"shortNames": false` in `~/.cloudingbar/config.json`:
-no call is made, the bar cuts a long title with "…", and the hook stops
+To switch it off, Settings → General → App → More… → Short chat names (or
+`"shortNames": false` in `~/.cloudingbar/config.json`): no call is made, the bar cuts a long title with "…", and the hook stops
 handing names back. Only Claude chats are named — a Codex chat's words never
 go to Anthropic through this. A name already handed to a Claude Code tab stays
 in that chat after you switch the setting off.
@@ -338,8 +342,8 @@ in that chat after you switch the setting off.
 Two exceptions. The **update check**: once a day a plain request to
 GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
-Updates turns the check off). And, opt-in, **Settings → Cowork → Live limit via
-claude.ai**, which reads your account-wide limit (desktop and Cowork chats
+App → More… → Updates turns the check off). And, opt-in, **Settings → General →
+Connections → More… → Live limit via claude.ai**, which reads your account-wide limit (desktop and Cowork chats
 included) from claude.ai with your session key. The key stays in your
 Keychain, behind a helper that answers only Clouding Bar, and goes only to
 claude.ai, at most once a minute. That address isn't an official API and
@@ -351,10 +355,11 @@ The menu bar icon → **Settings…** Light or dark, as macOS is or as you pick.
 Cloud keeps you company there: it sits in the corner, hops from row to row
 as you move the pointer, and walks along the tabs.
 
-- **General** — appearance (auto, light, dark), colourful or grey buttons,
-  open at login (and with Claude), do not disturb, updates, the Claude Code
-  connection (and Codex, in beta, and the 5-hour limit in VS Code), the
-  context warning, the dictation language.
+- **General** — each box shows two or three main rows, the rest behind
+  More…: open at login (and with Claude), do not disturb, the dictation
+  language, appearance (auto, light, dark), short chat names, colourful or
+  grey buttons, updates; the Claude Code connection (and Codex, in beta, the
+  5-hour limit in VS Code, Cowork); the context warning.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
   keep the pill visible, open on hover, its position; what it shows (a chip
