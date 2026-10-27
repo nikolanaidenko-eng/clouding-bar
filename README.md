@@ -339,7 +339,10 @@ handing names back. Only Claude chats are named — a Codex chat's words never
 go to Anthropic through this. A name already handed to a Claude Code tab stays
 in that chat after you switch the setting off.
 
-Two exceptions. The **update check**: once a day a plain request to
+Three exceptions. **Dictation** is recognised on your Mac; only for a
+language your Mac can't do offline, and only if you tick *Allow sending audio
+to Apple* (off by default, Settings → General → App), your voice goes to
+Apple's servers for recognition. The **update check**: once a day a plain request to
 GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, opt-in, **Settings → General →
