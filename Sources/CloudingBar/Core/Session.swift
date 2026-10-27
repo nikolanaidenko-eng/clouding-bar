@@ -49,6 +49,19 @@ final class Session {
     /// The chat's title ("Status bar"): the one you gave it, else Claude
     /// Code's. VS Code's tab and window and the terminal show the same.
     var title: String?
+    /// The two it comes from: Claude Code's own (ai-title) and the one given
+    /// by /rename, the tab's "Rename session tab" or our sessionTitle (custom-title).
+    var aiTitle: String?
+    var customTitle: String?
+    /// Its short name (owner, 27.10): 1–3 words for the bar's button, made
+    /// up by Haiku (ShortNamer). Shown instead of the long title, unless the
+    /// person named the chat themselves.
+    var shortName: String?
+    /// Its first message (cut) and when it came, for the short name to be made from.
+    var firstPrompt: String?
+    var firstPromptAt: Date?
+    /// Shown at all (Config.shortNames, set by the app).
+    static var useShortNames = true
     /// Its colour in the widget (an index into `Session.colors`), so two
     /// chats of one project are told apart at a glance.
     var colorIndex = 0
@@ -134,8 +147,23 @@ final class Session {
         String(path.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
     }
 
-    /// What the widget calls it: its title, else its project.
-    var displayName: String { desktopTitle ?? title ?? projectName ?? "Claude" }
+    /// What the widget calls it: its short name, else its title, else its
+    /// project. A name the person gave (a custom title that isn't ours) wins
+    /// over the short one, always (owner, 27.10).
+    var displayName: String { shownShortName ?? desktopTitle ?? title ?? projectName ?? "Claude" }
+
+    var shownShortName: String? {
+        guard Self.useShortNames, let shortName, customTitle == nil || customTitle == shortName else { return nil }
+        return shortName
+    }
+
+    /// Every name the chat's tab or window may carry just now: the tab changes
+    /// its name a moment after we or the person set one, so a window is told
+    /// by the old and the new alike.
+    var windowTitles: [String] {
+        var seen = Set<String>()
+        return [title, customTitle, aiTitle, shortName].compactMap { $0 }.filter { seen.insert($0).inserted }
+    }
 
     /// A chat of the Claude desktop app: Cowork, or Code in the app.
     var inDesktopApp: Bool { entrypoint == "cowork" || entrypoint == "claude-desktop" }

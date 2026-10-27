@@ -1470,6 +1470,191 @@ do { // a question put shorter for the Touch Bar: only if it keeps what the aski
     check(ShortQuestion.accept("Should we make the repository public?", for: repo) == nil, "short form: another language than the question's, not used")
 }
 
+do { // short names for chats (owner, 27.10)
+    check(ShortName.accept("Login test") == "Login test" && ShortName.accept("«Сборка CI».\n") == "Сборка CI",
+          "short name: tidied (quotes, full stop, line end) and kept")
+    check(ShortName.accept("Правка карусели чатов") == nil && ShortName.accept("Fix the login bug on staging") == nil,
+          "short name: over 14 letters, not used")
+    check(ShortName.accept("Login\ntest") == nil && ShortName.accept("**Login**") == "Login" && ShortName.accept("a b c d") == nil
+          && ShortName.accept("") == nil && ShortName.accept("— ") == nil,
+          "short name: one line, no markdown, at most 3 words, with a letter in it")
+    check(ShortName.accept("WWWWWWWWWWWWWW") == nil && ShortName.accept("Ширина кнопки") != nil,
+          "short name: it has to fit the bar's button too (99 pt), not only the letter count")
+    check(ShortName.input(title: nil, prompt: "  ") == nil && ShortName.input(title: "T", prompt: nil) == "Title: T\n",
+          "short name: nothing to go on, nothing asked")
+    let longPrompt = String(repeating: "слово ", count: 200)
+    check((ShortName.input(title: "T", prompt: longPrompt)?.count ?? 0) < 460, "short name: the first message cut to about 400 letters")
+
+    let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+    let transcript = base.appendingPathComponent("names-transcript.jsonl")
+    func event(_ id: String, _ name: String = "UserPromptSubmit", path: String? = nil) -> [String: Any] {
+        var e: [String: Any] = ["hook_event_name": name, "session_id": id, "prompt": "hi"]
+        if let path { e["transcript_path"] = path }
+        return e
+    }
+    func titleSet(_ data: Data?) -> String? {
+        guard let data, let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let out = obj["hookSpecificOutput"] as? [String: Any], out["hookEventName"] as? String == "UserPromptSubmit"
+        else { return nil }
+        return out["sessionTitle"] as? String
+    }
+    // No name made yet: the hook has nothing to say.
+    check(SessionTitle.hookOutput(for: event("n1"), codex: false, base: base) == nil, "hook title: no name yet, no output")
+    SessionTitle.save(.init(name: "Login test", claude: true), for: "n1", base: base)
+    try? #"{"type":"user","message":{"content":"mentions \"type\":\"custom-title\" in a message"}}"#.write(to: transcript, atomically: true, encoding: .utf8)
+    check(titleSet(SessionTitle.hookOutput(for: event("n1", path: transcript.path), codex: false, base: base)) == "Login test",
+          "hook title: a name waiting, the message is answered with it (a message that mentions custom-title doesn't count)")
+    check(SessionTitle.sent("n1", base: base) == 1, "hook title: the offer counted")
+    check(SessionTitle.hookOutput(for: event("n1", "Stop"), codex: false, base: base) == nil
+          && SessionTitle.hookOutput(for: event("n1"), codex: true, base: base) == nil,
+          "hook title: only a message to Claude Code gets it (not Stop, not Codex)")
+    // Taken: the transcript has it.
+    try? ("{\"type\":\"ai-title\",\"aiTitle\":\"Fix flaky login test in CI\"}\n{\"type\":\"custom-title\",\"customTitle\":\"Login test\"}\n")
+        .write(to: transcript, atomically: true, encoding: .utf8)
+    check(SessionTitle.lastCustomTitle(inTranscript: transcript.path) == "Login test"
+          && SessionTitle.hookOutput(for: event("n1", path: transcript.path), codex: false, base: base) == nil,
+          "hook title: Claude Code has it, nothing more said")
+    // The person's own name: never overwritten.
+    SessionTitle.save(.init(name: "Login test", claude: true), for: "n2", base: base)
+    try? "{\"type\":\"custom-title\",\"customTitle\":\"My own name\"}\n".write(to: transcript, atomically: true, encoding: .utf8)
+    check(SessionTitle.hookOutput(for: event("n2", path: transcript.path), codex: false, base: base) == nil,
+          "hook title: a name the person gave stays (the name waiting is never sent)")
+    // Not accepted by Claude Code: offered three times, then left alone.
+    SessionTitle.save(.init(name: "Login test", claude: true), for: "n3", base: base)
+    let offers = (0..<5).map { _ in SessionTitle.hookOutput(for: event("n3"), codex: false, base: base) != nil }
+    check(offers == [true, true, true, false, false], "hook title: not on every message — three offers at most")
+    // A chat of Codex or the desktop app: a name for the app only.
+    SessionTitle.save(.init(name: "Login test", claude: false), for: "n4", base: base)
+    check(SessionTitle.hookOutput(for: event("n4"), codex: false, base: base) == nil, "hook title: a name for the app only is not handed to Claude Code")
+    check(SessionTitle.entry("../etc/passwd", base: base) == nil && !SessionTitle.isSafe("a/b"), "hook title: a session id is only ever a plain file name")
+    // Switched off in config: not handed either.
+    SessionTitle.save(.init(name: "Login test", claude: true), for: "n5", base: base)
+    let savedConfig = try? Data(contentsOf: Config.fileURL)
+    try? #"{"shortNames":false}"#.write(to: Config.fileURL, atomically: true, encoding: .utf8)
+    check(SessionTitle.hookOutput(for: event("n5"), codex: false, base: base) == nil, "hook title: names off in the config, nothing said")
+    if let savedConfig { try? savedConfig.write(to: Config.fileURL) } else { try? FileManager.default.removeItem(at: Config.fileURL) }
+    check(Config().shortNames, "short names: on by default")
+
+    // The real hook program: names handed back with the app not running (no socket here).
+    let hook = "build/cloudingbar-hook"
+    func runHook(_ json: String, env: [String: String] = [:]) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: hook)
+        p.environment = ProcessInfo.processInfo.environment.merging(env) { $1 }
+        let input = Pipe(), output = Pipe()
+        p.standardInput = input
+        p.standardOutput = output
+        p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "no hook" }
+        input.fileHandleForWriting.write(Data(json.utf8))
+        try? input.fileHandleForWriting.close()
+        let out = output.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(decoding: out, as: UTF8.self)
+    }
+    SessionTitle.save(.init(name: "Login test", claude: true), for: "n6", base: base)
+    let said = runHook(#"{"hook_event_name":"UserPromptSubmit","session_id":"n6","prompt":"hi"}"#)
+    check(said == #"{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","sessionTitle":"Login test"}}"# + "\n"
+          || said == #"{"hookSpecificOutput":{"sessionTitle":"Login test","hookEventName":"UserPromptSubmit"}}"# + "\n",
+          "hook program: the name is printed, the app not running")
+    check(runHook(#"{"hook_event_name":"Stop","session_id":"n6"}"#).isEmpty, "hook program: quiet on other events")
+    check(runHook(#"{"hook_event_name":"UserPromptSubmit","session_id":"n6"}"#, env: ["CLOUDINGBAR_NAMING": "1"]).isEmpty,
+          "hook program: quiet for the app's own naming call")
+    check(runHook(#"{"hook_event_name":"UserPromptSubmit","session_id":"never-named"}"#).isEmpty, "hook program: quiet for a chat with no name")
+
+    // The chat: our name shown, the person's own above it, the window told by the old title and the new.
+    let chat = Session(id: "w1", now: Date())
+    chat.aiTitle = "Fix flaky login test in CI"
+    chat.title = chat.aiTitle
+    chat.shortName = "Login test"
+    check(chat.displayName == "Login test", "short name: shown instead of the long title")
+    chat.customTitle = "Login test" // Claude Code took it
+    chat.title = "Login test"
+    check(chat.displayName == "Login test", "short name: shown once Claude Code has it too")
+    chat.customTitle = "Mine"
+    chat.title = "Mine"
+    check(chat.displayName == "Mine", "short name: the person's own name wins over ours")
+    Session.useShortNames = false
+    chat.customTitle = nil
+    chat.title = chat.aiTitle
+    check(chat.displayName == "Fix flaky login test in CI", "short name: off in the config, the title as it was")
+    Session.useShortNames = true
+
+    let named = SessionStore()
+    named.apply(Inbound(raw: ["hook_event_name": "UserPromptSubmit", "session_id": "w2", "cwd": "/Users/me/Documents/GitHub/app-w", "prompt": "/compact"]))
+    named.apply(Inbound(raw: ["hook_event_name": "UserPromptSubmit", "session_id": "w3", "cwd": "/Users/me/Documents/GitHub/app-w", "prompt": "Look at the login"]))
+    named.sessions["w2"]?.aiTitle = "Fix flaky login test in CI"
+    named.sessions["w2"]?.title = "Fix flaky login test in CI"
+    named.sessions["w3"]?.title = "Cart page"
+    check(named.sessions["w2"]?.firstPrompt == nil && named.sessions["w3"]?.firstPrompt == "Look at the login",
+          "short name: the first message kept for it (a /command isn't one)")
+    named.sessions["w2"]?.shortName = "Login test"
+    check(named.session(inWindow: "Fix flaky login test in CI — app-w")?.id == "w2",
+          "window: the old title still picks the chat after it got a short name")
+    named.sessions["w2"]?.title = "Login test" // the tab takes the new name a moment later
+    check(named.session(inWindow: "Login test — app-w")?.id == "w2", "window: the new title picks it")
+    check(named.focus(windowTitle: "Fix flaky login test in CI — app-w", sticky: [])?.id == "w2"
+          && named.focus(windowTitle: "Login test — app-w", sticky: [])?.id == "w2",
+          "window: the chat in front by its old name and by its new")
+    named.sessions["w2"]?.customTitle = "Mine"
+    named.sessions["w2"]?.title = "Mine"
+    check(named.session(inWindow: "Mine — app-w")?.id == "w2", "window: the person's own name picks it too")
+
+    // The namer: asks once for a chat, keeps the name, leaves the person's own and the already short alone.
+    let namer = ShortNamer()
+    var asked: [String] = []
+    namer.base = base
+    namer.ask = { input in asked.append(input); return "«Login test»" }
+    func spin(_ seconds: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+    let a = Session(id: "q1", now: Date()), b = Session(id: "q2", now: Date()), c = Session(id: "q3", now: Date()), d = Session(id: "q4", now: Date())
+    a.aiTitle = "Fix flaky login test in CI"; a.title = a.aiTitle; a.firstPrompt = "The login test fails"; a.transcriptPath = "/x"; a.entrypoint = "claude-vscode"
+    b.aiTitle = "Fix flaky login test in CI"; b.customTitle = "Mine"; b.title = "Mine"
+    c.aiTitle = "Cart page"; c.title = "Cart page"
+    d.aiTitle = "Fix flaky login test in CI"; d.title = d.aiTitle; d.entrypoint = "codex"
+    var changedCount = 0
+    namer.changed = { changedCount += 1 }
+    namer.chats = { [a, b, c, d] }
+    namer.consider([a, b, c, d])
+    spin(0.5)
+    namer.consider([a, b, c, d])
+    spin(0.5)
+    check(asked.count == 2 && a.shortName == "Login test" && d.shortName == "Login test" && b.shortName == nil && c.shortName == nil,
+          "namer: one call a chat, none for the person's own name or a title already short")
+    check(asked.first?.hasPrefix("Title: Fix flaky login test in CI\nFirst message: The login test fails") == true, "namer: asked with the title and the first message")
+    check(SessionTitle.entry("q1", base: base) == .init(name: "Login test", claude: true)
+          && SessionTitle.entry("q4", base: base) == .init(name: "Login test", claude: false),
+          "namer: kept on disk; Codex's only for the app")
+    namer.consider([a, b, c, d])
+    spin(0.2)
+    check(asked.count == 2, "namer: not asked again")
+    // A failing call: pause after three, no storm.
+    let failing = ShortNamer()
+    var tries = 0
+    failing.base = base
+    failing.ask = { _ in tries += 1; return nil }
+    let many = (0..<8).map { i -> Session in
+        let s = Session(id: "f\(i)", now: Date()); s.aiTitle = "A long title about chat \(i) here"; s.title = s.aiTitle; return s
+    }
+    failing.chats = { many }
+    failing.consider(many)
+    spin(1.0)
+    failing.consider(many)
+    spin(0.5)
+    check(tries == 3 && many.allSatisfy { $0.shortName == nil }, "namer: three failures in a row, then it stops for a while")
+    let off = ShortNamer()
+    var offTries = 0
+    off.ask = { _ in offTries += 1; return "X" }
+    off.enabled = { false }
+    off.consider(many)
+    spin(0.3)
+    check(offTries == 0, "namer: switched off, no call")
+    check(ShortNamer.result(from: Data(#"{"type":"result","is_error":false,"result":"Login test"}"#.utf8)) == "Login test"
+          && ShortNamer.result(from: Data(#"{"is_error":true,"result":"Login test"}"#.utf8)) == nil
+          && ShortNamer.result(from: Data("nope".utf8)) == nil, "namer: the CLI's JSON read, an error not used")
+    check(ShortNamer.arguments().contains("--no-session-persistence") && ShortNamer.arguments().contains("project")
+          && !ShortNamer.arguments().contains("--bare"), "namer: the call keeps no session and loads no hooks of yours")
+}
+
 // MARK: Config
 
 let config = Config()

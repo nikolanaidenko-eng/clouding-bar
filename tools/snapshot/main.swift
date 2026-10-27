@@ -112,6 +112,15 @@ add("chats") { $0.chats = chats; $0.mode = .chats }
 let longChats = [BarModel.Chat(id: "1", name: "привет, давай разберём тесты в модуле оплаты", color: Session.colors[3], current: true, waiting: false),
                  BarModel.Chat(id: "2", name: "Промо-ролик для лендинга", color: Session.colors[1], current: false, waiting: false)]
 add("normal-longchat") { $0.chats = longChats }
+// Short names (owner, 27.10): they fit, nothing slides; a long one is cut with "…".
+let shortChats = [BarModel.Chat(id: "1", name: "Правка карусели", color: Session.colors[3], current: true, waiting: false),
+                  BarModel.Chat(id: "2", name: "Login test", color: Session.colors[1], current: false, waiting: false)]
+add("normal-shortchat") { $0.chats = shortChats }
+// Dragged to the narrowest: the dot and the letter are one, a bold capital in the chat's colour.
+for (i, name) in [(0, "blue"), (6, "indigo"), (3, "green"), (5, "yellow")] {
+    let one = [BarModel.Chat(id: "1", name: "Правка карусели", color: Session.colors[i], current: true, waiting: false), shortChats[1]]
+    add("normal-letter-" + name) { $0.chats = one; $0.widths["name"] = 44 }
+}
 add("chats-long") { $0.chats = longChats + chats; $0.mode = .chats }
 // Many chats, Cowork ones among them (long Russian names): each keeps a readable name.
 let manyChats = chats + [BarModel.Chat(id: "4", name: "Ролик для презентации", color: Session.colors[4], current: false, waiting: false),
