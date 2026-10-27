@@ -74,6 +74,57 @@ enum Terminals {
         }
     }
 
+    /// Brings forward the one tab titled `title`: Codex titles its tab
+    /// "<the chat's name> | <folder>", a chat known only from Codex's files
+    /// has no tty to find it by (owner, 27.10). None, or two: not found —
+    /// and this only opens a tab, nothing is typed by it.
+    static func focus(title: String, completion: @escaping (Bool) -> Void) {
+        let running = [terminal, iterm].filter { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
+        guard !running.isEmpty, !title.isEmpty else { completion(false); return }
+        let safe = title.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        queue.async {
+            var found = false
+            for app in running where !found {
+                let script = app == iterm ? """
+                    tell application id "com.googlecode.iterm2"
+                      set hits to {}
+                      repeat with w in windows
+                        repeat with t in tabs of w
+                          repeat with s in sessions of t
+                            if name of s starts with "\(safe)" then set end of hits to {w, t, s}
+                          end repeat
+                        end repeat
+                      end repeat
+                      if (count of hits) is not 1 then return "no"
+                      set {w, t, s} to item 1 of hits
+                      select w
+                      tell t to select
+                      tell s to select
+                      activate
+                      return "yes"
+                    end tell
+                    """ : """
+                    tell application id "com.apple.Terminal"
+                      set hits to {}
+                      repeat with w in windows
+                        repeat with t in tabs of w
+                          if custom title of t is "\(safe)" then set end of hits to {w, t}
+                        end repeat
+                      end repeat
+                      if (count of hits) is not 1 then return "no"
+                      set {w, t} to item 1 of hits
+                      set selected of t to true
+                      set index of w to 1
+                      activate
+                      return "yes"
+                    end tell
+                    """
+                found = run(script) == "yes"
+            }
+            DispatchQueue.main.async { completion(found) }
+        }
+    }
+
     /// osascript's answer, or nil (an error, no permission, 2 s gone).
     private static func run(_ script: String) -> String? {
         let p = Process()
