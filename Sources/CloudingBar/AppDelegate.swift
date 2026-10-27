@@ -1740,9 +1740,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if session.ambient {
-            // Known only from Codex's files: which tab is its can't be told.
-            NSSound.beep()
-            DebugLog.note("open: \(session.displayName) is known only from Codex's files — no tab to bring up")
+            // Known only from Codex's files, no tty: its tab by the title Codex
+            // gives it, "<the chat's name> | <folder>" — one such tab, or none
+            // brought up (owner, 27.10).
+            let name = session.displayName
+            guard let title = session.title, let folder = session.cwd.map({ URL(fileURLWithPath: $0).lastPathComponent }) else {
+                NSSound.beep()
+                DebugLog.note("open: \(name) has no name from Codex yet — no tab to bring up")
+                return
+            }
+            Terminals.focus(title: title + " | " + folder) { found in
+                guard !found else { return }
+                NSSound.beep()
+                DebugLog.note("open: no one tab titled for \(name) — not brought up")
+            }
             return
         }
         if session.entrypoint != "claude-vscode" {
