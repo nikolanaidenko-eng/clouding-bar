@@ -1167,6 +1167,8 @@ struct MarqueeText: View {
     let size: CGFloat
     var weight: NSFont.Weight = .regular
     let maxWidth: CGFloat
+    /// A name too long is cut with "…" instead of sliding (owner, 27.10).
+    var slides = true
     @State private var shift: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1175,7 +1177,7 @@ struct MarqueeText: View {
     var body: some View {
         let width = ceil(MainPanel.textWidth(text, size, weight: weight)) + 1
         let font = Font.system(size: size, weight: weight == .semibold ? .semibold : weight == .bold ? .bold : .regular)
-        if width <= maxWidth || reduceMotion {
+        if width <= maxWidth || reduceMotion || !slides {
             Text(text).font(font)
                 .lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: maxWidth, alignment: .leading)
@@ -1258,7 +1260,7 @@ struct ChatTabs: View {
         Button { if !r.current { model.focusSession(r.id) } } label: {
             HStack(spacing: 6) {
                 ChatDot(color: r.color)
-                MarqueeText(text: r.name, size: 12, weight: r.current ? .semibold : .regular, maxWidth: Self.nameMax)
+                MarqueeText(text: r.name, size: 12, weight: r.current ? .semibold : .regular, maxWidth: Self.nameMax, slides: false)
                 if r.waiting { PulseDot(size: 7, still: model.config.doNotDisturb) }
             }
             .padding(.horizontal, 10)

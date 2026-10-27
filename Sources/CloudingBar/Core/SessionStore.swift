@@ -79,6 +79,13 @@ final class SessionStore {
             if session.agents.map(\.type) != agentsBefore {
                 DebugLog.note("subagents in \(session.projectName ?? id): \(session.agents.map(\.type)) (after \(event))")
             }
+            // The first message of a chat, for its short name (not a /command).
+            if event == "UserPromptSubmit", session.firstPrompt == nil, m.agentId == nil,
+               let prompt = (m.raw["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !prompt.isEmpty, !prompt.hasPrefix("/") {
+                session.firstPrompt = String(prompt.prefix(600))
+                session.firstPromptAt = now
+            }
             switch event {
             case "SessionStart", "Stop", "Interrupt", "StopFailure":
                 // Interrupt is Codex's: you stopped a turn, and no Stop follows.
@@ -132,6 +139,7 @@ final class SessionStore {
     /// A new session gets the first colour no live session has.
     private func newSession(_ id: String, now: Date) -> Session {
         let s = Session(id: id, now: now)
+        s.shortName = SessionTitle.entry(id, base: Config.directory)?.name
         let used = alive.map(\.colorIndex)
         s.colorIndex = Session.colors.indices.min { a, b in
             let ua = used.filter { $0 == a }.count, ub = used.filter { $0 == b }.count
@@ -186,7 +194,7 @@ final class SessionStore {
         guard let shown else { return nil }
         // The closest title; none when two are as close.
         let scored = inApp.map { s in
-            (score: [s.desktopTitle, s.title].compactMap { $0 }.map { Self.titleScore(shown, $0) }.max() ?? 0, session: s)
+            (score: ([s.desktopTitle].compactMap { $0 } + s.windowTitles).map { Self.titleScore(shown, $0) }.max() ?? 0, session: s)
         }.filter { $0.score > 0 }.sorted { $0.score > $1.score }
         guard let top = scored.first, scored.filter({ $0.score == top.score }).count == 1 else { return nil }
         return top.session
@@ -279,7 +287,7 @@ final class SessionStore {
         var list: [(score: Int, session: Session)] = []
         for session in sessions {
             var score = 0
-            if let t = session.title, titled(t) {
+            if session.windowTitles.contains(where: titled) {
                 score = 3
             } else if let cwd = session.cwd {
                 let components = URL(fileURLWithPath: cwd).pathComponents
@@ -340,6 +348,8 @@ final class SessionStore {
         if let e = u.effort { s.effort = e }
         if let w = u.contextWindow { s.contextWindowSize = w }
         if let t = u.title { s.title = t }
+        if let t = u.aiTitle { s.aiTitle = t }
+        if let t = u.customTitle { s.customTitle = t }
         if let meta = u.codexMeta {
             s.codexHost = meta.host
             if s.cwd == nil { s.cwd = meta.cwd }
@@ -464,6 +474,7 @@ final class SessionStore {
               let records = try? JSONDecoder().decode([Session.Record].self, from: data) else { return }
         for r in records {
             let s = Session(record: r)
+            s.shortName = SessionTitle.entry(r.id, base: Config.directory)?.name
             // After a restart nothing is mid-turn as far as we know.
             if s.activity == .wait { s.activity = .sleep }
             if s.isAlive() { sessions[s.id] = s }
