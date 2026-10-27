@@ -927,6 +927,351 @@ do {
     check(claudeAsk.canRemember && claudeAsk.summary.verb == "Run", "claude card: Always stays, Bash as before")
 }
 
+// MARK: Codex's own server (a stand-in plays it: never the real one)
+
+/// Codex's server, played for the checks: the far ends of two pipes, a
+/// WebSocket the way Codex's speaks it (its frames unmasked, the client's
+/// masked), and answers from `answer`.
+final class FakeCodex {
+    let toClient = Pipe(), fromClient = Pipe()
+    private let lock = NSLock()
+    private var _got: [[String: Any]] = []
+    private var _path = ""
+    private var closed = false
+    /// Every message the client sent, in order.
+    var got: [[String: Any]] { lock.lock(); defer { lock.unlock() }; return _got }
+    /// The path the client's upgrade asked for.
+    var path: String { lock.lock(); defer { lock.unlock() }; return _path }
+    /// Its answers a byte at a time: the client gets them in pieces.
+    var dribble = false
+    /// A method's result; nil: no answer at all; `no`: an error.
+    var answer: (String, [String: Any]) -> Any? = { _, _ in [String: Any]() }
+    static let no = "refuse"
+
+    var link: CodexServer.Link {
+        CodexServer.Link(incoming: toClient.fileHandleForReading, outgoing: fromClient.fileHandleForWriting,
+                         close: { [fromClient] in try? fromClient.fileHandleForWriting.close() })
+    }
+
+    func start() { Thread { self.run() }.start() }
+
+    /// Goes away, as a server that stops.
+    func hangUp() {
+        lock.lock(); closed = true; lock.unlock()
+        try? toClient.fileHandleForWriting.close()
+    }
+
+    func push(_ msg: [String: Any]) { send(msg) }
+
+    private func run() {
+        var head: [UInt8] = [], upgraded = false
+        var reader = CodexServer.WebSocket.Reader()
+        while true {
+            let data = fromClient.fileHandleForReading.availableData
+            if data.isEmpty { return }
+            var bytes = [UInt8](data)
+            if !upgraded {
+                head += bytes
+                guard let end = CodexServer.WebSocket.headEnd(head) else { continue }
+                let lines = String(decoding: head[..<end], as: UTF8.self).components(separatedBy: "\r\n")
+                let key = lines.first { $0.lowercased().hasPrefix("sec-websocket-key:") }
+                    .map { String($0.dropFirst("sec-websocket-key:".count)).trimmingCharacters(in: .whitespaces) } ?? ""
+                lock.lock(); _path = lines.first?.split(separator: " ").dropFirst().first.map(String.init) ?? ""; lock.unlock()
+                bytes = Array(head[(end + 4)...])
+                upgraded = true
+                write(Data(("HTTP/1.1 101 Switching Protocols\r\nconnection: Upgrade\r\nupgrade: websocket\r\n"
+                            + "sec-websocket-accept: \(CodexServer.WebSocket.accept(key: key))\r\n\r\n").utf8))
+            }
+            reader.feed(bytes)
+            while let frame = try? reader.next() {
+                guard frame.opcode == 1, let msg = (try? JSONSerialization.jsonObject(with: frame.payload)) as? [String: Any] else { continue }
+                lock.lock(); _got.append(msg); lock.unlock()
+                guard let method = msg["method"] as? String, let id = msg["id"],
+                      let reply = answer(method, msg["params"] as? [String: Any] ?? [:]) else { continue }
+                if let s = reply as? String, s == Self.no {
+                    send(["id": id, "error": ["code": -32600, "message": "no"]])
+                } else {
+                    send(["id": id, "result": reply])
+                }
+            }
+        }
+    }
+
+    private func send(_ msg: [String: Any]) {
+        write(CodexServer.WebSocket.frame(try! JSONSerialization.data(withJSONObject: msg), mask: nil))
+    }
+
+    private let writing = NSLock()
+    private func write(_ data: Data) {
+        writing.lock(); defer { writing.unlock() }
+        lock.lock(); let gone = closed; lock.unlock()
+        guard !gone else { return }
+        if dribble {
+            for b in data { toClient.fileHandleForWriting.write(Data([b])); usleep(100) }
+        } else {
+            toClient.fileHandleForWriting.write(data)
+        }
+    }
+}
+
+/// Counted from the server's own queue, read on the main one.
+final class Counter {
+    private let lock = NSLock()
+    private var value = 0
+    var n: Int { lock.lock(); defer { lock.unlock() }; return value }
+    func add() { lock.lock(); value += 1; lock.unlock() }
+}
+
+func waitFor(_ done: () -> Bool, seconds: Double = 5) {
+    let end = Date().addingTimeInterval(seconds)
+    while !done() && Date() < end { RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.02)) }
+}
+
+/// A rate-limit snapshot as account/rateLimits/read gives it (codex-rs app-server protocol v2).
+func codexSnapshot(id: String? = "codex", five: Double = 37, week: Double = 12, plan: String = "pro",
+                   fiveMinutes: Int = 300) -> [String: Any] {
+    let now = Int(Date().timeIntervalSince1970)
+    return ["limitId": id ?? NSNull(), "limitName": NSNull(), "normalModelSlug": NSNull(),
+            "primary": ["usedPercent": five, "windowDurationMins": fiveMinutes, "resetsAt": now + 3600],
+            "secondary": ["usedPercent": week, "windowDurationMins": 10080, "resetsAt": now + 86400],
+            "credits": ["hasCredits": false, "unlimited": false, "balance": NSNull()], "planType": plan,
+            "rateLimitReachedType": NSNull()]
+}
+
+do { // WebSocket framing, with RFC 6455's own examples
+    typealias WS = CodexServer.WebSocket
+    check(WS.accept(key: "dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=", "codex server: the upgrade's accept (RFC 6455's example)")
+    check(String(decoding: WS.upgrade(key: "k"), as: UTF8.self).hasPrefix("GET / HTTP/1.1\r\n"), "codex server: the upgrade asks for /")
+    check(WS.upgraded("HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: \(WS.accept(key: "k"))", key: "k")
+          && !WS.upgraded("HTTP/1.1 101 Switching Protocols\r\nsec-websocket-accept: nope", key: "k")
+          && !WS.upgraded("HTTP/1.1 403 Forbidden\r\nsec-websocket-accept: \(WS.accept(key: "k"))", key: "k"),
+          "codex server: only a 101 with the accept for our key")
+    let hello = Data("Hello".utf8)
+    check(WS.frame(hello, mask: [0x37, 0xfa, 0x21, 0x3d]) == Data([0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58]),
+          "codex server: a client's frame is masked (RFC 6455's example)")
+    var r = WS.Reader()
+    var frames: [WS.Frame] = []
+    for b in [0x81, 0x05, 0x48, 0x65, 0x6c, 0x6c, 0x6f] as [UInt8] {
+        r.feed([b])
+        while let f = try? r.next() { frames.append(f) }
+    }
+    check(frames == [WS.Frame(opcode: 1, payload: hello)], "codex server: a frame that comes a byte at a time, read once whole")
+    let mid = Data(repeating: 0x61, count: 300), big = Data(repeating: 0x62, count: 70_000)
+    r = WS.Reader()
+    r.feed([UInt8](WS.frame(mid, mask: nil) + WS.frame(big)))
+    let one = try? r.next(), two = try? r.next(), three = try? r.next()
+    check(one == WS.Frame(opcode: 1, payload: mid) && two == WS.Frame(opcode: 1, payload: big) && three == nil,
+          "codex server: 16- and 64-bit lengths, masked or not, two frames in one read")
+    var first = [UInt8](WS.frame(Data(#"{"a":"#.utf8), mask: nil)); first[0] = 0x01 // text, not the last
+    var last = [UInt8](WS.frame(Data("1}".utf8), mask: nil)); last[0] = 0x80        // a continuation, the last
+    r = WS.Reader()
+    r.feed(first + [UInt8](WS.frame(Data("hi".utf8), opcode: 0x9, mask: nil)) + last)
+    let ping = try? r.next(), whole = try? r.next()
+    check(ping?.opcode == 0x9 && whole == WS.Frame(opcode: 1, payload: Data(#"{"a":1}"#.utf8)),
+          "codex server: a message in pieces put together; a ping between them comes as it is")
+    r = WS.Reader()
+    r.feed([0x81, 0x7F, 0xFF, 0, 0, 0, 0, 0, 0, 0])
+    var threw = false
+    do { _ = try r.next() } catch { threw = true }
+    check(threw, "codex server: an absurd length is garbled data, not a wait forever")
+}
+
+do { // limits as the server gives them, through the files' rules
+    let both = CodexServer.limits(response: ["rateLimits": codexSnapshot(), "rateLimitsByLimitId": ["codex": codexSnapshot(), "codex_other": codexSnapshot(id: "codex_other", five: 88)]])
+    check(both?.fiveHour?.percent == 37 && both?.week?.percent == 12 && both?.plan == "pro", "codex server limits: the codex bucket, 5-hour and weekly")
+    check(CodexServer.limits(response: ["rateLimits": codexSnapshot(id: nil)])?.fiveHour?.percent == 37, "codex server limits: no limit id is the account's")
+    check(CodexServer.limits(response: ["rateLimits": codexSnapshot(id: "codex_other", five: 88)]) == nil, "codex server limits: only another bucket: none of the account's")
+    let free = CodexServer.limits(response: ["rateLimits": codexSnapshot(plan: "free", fiveMinutes: 43200)])
+    check(free?.fiveHour == nil && free?.plan == "free", "codex server limits: a window of another length (free's 30 days) is not called 5-hour")
+    check(abs((both?.fiveHour?.reported.timeIntervalSinceNow ?? 99)) < 5, "codex server limits: reported now")
+}
+
+do {
+    let threadA = "019a2b3c-0000-7000-8000-00000000000a", threadB = "019a2b3c-0000-7000-8000-00000000000b",
+        threadC = "019a2b3c-0000-7000-8000-00000000000c"
+    let answer: (String, [String: Any]) -> Any? = { method, params in
+        switch method {
+        case "initialize": return ["userAgent": "fake/0", "codexHome": "/tmp/fake", "platformFamily": "unix", "platformOs": "macos"]
+        case "account/rateLimits/read":
+            return ["rateLimits": codexSnapshot(), "rateLimitsByLimitId": ["codex": codexSnapshot(), "codex_other": codexSnapshot(id: "codex_other", five: 88)]]
+        case "thread/loaded/list": return ["data": [threadA, threadB, threadC]]
+        case "turn/start":
+            switch params["threadId"] as? String {
+            case threadB: return FakeCodex.no // a subagent's chat: refused
+            case threadC: return nil          // never answers
+            default: return ["turn": ["id": "turn-1", "items": [], "status": "inProgress"]]
+            }
+        default: return FakeCodex.no
+        }
+    }
+    let fakes = [FakeCodex(), FakeCodex()]
+    for f in fakes { f.answer = answer; f.start() }
+    fakes[0].dribble = true // the whole start comes in pieces
+    let opens = Counter()
+    let server = CodexServer(timeout: 3, open: { opens.add(); return .link(fakes[min(opens.n - 1, 1)].link) })
+    var limits: [CodexRollout.Limits] = []
+    server.onLimits = { limits.append($0) }
+    server.poll()
+    waitFor { server.connected && !limits.isEmpty && !server.loaded.isEmpty }
+    let fake = fakes[0]
+    check(fake.path == "/", "codex server: the upgrade is to / (its /daemon/shutdown would stop Codex's server)")
+    let hello = fake.got.first
+    check(hello?["method"] as? String == "initialize"
+          && ((hello?["params"] as? [String: Any])?["clientInfo"] as? [String: Any])?["name"] as? String == "clouding-bar",
+          "codex server: initialize first, as clouding-bar")
+    check(server.connected && fake.got.contains { $0["method"] as? String == "initialized" && $0["id"] == nil },
+          "codex server: then the initialized notice: connected (the answers came a byte at a time)")
+    check(limits.first?.fiveHour?.percent == 37 && limits.first?.week?.percent == 12 && limits.first?.plan == "pro",
+          "codex server: limits read on connect, the account's own bucket (not codex_other's 88 %)")
+    let store = SessionStore()
+    if let l = limits.first { store.applyCodexServerLimits(l) }
+    store.codexAccount.apply(used: 50, resetsAt: Date().addingTimeInterval(3600).timeIntervalSince1970, reported: Date().addingTimeInterval(-60))
+    check(store.codexAccount.sessionPercent == 37 && store.codexAccount.weekPercent == 12 && store.codexAccount.plan == "pro",
+          "codex server: into Codex's account; an older file line doesn't replace it")
+    check(server.loaded == [threadA, threadB, threadC] && server.canSend(to: threadA.uppercased()) && !server.canSend(to: "019a-other"),
+          "codex server: the chats it has loaded are known")
+
+    fake.dribble = false
+    fake.push(["method": "account/rateLimits/updated", "params": ["rateLimits": codexSnapshot(five: 41)]])
+    waitFor { limits.count >= 2 }
+    check(limits.last?.fiveHour?.percent == 41, "codex server: account/rateLimits/updated taken too")
+
+    // What it asks: no, every time
+    fake.push(["id": 900, "method": "account/chatgptAuthTokens/refresh", "params": ["reason": "unauthorized", "previousAccountId": NSNull()]])
+    let asks = ["item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval",
+                "applyPatchApproval", "execCommandApproval", "item/tool/requestUserInput", "mcpServer/elicitation/request",
+                "item/tool/call", "attestation/generate"]
+    for (i, m) in asks.enumerated() {
+        fake.push(["id": 901 + i, "method": m, "params": ["threadId": threadA, "turnId": "turn-1", "itemId": "item-1", "command": "rm -rf build"]])
+    }
+    func reply(_ id: Int) -> [String: Any]? { fake.got.first { ($0["id"] as? NSNumber)?.intValue == id && $0["method"] == nil } }
+    waitFor { (900...(900 + asks.count)).allSatisfy { reply($0) != nil } }
+    let auth = reply(900)
+    check(auth?["error"] != nil && auth?["result"] == nil
+          && ((auth?["error"] as? [String: Any])?["message"] as? String ?? "").contains("credentials"),
+          "codex server: ChatgptAuthTokensRefresh refused with an error, no token")
+    let answers = (901...(900 + asks.count)).map(reply)
+    check(answers.allSatisfy { $0?["error"] != nil && $0?["result"] == nil },
+          "codex server: every approval, question or call it asks is refused — nothing approved (Codex reads the error as declined)")
+    check(!fake.got.contains { m in m["result"] != nil || ["accept", "acceptForSession", "approved"].contains { "\(m)".contains($0) } },
+          "codex server: no answer of ours carries a result or an accept")
+
+    // Sending
+    var results: [CodexServer.Sent] = []
+    server.send(#"Fix the header "Docs" /Users/me/My Shots/a.png"#, to: threadA.uppercased()) { results.append($0) }
+    waitFor { results.count == 1 }
+    let starts = fake.got.filter { $0["method"] as? String == "turn/start" }
+    let params = starts.first?["params"] as? [String: Any]
+    check(results == [.sent] && starts.count == 1 && params?["threadId"] as? String == threadA
+          && ((params?["input"] as? [[String: Any]])?.first?["text"] as? String) == #"Fix the header "Docs" /Users/me/My Shots/a.png"#,
+          "codex server: sent with turn/start, to that chat's id, the words as they are")
+    let at = fake.got.lastIndex { $0["method"] as? String == "turn/start" } ?? 0
+    check(fake.got[..<at].last { $0["method"] != nil }?["method"] as? String == "thread/loaded/list",
+          "codex server: …right after asking whether it has that chat loaded")
+    server.send("Hello", to: "019a2b3c-0000-7000-8000-0000000000ff") { results.append($0) }
+    waitFor { results.count == 2 }
+    if case .kept = results.last {} else { check(false, "codex server: a chat it hasn't loaded → kept") }
+    check(fake.got.filter { $0["method"] as? String == "turn/start" }.count == 1,
+          "codex server: a chat it hasn't loaded: not sent, kept — never resumed or loaded")
+    server.send("Hello", to: threadB) { results.append($0) }
+    waitFor { results.count == 3 }
+    if case .kept = results.last {} else { check(false, "codex server: refused by Codex → kept") }
+    check(!server.canSend(to: threadB) && server.canSend(to: threadA), "codex server: refused by Codex: kept, that chat not tried again for a while")
+    server.send("Hello", to: threadC) { results.append($0) }
+    waitFor({ results.count == 4 }, seconds: 6)
+    if case .unsure = results.last {} else { check(false, "codex server: no answer → unsure") }
+    check(results.count == 4, "codex server: no answer to turn/start: maybe sent — not sent again")
+    let used = Set(fake.got.compactMap { $0["method"] as? String })
+    check(used.isSubset(of: ["initialize", "initialized", "account/rateLimits/read", "thread/loaded/list", "turn/start"]),
+          "codex server: never thread/resume, thread/start, a fork or turn/steer — only reads, and turn/start (\(used.sorted()))")
+
+    // It goes away; back after a while
+    fake.hangUp()
+    waitFor { !server.connected }
+    check(!server.connected && server.loaded.isEmpty && !server.canSend(to: threadA), "codex server: its going is seen, nothing sent its way")
+    server.poll()
+    waitFor({ false }, seconds: 0.3)
+    check(opens.n == 1, "codex server: not again at once (5 s, doubling to 5 min)")
+    server.poll(now: Date().addingTimeInterval(400))
+    waitFor { server.connected }
+    check(opens.n == 2 && server.connected, "codex server: connected again after its wait")
+    fakes[1].push(["method": "account/updated", "params": ["authMode": "chatgptAuthTokens", "planType": "pro"]])
+    waitFor { !server.connected }
+    check(!server.connected && server.state.contains("another app"),
+          "codex server: Codex's sign-in from another app: not connected (our refusal could beat its token refresh)")
+    server.poll(now: Date().addingTimeInterval(60))
+    waitFor({ false }, seconds: 0.3)
+    check(opens.n == 2, "codex server: …and not again for half an hour")
+}
+
+do { // no server running: nothing started, nothing connected
+    let fm = FileManager.default
+    let home = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("codex-daemon").standardizedFileURL
+    try? fm.removeItem(at: home)
+    try? fm.createDirectory(at: home.appendingPathComponent("app-server-control"), withIntermediateDirectories: true)
+    try? fm.createDirectory(at: home.appendingPathComponent("app-server-daemon"), withIntermediateDirectories: true)
+    let link = home.appendingPathComponent("app-server-control/app-server-control.sock")
+    check(CodexServer.daemonSocket(home: home) == nil, "codex server: no socket, no server")
+    if case .none = CodexServer.proxy(home: home) {} else { check(false, "codex server: no server → nothing started") }
+    if case .none = CodexServer.proxy() {} else { check(false, "codex server: the checks' Codex home has no server → nothing started") }
+    try? "x".write(to: link, atomically: true, encoding: .utf8)
+    check(CodexServer.daemonSocket(home: home) == nil, "codex server: a plain file where its socket goes is no server")
+    try? fm.removeItem(at: link)
+    // Codex's layout: a link to a socket in a folder of its own.
+    let real = NSTemporaryDirectory() + "cb-\(getpid()).sock"
+    unlink(real)
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    var addr = sockaddr_un()
+    addr.sun_family = sa_family_t(AF_UNIX)
+    withUnsafeMutableBytes(of: &addr.sun_path) { $0.copyBytes(from: Array(real.utf8)) }
+    let bound = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
+    try? fm.createSymbolicLink(atPath: link.path, withDestinationPath: real)
+    check(bound == 0 && CodexServer.daemonSocket(home: home) == link.path, "codex server: its socket there, no pid file (started by hand): a server")
+    let gone = Process()
+    gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+    try? gone.run()
+    gone.waitUntilExit()
+    let pidFile = home.appendingPathComponent("app-server-daemon/daemon.pid")
+    try? #"{"pid":\#(gone.processIdentifier),"processStartTime":"x"}"#.write(to: pidFile, atomically: true, encoding: .utf8)
+    check(CodexServer.daemonSocket(home: home) == nil, "codex server: its socket left by a server that's gone: none")
+    try? #"{"pid":\#(getpid())}"#.write(to: pidFile, atomically: true, encoding: .utf8)
+    check(CodexServer.daemonSocket(home: home) == link.path, "codex server: its socket and its process alive: that one")
+    close(fd)
+    unlink(real)
+    let tries = Counter()
+    let quiet = CodexServer(open: { tries.add(); return .none("Codex's server isn't running") })
+    quiet.poll()
+    waitFor({ false }, seconds: 0.3)
+    quiet.poll()
+    waitFor({ false }, seconds: 0.3)
+    check(tries.n == 1 && !quiet.connected && quiet.state == "Codex's server isn't running",
+          "codex server: none running: not connected, looked for again only after 30 s")
+}
+
+do { // the queue: a Codex chat's words wait while it works, one at a time
+    let store = SessionStore()
+    func hook(_ name: String) {
+        store.apply(Inbound(raw: ["session_id": "q1", "hook_event_name": name, "cwd": "/Users/me/proj",
+                                  "claude_entrypoint": "codex", "claude_pid": Int(getpid())]))
+    }
+    hook("SessionStart")
+    hook("UserPromptSubmit")
+    let s = store.sessions["q1"]!
+    func free() -> Bool { s.activity == .sleep && !s.waitingNotice }
+    check(Delivery.route(direct: true, free: free(), queuedBefore: false, waits: true) == .queue, "queue: Codex at work, the widget's words wait")
+    check(Delivery.route(direct: true, free: free(), queuedBefore: false, waits: true, sendNow: true) == .now,
+          "queue: Send now goes at once (Codex adds it to the turn running)")
+    check(Delivery.route(direct: true, free: false, queuedBefore: false, waits: false) == .now,
+          "queue: Claude at work, a button's words go straight in (Claude Code keeps them for after itself)")
+    hook("Stop")
+    check(Delivery.route(direct: true, free: free(), queuedBefore: false, waits: true) == .now, "queue: its turn over: straight in")
+    check(Delivery.route(direct: true, free: free(), queuedBefore: true, waits: true) == .queue, "queue: …unless one of yours waits before it")
+    hook("PermissionRequest")
+    check(Delivery.route(direct: true, free: free(), queuedBefore: false, waits: true) == .queue, "queue: Codex asking for permission: it waits")
+    check(Delivery.route(direct: false, free: true, queuedBefore: false, waits: true) == .queue,
+          "queue: a chat that takes nothing straight in: queued (typed once in front)")
+}
+
 // MARK: Safety
 
 do { // settings.json as a link (dotfiles): Connect writes the file it points to, the link stays

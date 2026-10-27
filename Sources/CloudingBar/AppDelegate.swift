@@ -88,6 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var barPendingEffort: String?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
     private let liveLimit = ClaudeAILimit()
+    /// Codex's own server, while one runs: its limits now, and words
+    /// straight into a chat it has loaded (owner, 27.10).
+    private let codexServer = CodexServer()
     private var coworkSeen: [String: String] = [:]
     private let desktopChat = DesktopChat()
     /// The chat Claude Desktop shows, and since when.
@@ -147,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpVoice()
         loadQueue()
         setUpCowork()
+        setUpCodexServer()
         model.showTour = { [weak self] in self?.showTour() }
 
         setUpClaudeCode()
@@ -271,7 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if ticks % 2 == 0 {
             store.pollTranscripts()
-            if ticks % 10 == 0 || ticks == 2 { store.pollCodexRollouts() }
+            if ticks % 10 == 0 || ticks == 2 {
+                store.pollCodexRollouts()
+                if config.codexServer && Setup.hasCodex { codexServer.poll() }
+            }
             readCowork()
         } else {
             readDesktopPrompt()
@@ -1395,6 +1402,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if key == "coworkMode", let mode = value as? String {
             Cowork.setMode(mode, folders: watchedCoworkFolders)
         }
+        if key == "codexServer" {
+            if config.codexServer { codexServer.poll() } else { codexServer.stop() }
+            model.codexServerState = config.codexServer ? codexServer.state : "Off"
+        }
         DebugLog.note("setting \(key) changed")
         refresh()
     }
@@ -1984,14 +1995,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let files = active.flatMap { self.attachments.removeValue(forKey: $0.id) } ?? []
             let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
             guard !full.isEmpty else { return }
-            // Straight into Claude where its chat takes that (VS Code, through
-            // the wrapper): no window, no keys, wherever you are — when Claude
-            // is free and nothing of yours waits before it. Else the queue,
-            // one at a time as Claude gets free (owner, 27.10), or until its
-            // chat is in front — never a window switched.
-            if let s = active, Inject.available(pid: s.claudePid), self.isFree(s),
-               !self.queue.contains(where: { $0.sessionId == s.id }) {
-                DebugLog.tap("send straight to Claude" + (files.isEmpty ? "" : " with \(files.count) file(s)"))
+            // Straight in where its chat takes that (VS Code's Claude, through
+            // the wrapper; a chat Codex's server has loaded): no window, no
+            // keys, wherever you are — when the agent is free and nothing of
+            // yours waits before it. Else the queue, one at a time as it gets
+            // free (owner, 27.10), or until its chat is in front — never a
+            // window switched.
+            if let s = active, Delivery.route(direct: self.straightIn(s), free: self.isFree(s),
+                                              queuedBefore: self.queue.contains(where: { $0.sessionId == s.id }), waits: true) == .now {
+                DebugLog.tap("send straight to " + (s.entrypoint == "codex" ? "Codex" : "Claude") + (files.isEmpty ? "" : " with \(files.count) file(s)"))
                 self.inject(text, files: files, into: s) { [weak self] in self?.enqueue(full, for: active) }
                 return
             }
@@ -2044,7 +2056,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (i, next) in queue.enumerated() {
             guard let id = next.sessionId, let session = store.sessions[id], seen.insert(id).inserted,
                   isFree(session), Date().timeIntervalSince(session.activitySince) > 1.5 else { continue }
-            if Inject.available(pid: session.claudePid) {
+            if straightIn(session) {
                 queue.remove(at: i)
                 saveQueue()
                 queueSentAt = Date()
@@ -2068,9 +2080,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Send now: its chat brought to the front, then the words typed in at
-    /// once (while Claude works, Claude Code queues them itself). If the chat
-    /// doesn't come up, it goes back to the head of the queue.
+    /// Send now: straight in where its chat takes that (while Claude works,
+    /// Claude Code queues them itself; Codex's server adds them to the turn
+    /// running), else its chat brought to the front
+    /// and the words typed in at once. If the chat doesn't come up, it goes
+    /// back to the head of the queue.
     private func sendQueuedNow(_ id: UUID) {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return }
         let item = queue.remove(at: i)
@@ -2078,7 +2092,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
         guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
         DebugLog.tap("queue: send now → \(session.displayName)")
-        if Inject.available(pid: session.claudePid) {
+        if straightIn(session) {
             inject(item.text, into: session) { [weak self] in
                 self?.queue.insert(item, at: 0)
                 self?.saveQueue()
@@ -2098,9 +2112,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
+    /// Its words go straight in: Claude's input (VS Code, through the
+    /// wrapper), or Codex's own server for a chat it has loaded.
+    private func straightIn(_ session: Session) -> Bool {
+        Inject.available(pid: session.claudePid) || codexDirect(session)
+    }
+
+    /// A Codex chat its own server has loaded (Terminal's codex, 0.164 on):
+    /// its words go in by the chat's id — never typed, never a tab guessed.
+    private func codexDirect(_ session: Session) -> Bool {
+        config.codexServer && session.entrypoint == "codex" && codexServer.canSend(to: session.id)
+    }
+
     /// Hands it to Claude's input (Inject): off the main thread, then the
     /// chat's echo shows it. If Claude's side doesn't take it, `fallback`.
+    /// A Codex chat's go to Codex's server instead.
     private func inject(_ text: String, files: [String] = [], into session: Session, fallback: @escaping () -> Void) {
+        if codexDirect(session) {
+            sendToCodex(text, files: files, into: session, fallback: fallback)
+            return
+        }
         guard let pid = session.claudePid, let data = Inject.message(text, files: files) else {
             fallback()
             return
@@ -2116,6 +2147,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 } else {
                     fallback()
                 }
+            }
+        }
+    }
+
+    /// Into a Codex chat through Codex's own server, as yours: dropped files
+    /// go as their paths in the words, as the queue has them. Codex's
+    /// approvals for it come in its own window (and on the bar with Connect).
+    /// No answer: it may have gone in — not sent again, lest Codex get it twice.
+    private func sendToCodex(_ text: String, files: [String], into session: Session, fallback: @escaping () -> Void) {
+        let words = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
+        let name = session.displayName
+        codexServer.send(words, to: session.id) { [weak self] result in
+            switch result {
+            case .sent:
+                DebugLog.note("sent straight to Codex (\(name))")
+                self?.queueSentAt = Date()
+                self?.setNeedsRefresh()
+            case .kept(let why):
+                DebugLog.note("Codex's server didn't take it (\(name)): \(why) — kept")
+                fallback()
+            case .unsure(let why):
+                NSSound.beep()
+                DebugLog.note("Codex's server didn't answer (\(name)): \(why) — maybe sent, not sent again")
             }
         }
     }
@@ -2184,9 +2238,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// A message for this chat (the widget's box, the bar, the voice card):
-    /// straight into Claude where it takes that, else typed in once its chat
-    /// is in front. No chat known: left in a Claude app's field without
-    /// Enter — never sent into whatever app is in front.
+    /// straight in where its chat takes that (Claude's input, Codex's
+    /// server), else typed in once its chat is in front. No chat known: left
+    /// in a Claude app's field without Enter — never sent into whatever app
+    /// is in front.
     private func deliver(_ text: String, to session: Session?) {
         guard let session else {
             guard claudeAppInFront, safeToType() else { NSSound.beep(); DebugLog.note("send: no chat known — not sent"); return }
@@ -2194,8 +2249,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             KeySender.type(text)
             return
         }
-        if Inject.available(pid: session.claudePid) {
-            inject(text, into: session) { [weak self] in self?.enqueue(text, for: session) }
+        if straightIn(session) {
+            // Codex at work: its server would add the words to the turn
+            // running, so they wait for it to end, as Claude Code keeps them.
+            let route = Delivery.route(direct: true, free: isFree(session),
+                                       queuedBefore: queue.contains { $0.sessionId == session.id }, waits: codexDirect(session))
+            if route == .now {
+                inject(text, into: session) { [weak self] in self?.enqueue(text, for: session) }
+            } else {
+                enqueue(text, for: session)
+                DebugLog.note("send: Codex is at work — queued until its turn ends")
+            }
         } else if chatInFront(session.id) {
             typeAfterReleasingKey(text)
         } else {
@@ -2322,6 +2386,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - Cowork and the claude.ai limit
+
+    /// Codex's own server (CodexServer): its limits into Codex's account,
+    /// its state into Settings.
+    private func setUpCodexServer() {
+        codexServer.onLimits = { [weak self] limits in self?.store.applyCodexServerLimits(limits) }
+        codexServer.onChange = { [weak self] in
+            guard let self else { return }
+            self.model.codexServerState = self.config.codexServer ? self.codexServer.state : "Off"
+            self.setNeedsRefresh()
+        }
+        model.codexServerState = config.codexServer ? codexServer.state : "Off"
+    }
 
     private func setUpCowork() {
         model.chooseCoworkFolder = { [weak self] in

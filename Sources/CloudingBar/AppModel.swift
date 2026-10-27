@@ -212,6 +212,8 @@ final class AppModel: ObservableObject {
     var connectClaude: () -> Void = {}
     @Published var hasCodex = false
     @Published var codexConnected = false
+    /// Codex's own server: "Connected", "Codex's server isn't running", "Off"…
+    @Published var codexServerState = "Off"
     var connectCodex: () -> Void = {}
     var wrapVSCode: () -> Void = {}
     /// Clouding Bar's plugin: on in Claude Code; with your account (Claude

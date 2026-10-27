@@ -97,3 +97,25 @@ enum Inject {
         return n >= 2 && reply[0] == UInt8(ascii: "o") && reply[1] == UInt8(ascii: "k")
     }
 }
+
+/// Where a message for a chat goes right now (the widget's box, a button,
+/// your voice, Send now) — AppDelegate's queue, in one place for the checks.
+enum Delivery: Equatable {
+    /// Straight in: Claude's input (Inject), or Codex's own server (CodexServer).
+    case now
+    /// The queue: out one at a time as the chat gets free (owner, 27.10).
+    case queue
+
+    /// - direct: its chat takes messages straight in
+    /// - free: the agent there has finished its reply and asks nothing
+    /// - queuedBefore: a message of yours for it waits already
+    /// - waits: it holds while the agent works. The widget's always do; a
+    ///   button's or your voice's only for Codex, whose turn/start would join
+    ///   the turn running, where Claude Code keeps it for after by itself.
+    /// - sendNow: Send now, at once whatever it's doing
+    static func route(direct: Bool, free: Bool, queuedBefore: Bool, waits: Bool, sendNow: Bool = false) -> Delivery {
+        guard direct else { return .queue }
+        if sendNow || !waits { return .now }
+        return free && !queuedBefore ? .now : .queue
+    }
+}

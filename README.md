@@ -137,10 +137,22 @@ A first version for **Windows** is in [windows/](windows/README.md).
   hooks only after you trust them — start Codex and choose *Trust all* (or
   `/hooks`). A hook added in a later version asks again, for itself only.
   Codex can't remember an "always allow", so there is none for it.
-- Not for Codex yet: its questions, the model picker, Stats, and — without
-  Connect — words from the widget (a chat known only from its files can't be
-  told apart from a shell in the same folder, so nothing is typed). It's
-  little tested — tell us what doesn't work.
+- **Live limits and sending** (Settings → General → Codex, on by default):
+  Codex 0.164 runs one server of its own that every `codex` in a terminal
+  uses, and while it runs Clouding Bar talks to it through
+  `codex app-server proxy`.
+  Codex's limits come as they are now (it asks its backend every few
+  minutes), and the widget's words go straight into a chat the server has
+  open, by the chat's id — no tab to find, nothing typed. While Codex works
+  they wait in the queue and go when its turn ends; *Send now* adds them to
+  the turn running. Nothing is started when no server runs, no chat is opened
+  or copied, and Codex's approvals still come in its own window (and on the
+  bar with Connect) — Clouding Bar approves nothing and holds no credentials.
+- Not for Codex yet: its questions, the model picker, Stats, and words from
+  the widget to a chat Codex's server doesn't have (VS Code's, the app's, an
+  older Codex's): a chat known only from its files can't be told apart from a
+  shell in the same folder, so nothing is typed. It's little tested — tell us
+  what doesn't work.
 
 **And**
 - A **tour** on first launch (and behind the ? in Settings): seven stops
