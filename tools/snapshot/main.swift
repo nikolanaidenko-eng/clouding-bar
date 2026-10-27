@@ -661,6 +661,7 @@ do { // a fresh install, no chat open: the widget's copy in Settings shows examp
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-nochat")
 }
 // Every More… starts closed, as on a first run; the *-more renders open them.
+let generalGroups = ["App", "Connections", "Context"]
 let moreKeys = ["app", "connections", "context", "widget", "shows", "touchbar", "stats"]
 for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
 for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
@@ -685,6 +686,7 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
     }
     if ["general", "widget", "touchbar"].contains(tab) { // every More… open, the tab alone at its full height
         for k in moreKeys { UserDefaults.standard.set(true, forKey: "settings.more." + k) }
+        for g in generalGroups { SettingsFolds.shared.show(g) } // General's groups are folded by default
         if !m.config.achievements.contains("claude-wave") { m.config.achievements.append("claude-wave") } // Cloud's colour waits in the widget's More…
         let tabOnly = Group {
             if tab == "general" { GeneralTab(model: m) } else if tab == "widget" { WidgetTab(model: m) } else { TouchBarTab(model: m) }
@@ -698,6 +700,16 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
                        name: "s-cowork-request")
         }
         for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
+        SettingsFolds.shared.reset()
+    }
+    if tab == "general" { // one group opened out of the folded rest (owner, 27.10), dark and light
+        SettingsFolds.shared.show("App")
+        renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560), name: "s-general-open")
+        renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560),
+                   name: "s-general-open-light", light: true)
+        SettingsFolds.shared.show("Connections")
+        renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560), name: "s-general-open2")
+        SettingsFolds.shared.reset()
     }
     if tab == "stats" { // all of it, More open
         UserDefaults.standard.set(true, forKey: "settings.more.stats")
