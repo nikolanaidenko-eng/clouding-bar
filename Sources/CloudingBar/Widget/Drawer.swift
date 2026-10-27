@@ -51,7 +51,10 @@ final class DrawerController: NSObject {
             if over { self?.touch() }
         }
         host.onFileDrop = { [weak self] urls in
-            guard let self, self.model.dropFiles(urls) else { return false }
+            guard let self else { return false }
+            // With a chat's composer open in the Chats tab: for that chat.
+            let composer = self.state.mode == .chats ? self.state.composerChat : nil
+            guard composer.map({ self.model.dropFilesTo(urls, $0) }) ?? self.model.dropFiles(urls) else { return false }
             self.anim.pokes += 1
             self.dozeLater()
             return true
@@ -71,6 +74,15 @@ final class DrawerController: NSObject {
         model.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.refit() }
         }.store(in: &subscriptions)
+        // The Panel and Chats tabs differ in height.
+        state.$mode.removeDuplicates().sink { [weak self] _ in
+            DispatchQueue.main.async { self?.refit() }
+        }.store(in: &subscriptions)
+        state.composerKeyboard = { [weak self] in
+            guard let self else { return }
+            self.panel.allowsKey = true
+            self.panel.makeKey()
+        }
     }
 
     func toggle() {
@@ -94,6 +106,24 @@ final class DrawerController: NSObject {
             guard self.shown, !self.busy else { return }
             if !self.panel.isKeyWindow { self.panel.makeKey() }
             self.state.focusMessage += 1
+        }
+    }
+
+    /// Up at the Chats tab, that chat's composer open: a screenshot just
+    /// attached for it goes with what you write there.
+    func openComposer(_ id: String) {
+        let wasShown = shown
+        show()
+        guard shown else { return }
+        state.composerChat = id
+        state.mode = .chats
+        panel.allowsKey = true
+        panel.makeKey()
+        state.focusComposer += 1
+        after(wasShown ? 0.15 : 2.4) {
+            guard self.shown, !self.busy else { return }
+            if !self.panel.isKeyWindow { self.panel.makeKey() }
+            self.state.focusComposer += 1
         }
     }
 
@@ -247,7 +277,7 @@ final class DrawerController: NSObject {
 
     private func refit() {
         guard shown else { return }
-        panel.allowsKey = model.request != nil || model.config.taskQueue
+        panel.allowsKey = model.request != nil || model.config.taskQueue || state.mode == .chats
         let size = contentSize
         anim.panelHeight = measure.fittingSize.height
         guard !busy, panel.frame.size != size else { return }

@@ -118,4 +118,38 @@ enum Delivery: Equatable {
         if sendNow || !waits { return .now }
         return free && !queuedBefore ? .now : .queue
     }
+
+    /// Its chat takes words straight in: Claude's input (VS Code, through the
+    /// wrapper), or Codex's own server for a chat it has loaded
+    /// (`codexLoaded`). Claude in Terminal, Claude Desktop and Cowork take
+    /// only keys: typed once their chat is surely the one in front.
+    static func direct(_ s: Session, codexLoaded: Bool) -> Bool {
+        Inject.available(pid: s.claudePid) || codexLoaded
+    }
+
+    /// The agent there has finished its reply and asks nothing (`asking`: a
+    /// request of its waits on the bar), and nothing handed to it in the last
+    /// 10 s (`handedAt`) or on its way to Codex (`sending`) is pending: until
+    /// its hook says it took the last one, the next waits its turn.
+    static func free(_ s: Session, asking: Bool, handedAt: Date?, sending: Bool, now: Date = Date()) -> Bool {
+        s.activity == .sleep && !s.waitingNotice && !asking
+            && now.timeIntervalSince(handedAt ?? .distantPast) > 10 && !sending
+    }
+
+    /// The chat a message goes to: the one it was written for (the Chats
+    /// tab, the bar's line opened from its list) while it's alive — never
+    /// the chat followed in its place once it has ended; written for none,
+    /// the chat followed (owner, 27.10: write to any chat without switching).
+    static func target(addressed: String?, followed: String?, isAlive: (String) -> Bool) -> String? {
+        guard let addressed else { return followed }
+        return isAlive(addressed) ? addressed : nil
+    }
+
+    /// What the Chats tab says once you've sent: where the words are now.
+    static func note(_ route: Delivery, direct: Bool, to name: String) -> String {
+        switch route {
+        case .now: return "Sent to \(name)"
+        case .queue: return "Queued for \(name) — " + (direct ? "goes when it's free" : "goes when you open it")
+        }
+    }
 }

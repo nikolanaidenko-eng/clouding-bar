@@ -1341,6 +1341,63 @@ do { // the queue: a Codex chat's words wait while it works, one at a time
           "queue: a chat that takes nothing straight in: queued (typed once in front)")
 }
 
+do { // writing to a chat picked by name (the Chats tab, the bar's line from its list), whatever is followed (owner, 27.10)
+    check(Delivery.target(addressed: "b", followed: "a", isAlive: { _ in true }) == "b", "write to: the chat picked, not the one followed")
+    check(Delivery.target(addressed: "b", followed: "a", isAlive: { $0 == "a" }) == nil,
+          "write to: the chat picked has ended — nothing sent, not to the one followed instead")
+    check(Delivery.target(addressed: nil, followed: "a", isAlive: { _ in true }) == "a", "write: no chat picked — the one followed")
+    check(Delivery.target(addressed: nil, followed: nil, isAlive: { _ in true }) == nil, "write: none picked, none followed — nowhere")
+
+    // One chat of each kind; VS Code's has the wrapper's door (cloudingbar-tap --input).
+    let store = SessionStore()
+    func hook(_ id: String, _ name: String, _ entry: String, pid: Int32?) {
+        var raw: [String: Any] = ["session_id": id, "hook_event_name": name, "cwd": "/Users/me/proj", "claude_entrypoint": entry]
+        if let pid { raw["claude_pid"] = Int(pid) }
+        store.apply(Inbound(raw: raw))
+    }
+    let doors = Config.directory.appendingPathComponent("inject")
+    try? FileManager.default.createDirectory(at: doors, withIntermediateDirectories: true)
+    try? Data().write(to: URL(fileURLWithPath: Inject.socketPath(pid: getpid())))
+    // Terminal's Claude: a live process with no door. Codex's and Cowork's: no Claude process to hand words to.
+    for (id, entry, pid) in [("vs", "claude-vscode", Optional(getpid())), ("term", "cli", Optional(getppid())),
+                             ("cw", "cowork", nil), ("cx", "codex", nil)] {
+        hook(id, "SessionStart", entry, pid: pid)
+        hook(id, "Stop", entry, pid: pid)
+    }
+    let vs = store.sessions["vs"]!, term = store.sessions["term"]!, cw = store.sessions["cw"]!, cx = store.sessions["cx"]!
+    check(Delivery.direct(vs, codexLoaded: false) && !Delivery.direct(term, codexLoaded: false) && !Delivery.direct(cw, codexLoaded: false),
+          "write to: VS Code's Claude through the wrapper takes words straight in; Terminal's and Cowork's only keys")
+    check(Delivery.direct(cx, codexLoaded: true) && !Delivery.direct(cx, codexLoaded: false),
+          "write to: a Codex chat straight in only while its server has it loaded")
+
+    let now = Date()
+    check(Delivery.free(vs, asking: false, handedAt: nil, sending: false, now: now), "write to: done and asking nothing: free")
+    check(!Delivery.free(vs, asking: false, handedAt: now.addingTimeInterval(-3), sending: false, now: now)
+          && Delivery.free(vs, asking: false, handedAt: now.addingTimeInterval(-11), sending: false, now: now),
+          "write to: handed a message 3 s ago: busy till its hook says it took it (10 s at most)")
+    check(!Delivery.free(vs, asking: true, handedAt: nil, sending: false, now: now) && !Delivery.free(cx, asking: false, handedAt: nil, sending: true, now: now),
+          "write to: a request waiting, or words on their way to Codex: not free")
+
+    // What the Chats tab and the bar's line do: the widget's rules for that chat (they wait their turn).
+    func route(_ s: Session, loaded: Bool = false, queuedBefore: Bool = false) -> Delivery {
+        Delivery.route(direct: Delivery.direct(s, codexLoaded: loaded),
+                       free: Delivery.free(s, asking: false, handedAt: nil, sending: false), queuedBefore: queuedBefore, waits: true)
+    }
+    check(route(vs) == .now, "write to: VS Code's Claude, free: straight in, no window")
+    check(route(vs, queuedBefore: true) == .queue, "write to: …unless one of yours for it waits before")
+    check(route(cx, loaded: true) == .now && route(cx) == .queue, "write to: Codex, free and loaded by its server: straight in; else its queue")
+    check(route(term) == .queue && route(cw) == .queue,
+          "write to: Terminal's Claude, Cowork: its queue, typed only once that chat is surely in front — never into another window")
+    hook("vs", "UserPromptSubmit", "claude-vscode", pid: getpid())
+    check(route(vs) == .queue, "write to: VS Code's Claude at work: its queue, out when it's free")
+
+    check(Delivery.note(.now, direct: true, to: "Lead bot") == "Sent to Lead bot"
+          && Delivery.note(.queue, direct: true, to: "Lead bot") == "Queued for Lead bot — goes when it's free"
+          && Delivery.note(.queue, direct: false, to: "Lead bot") == "Queued for Lead bot — goes when you open it",
+          "write to: the note says where the words are")
+    try? FileManager.default.removeItem(atPath: Inject.socketPath(pid: getpid()))
+}
+
 // MARK: Safety
 
 do { // settings.json as a link (dotfiles): Connect writes the file it points to, the link stays

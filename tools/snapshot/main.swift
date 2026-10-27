@@ -136,6 +136,12 @@ add("compose") { $0.mode = .typing(text: "Check the landing page on mobile too")
     $0.typingPlaceholder = "Sent when Claude is free"; $0.typingCommands = true
     $0.shows = ["session", "context", "templates", "buttons"]; $0.templates = ["Review {branch}"] }
 add("compose-empty") { $0.mode = .typing(text: ""); $0.typingLabel = "To Status bar"; $0.typingPlaceholder = "Sent when Claude is free" }
+// The line written for a chat picked from the list, not the one followed (owner, 27.10): its chip, a screenshot waiting, ↗.
+add("compose-to") { $0.chats = chats; $0.mode = .typing(text: "Look at the screenshot: the form overlaps the footer")
+    $0.typingTo = chats[1]; $0.typingFiles = 1; $0.typingPlaceholder = "Type on the keyboard…" }
+add("compose-to-empty") { $0.chats = chats; $0.mode = .typing(text: ""); $0.typingTo = chats[2]; $0.typingPlaceholder = "Type on the keyboard…" }
+add("compose-to-long") { $0.chats = longChats; $0.mode = .typing(text: "Проверь тесты в модуле оплаты и почини, что упало")
+    $0.typingTo = longChats[0]; $0.typingPlaceholder = "Type on the keyboard…"; $0.listening = true }
 add("normal-short", width: 628) { $0.short = true; $0.chats = chats
     $0.shows = ["session", "reset", "context", "model", "buttons", "mic"]; $0.modelLabel = "Opus 5.5 1M" }
 add("normal-short-all", width: 628) { $0.short = true; $0.chats = chats; $0.buttons = seven
@@ -534,7 +540,23 @@ for (name, lift, hop) in [("d-hop", 0.0, 16.0), ("d-lift", 0.4, 0.0), ("d-island
         .frame(width: 440, height: 260))
     renderView(host, size: NSSize(width: 440, height: 260), name: name)
 }
-widget("w-sessions", .sessions)
+widget("w-chats", .chats, size: NSSize(width: 480, height: 400))
+do { // the Chats tab, a chat's composer open: words, a screenshot for it, one queued, the note after Send
+    let m = sampleModel()
+    m.chatDrafts = ["2": "Check the form on mobile too"]
+    m.chatFiles = ["2": ["/Users/me/.cloudingbar/shots/shot-2026-10-27T15-02-11Z.png"]]
+    m.queue = [.init(text: "Run the tests and fix what fails", sessionId: "2", project: "bots")]
+    m.sentNote = .init(chat: "2", text: "Queued for Lead bot — goes when you open it")
+    let st = WidgetState(); st.mode = .chats; st.composerChat = "2"
+    let host = NSHostingView(rootView: VStack { WidgetView(model: m, state: st); Spacer() }
+        .frame(width: 480, height: 520).padding(.top, 20))
+    renderView(host, size: NSSize(width: 480, height: 520), name: "w-chats-composer")
+    let st2 = WidgetState(); st2.mode = .chats; st2.composerChat = "5"
+    m.listeningFor = "5"; m.heard = "Перескажи последний ответ коротко"; m.sentNote = nil
+    let host2 = NSHostingView(rootView: VStack { WidgetView(model: m, state: st2); Spacer() }
+        .frame(width: 480, height: 480).padding(.top, 20))
+    renderView(host2, size: NSSize(width: 480, height: 480), name: "w-chats-listening")
+}
 widget("w-empty", .panel, size: NSSize(width: 400, height: 320)) {
     $0.hasSession = false; $0.sessionPercent = 20; $0.limitAge = "2 h ago"
 }

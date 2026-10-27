@@ -136,6 +136,21 @@ final class AppModel: ObservableObject {
     /// Files dropped on the widget for the session it shows: they go with
     /// the next message written there, or into the chat with Insert.
     @Published var attachments: [String] = []
+    /// Every chat's files waiting, by its id: the Chats tab's composers.
+    @Published var chatFiles: [String: [String]] = [:]
+    /// The words being written in each chat's composer, kept while you look
+    /// at another (your voice lands here too).
+    @Published var chatDrafts: [String: String] = [:]
+    /// The chat whose composer the mic is dictating into.
+    @Published var listeningFor: String?
+    /// Just sent from the Chats tab: where the words are now ("Sent to Lead
+    /// bot", "Queued for Lead bot — goes when you open it"), for a moment.
+    struct SentNote: Equatable {
+        var id = UUID()
+        let chat: String
+        let text: String
+    }
+    @Published var sentNote: SentNote?
     /// That session's chat is the window in front (Insert types into it).
     @Published var chatInFront = false
 
@@ -184,6 +199,18 @@ final class AppModel: ObservableObject {
     var removeAttachment: (String) -> Void = { _ in }
     /// Types the attached files' paths into the chat in front, without Enter.
     var insertAttachments: () -> Void = {}
+    // The Chats tab: one chat, picked by its id, whatever the widget follows
+    // — nothing switches, no window comes forward (owner, 27.10).
+    /// Words for it (text, its id): straight in, or its queue.
+    var sendTo: (String, String) -> Void = { _, _ in }
+    /// An area of the screen for it: attached to it, its composer open.
+    var screenshotTo: (String) -> Void = { _ in }
+    /// Dictation into its composer, on or off.
+    var voiceTo: (String) -> Void = { _ in }
+    /// Files dropped while its composer is open; false if it has ended.
+    var dropFilesTo: ([URL], String) -> Bool = { _, _ in false }
+    /// A file of its taken off (path, its id).
+    var removeAttachmentFrom: (String, String) -> Void = { _, _ in }
     /// Switch the active session's model ("opus[1m]") or effort ("high"):
     /// typed into its chat as /model or /effort.
     var setModel: (String) -> Void = { _ in }
