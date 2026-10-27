@@ -227,6 +227,9 @@ final class Session {
         cwd = r.cwd
         transcriptPath = r.transcriptPath
         claudePid = r.claudePid
+        // didSet doesn't run in an initializer: a restored terminal chat
+        // lost its tab, and the tab rule then never found it (review, 27.10).
+        tty = r.claudePid.flatMap(Tty.of(pid:))
         entrypoint = r.entrypoint
         activity = r.activity
         model = r.model
