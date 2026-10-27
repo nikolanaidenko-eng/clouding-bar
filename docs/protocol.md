@@ -85,7 +85,7 @@ Each session is a chat. Its name is its title from the transcript — a
 folder. A short name made up for it (1–3 words, `ShortNamer`) is shown instead
 of a long title, unless there is a `custom-title` that isn't ours. The tab may
 still carry the old title for a moment, so a window is matched by every title
-the chat has had. It gets one of eight colours, the first no live chat has.
+the chat has had. It gets one of ten colours, the first no live chat has.
 
 The chat the widget and the bar follow (`SessionStore.focus`):
 

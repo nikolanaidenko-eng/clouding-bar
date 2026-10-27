@@ -72,6 +72,18 @@ enum SessionTitle {
         return nil
     }
 
+    /// Removes what is older than `days` (the app, at launch): the folder
+    /// would only grow (review, 27.10).
+    static func prune(base: URL, days: Double = 30, now: Date = Date()) {
+        let dir = directory(base: base)
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for url in files {
+            guard let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                  now.timeIntervalSince(date) > days * 86400 else { continue }
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     /// Config.shortNames is false.
     static func switchedOff(base: URL) -> Bool {
         guard let data = try? Data(contentsOf: base.appendingPathComponent("config.json")),
