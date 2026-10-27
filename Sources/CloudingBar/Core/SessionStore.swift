@@ -80,8 +80,9 @@ final class SessionStore {
                 DebugLog.note("subagents in \(session.projectName ?? id): \(session.agents.map(\.type)) (after \(event))")
             }
             switch event {
-            case "SessionStart", "Stop", "Interrupt":
+            case "SessionStart", "Stop", "Interrupt", "StopFailure":
                 // Interrupt is Codex's: you stopped a turn, and no Stop follows.
+                // StopFailure: a turn that ended on an API error.
                 session.activity = .sleep
                 session.waitingNotice = false
             case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure":
@@ -250,6 +251,9 @@ final class SessionStore {
         for separator in [" — ", " – ", " - "] {
             pieces = pieces.flatMap { $0.components(separatedBy: separator) }
         }
+        // Codex names its tab "<what it does> | <folder>" (owner, 27.10):
+        // both halves too, the whole kept for a chat's title with a "|".
+        pieces += pieces.flatMap { p in p.contains(" | ") ? p.components(separatedBy: " | ") : [] }
         return pieces.compactMap { piece in
             let t = String(piece.replacingOccurrences(of: " (Workspace)", with: "")
                 .drop { !$0.isLetter && !$0.isNumber }).trimmingCharacters(in: .whitespaces)

@@ -291,6 +291,12 @@ final class TranscriptWatcher {
                     update.waved = true
                 }
             }
+            // The turn ended on an API error (the Mac slept, the network
+            // dropped, the limit): no Stop comes, like an interrupt (review, 27.10).
+            if isAssistant, obj["isApiErrorMessage"] as? Bool == true {
+                update.interrupted = true
+                continue
+            }
             guard obj["type"] as? String == "assistant",
                   let message = obj["message"] as? [String: Any],
                   let usage = message["usage"] as? [String: Any],
