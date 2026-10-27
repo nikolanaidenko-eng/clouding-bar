@@ -246,7 +246,7 @@ enum Setup {
     }
 
     /// Clouding Bar's plugin is on in Codex (codex plugin add clouding-bar@clouding-bar,
-    /// or /plugins): ~/.codex/config.toml has [plugins."clouding-bar@…"] with
+    /// or /plugins): ~/.codex/config.toml has [plugins."clouding-bar@clouding-bar"] with
     /// enabled = true. Its hooks are the link then, and Connect has nothing to add.
     static var codexPluginActive: Bool {
         guard let text = try? String(contentsOf: codexHome.appendingPathComponent("config.toml"), encoding: .utf8) else { return false }
@@ -254,7 +254,7 @@ enum Setup {
         for raw in text.split(whereSeparator: \.isNewline) {
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("[") {
-                inOurs = line.hasPrefix("[plugins.\"clouding-bar@") && line.hasSuffix("\"]")
+                inOurs = line == "[plugins.\"clouding-bar@clouding-bar\"]" // review, 27.10: ours only, not any marketplace's
             } else if inOurs {
                 let compact = line.replacingOccurrences(of: " ", with: "")
                 if compact == "enabled=true" || compact.hasPrefix("enabled=true#") { return true }

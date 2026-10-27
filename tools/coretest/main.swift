@@ -998,6 +998,8 @@ do {
         check(!Setup.codexPluginActive, "codex plugin: installed but switched off is not on")
         try "[marketplaces.clouding-bar]\nsource_type = \"local\"\n\n[plugins.\"other@x\"]\nenabled = true\n".write(to: toml, atomically: true, encoding: .utf8)
         check(!Setup.codexPluginActive, "codex plugin: another plugin's enabled is not ours")
+        try "[plugins.\"clouding-bar@other-market\"]\nenabled = true\n".write(to: toml, atomically: true, encoding: .utf8)
+        check(!Setup.codexPluginActive, "codex plugin: clouding-bar from another marketplace is not ours (review, 27.10)")
         try "[marketplaces.clouding-bar]\nsource_type = \"local\"\n\n[plugins.\"clouding-bar@clouding-bar\"]\nenabled = true\n".write(to: toml, atomically: true, encoding: .utf8)
         check(Setup.codexPluginActive && Setup.codexConnected && !Setup.codexHooksInFile, "codex plugin: on, so Codex is connected")
         try Setup.connectCodex()
