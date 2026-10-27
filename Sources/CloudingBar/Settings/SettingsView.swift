@@ -862,25 +862,18 @@ struct GeneralTab: View {
             .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
     }
 
-    var body: some View { groups.environment(\.foldSections, true) }
+    // Folded shut was too packed (owner, 27.10): the boxes stay open, two or
+    // three main rows each, the rest behind More….
+    var body: some View { groups }
 
     private var groups: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "App", icon: "gearshape.fill", tint: 0x8E8E93) {
-                SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
-                    SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
-                                     selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
-                }
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
                 SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
-                }
-                // Owner, 27.10: names that fit a button, no sliding.
-                SettingsRow(title: "Short chat names",
-                            hint: "Haiku names each chat in a word or two, through your Claude Code; VS Code's tabs too") {
-                    CBSwitch(title: "Short chat names", on: binding("shortNames") { $0.shortNames })
                 }
                 SettingsRow(title: "Voice language", hint: "Hold the right ⌥ key alone, or use the mic") {
                     Picker("", selection: Binding(get: { model.config.voiceLanguage },
@@ -908,7 +901,16 @@ struct GeneralTab: View {
                     .padding(12)
                     .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                 }
-                MoreRows("app", count: 2 + (model.pluginActive ? 1 : 0) + (model.updatesPossible ? 1 : 0)) {
+                MoreRows("app", count: 4 + (model.pluginActive ? 1 : 0) + (model.updatesPossible ? 1 : 0)) {
+                    SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
+                        SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
+                                         selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
+                    }
+                    // Owner, 27.10: names that fit a button, no sliding.
+                    SettingsRow(title: "Short chat names",
+                                hint: "Haiku names each chat in a word or two, through your Claude Code; VS Code's tabs too") {
+                        CBSwitch(title: "Short chat names", on: binding("shortNames") { $0.shortNames })
+                    }
                     SettingsRow(title: "Colours", hint: "Grey: buttons, tabs and icons without bright colours") {
                         SettingsSegments(options: [("color", "Colourful"), ("gray", "Grey")],
                                          selected: model.config.buttonColors, tint: 0xFF9F0A) { model.setConfig("buttonColors", $0) }
@@ -964,10 +966,6 @@ struct GeneralTab: View {
                             Button("Connect") { model.connectCodex() }
                         }
                     }
-                    SettingsRow(title: "Codex: live limits and sending",
-                                hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)") {
-                        CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
-                    }
                 }
                 if model.hasVSCode {
                     SettingsRow(title: "VS Code: limit and sending",
@@ -980,32 +978,38 @@ struct GeneralTab: View {
                     }
                 }
                 if let message = model.setupMessage { note(message) }
-                SettingsRow(title: "Cowork", hint: coworkNotes[model.config.coworkMode] ?? "") {
-                    SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
-                                     selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
-                }
-                if model.config.coworkMode != "off" {
-                    SettingsRow(title: "Cowork plugin",
-                                hint: model.oldCoworkPlugin
-                                    ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
-                                    : model.pluginSynced
-                                        ? "Clouding Bar's plugin is installed in Claude Desktop"
-                                        : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
-                        Button("Save zip") { model.makeCoworkPlugin() }
+                MoreRows("connections", count: 2 + (model.hasCodex ? 1 : 0) + (model.config.coworkMode != "off" ? 3 : 0)) {
+                    if model.hasCodex {
+                        SettingsRow(title: "Codex: live limits and sending",
+                                    hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)") {
+                            CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
+                        }
                     }
-                    SettingsRow(title: "Cowork folders",
-                                hint: (model.coworkFolders.isEmpty
-                                    ? "Connect a folder to a Cowork task; it's found by itself."
-                                    : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
-                                    + " Only tasks with a connected folder can report their context.") {
-                        Button("Add…") { model.chooseCoworkFolder() }
+                    SettingsRow(title: "Cowork", hint: coworkNotes[model.config.coworkMode] ?? "") {
+                        SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
+                                         selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
                     }
-                    SettingsRow(title: "Cowork last status", hint: model.coworkLast ?? "None yet") {
-                        EmptyView()
+                    if model.config.coworkMode != "off" {
+                        SettingsRow(title: "Cowork plugin",
+                                    hint: model.oldCoworkPlugin
+                                        ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
+                                        : model.pluginSynced
+                                            ? "Clouding Bar's plugin is installed in Claude Desktop"
+                                            : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
+                            Button("Save zip") { model.makeCoworkPlugin() }
+                        }
+                        SettingsRow(title: "Cowork folders",
+                                    hint: (model.coworkFolders.isEmpty
+                                        ? "Connect a folder to a Cowork task; it's found by itself."
+                                        : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
+                                        + " Only tasks with a connected folder can report their context.") {
+                            Button("Add…") { model.chooseCoworkFolder() }
+                        }
+                        SettingsRow(title: "Cowork last status", hint: model.coworkLast ?? "None yet") {
+                            EmptyView()
+                        }
+                        if let message = model.coworkMessage { note(message) }
                     }
-                    if let message = model.coworkMessage { note(message) }
-                }
-                MoreRows("connections", count: 1) {
                     SettingsRow(title: "Live limit via claude.ai",
                                 hint: "Desktop and Cowork chats · \(model.liveLimitState)") {
                         if model.hasLiveKey {
