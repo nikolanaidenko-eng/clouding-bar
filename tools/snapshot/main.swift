@@ -636,13 +636,16 @@ do { // a fresh install, no chat open: the widget's copy in Settings shows examp
     let host = NSHostingView(rootView: SettingsView(model: m, tab: "widget"))
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-nochat")
 }
-for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
+// Every More… starts closed, as on a first run; the *-more renders open them.
+let moreKeys = ["app", "connections", "context", "widget", "shows", "touchbar", "stats"]
+for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
+for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
     let m = sampleModel()
     m.touchBarPresent = true
     m.knownProjects = ["DiaRoute", "bots"]
     if tab == "general" { m.voiceOffline = false; m.config.voiceLanguage = "uk-UA" }
     if tab == "stats" { m.weekPercent = 23; m.weekReset = "Thu 14:00" }
-    if tab == "cowork" {
+    if tab == "general" { // Cowork's rows are in Connections now
         m.config.coworkMode = "thresholds"; m.config.coworkFolder = NSHomeDirectory() + "/Documents/Cowork"
         m.coworkLast = "4 min ago · DiaRoute 31%"
     }
@@ -655,6 +658,22 @@ for tab in ["general", "widget", "touchbar", "buttons", "cowork", "stats"] {
         renderView(NSHostingView(rootView: SettingsView(model: mg, tab: tab)), size: NSSize(width: SettingsView.width, height: 560),
                    name: "s-general-gray")
         mg.config.buttonColors = "color"
+    }
+    if ["general", "widget", "touchbar"].contains(tab) { // every More… open, the tab alone at its full height
+        for k in moreKeys { UserDefaults.standard.set(true, forKey: "settings.more." + k) }
+        if !m.config.achievements.contains("claude-wave") { m.config.achievements.append("claude-wave") } // Cloud's colour waits in the widget's More…
+        let tabOnly = Group {
+            if tab == "general" { GeneralTab(model: m) } else if tab == "widget" { WidgetTab(model: m) } else { TouchBarTab(model: m) }
+        }
+        .padding(.leading, SettingsCloud.gutter).padding(.trailing, 18).padding(.vertical, 16)
+        .frame(width: SettingsView.width, alignment: .top).background(Color.sBackground)
+        let height = NSHostingView(rootView: tabOnly).fittingSize.height
+        renderView(NSHostingView(rootView: tabOnly), size: NSSize(width: SettingsView.width, height: ceil(height)), name: "s-\(tab)-more")
+        if tab == "general" { // the key set-up, the one thing More… hides that opens further
+            renderView(NSHostingView(rootView: SettingsView(model: m, tab: "cowork")), size: NSSize(width: SettingsView.width, height: 560),
+                       name: "s-cowork-request")
+        }
+        for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
     }
     if tab == "stats" { // all of it, More open
         UserDefaults.standard.set(true, forKey: "settings.more.stats")

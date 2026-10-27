@@ -249,41 +249,31 @@ struct NotchView: View {
         }
     }
 
-    /// The options as chips that wrap; "Other…" opens the panel to type.
+    /// The options one under another, as the panel lists them: in a row
+    /// first, they jumped into a column once the panel opened (owner,
+    /// 27.10). "Other…" opens the panel to type.
     private func options(_ r: AppModel.RequestCard) -> some View {
         let send = r.multiSelect && !r.picked.isEmpty ? "Send \(r.picked.count)" : nil
-        var items = r.options.enumerated().map { (id: "o\($0.offset)", width: Self.chip($0.element)) }
-        if let send { items.append((id: "send", width: Self.chip(send))) }
-        items.append((id: "other", width: Self.chip("Other…")))
-        let board = flowSlots(items, width: inner, rowHeight: 26, gap: 6, rowGap: 6)
-        return ZStack(alignment: .topLeading) {
+        return VStack(spacing: 6) {
             ForEach(Array(r.options.enumerated()), id: \.offset) { i, label in
-                let slot = board.slots["o\(i)"] ?? .zero
-                answer(label, style: r.picked.contains(i) ? .picked : .normal, fill: true) { model.perform(.option(i)) }
-                    .frame(width: slot.width)
-                    .offset(x: slot.minX, y: slot.minY)
+                answer(label, style: r.picked.contains(i) ? .picked : .normal, fill: true, leading: true) { model.perform(.option(i)) }
             }
-            if let send, let slot = board.slots["send"] {
-                answer(send, style: .primary, fill: true) { model.perform(.sendPicked) }
-                    .frame(width: slot.width).offset(x: slot.minX, y: slot.minY)
-            }
-            if let slot = board.slots["other"] {
-                answer("Other…", style: .outline, fill: true) { state.openPanel?() }
-                    .frame(width: slot.width).offset(x: slot.minX, y: slot.minY)
-            }
+            if let send { answer(send, style: .primary, fill: true) { model.perform(.sendPicked) } }
+            answer("Other…", style: .outline, fill: true, leading: true) { state.openPanel?() }
         }
-        .frame(width: inner, height: board.size.height, alignment: .topLeading)
+        .frame(width: inner, alignment: .topLeading)
     }
 
     private enum AnswerStyle { case normal, primary, deny, picked, outline }
 
     /// `fill`: as wide as the slot it's given (the options); else as its words.
-    private func answer(_ label: String, style: AnswerStyle = .normal, fill: Bool = false,
+    /// `leading`: the words from the left, a list's row.
+    private func answer(_ label: String, style: AnswerStyle = .normal, fill: Bool = false, leading: Bool = false,
                         _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label).font(.system(size: 12, weight: style == .primary ? .semibold : .regular)).lineLimit(1)
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 26)
+                .padding(.horizontal, leading ? 14 : 10)
+                .frame(maxWidth: .infinity, minHeight: leading ? 28 : 26, alignment: leading ? .leading : .center)
                 .background(Capsule().fill(style == .primary ? Color.cbAction
                                            : style == .picked ? Color.cbAction.opacity(0.45)
                                            : style == .outline ? Color.clear : Color.white.opacity(0.12)))

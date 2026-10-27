@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The settings window (600×560), one tab per place things show up:
 /// General (the app, context, voice), Widget (the pill and the panel),
-/// Touch Bar, Buttons (and templates), Cowork, Stats. Each section shows
-/// what most people need; the rest waits behind "More", and what only
+/// Touch Bar, Buttons (and templates), Stats. Each section shows
+/// what most people need; the rest waits behind "More…", and what only
 /// matters once something is on shows up when it is (owner's request,
 /// 20.10). Light or dark, as the system or General → Appearance says.
 ///
@@ -17,12 +17,20 @@ struct SettingsView: View {
 
     static let tabs: [(id: String, label: String, tint: UInt32)] = [
         ("general", "General", 0x8E8E93), ("widget", "Widget", 0x0A84FF), ("touchbar", "Touch Bar", 0xBF5AF2),
-        ("buttons", "Buttons", 0xFF9F0A), ("cowork", "Cowork", 0xFF375F), ("stats", "Stats", 0x30D158)]
+        ("buttons", "Buttons", 0xFF9F0A), ("stats", "Stats", 0x30D158)]
     static let width: CGFloat = 600
+
+    /// A tab asked for by name. Cowork lives in General → Connections now
+    /// (owner, 27.10): asked for, it opens General with that More… open.
+    static func resolve(_ request: String) -> String {
+        guard request == "cowork" else { return request }
+        UserDefaults.standard.set(true, forKey: "settings.more.connections")
+        return "general"
+    }
 
     init(model: AppModel, tab: String = "general") {
         self.model = model
-        _tab = State(initialValue: tab)
+        _tab = State(initialValue: Self.resolve(tab))
     }
 
     var body: some View {
@@ -33,11 +41,10 @@ struct SettingsView: View {
                 ScrollView {
                     Group {
                         switch tab {
-                        case "general": GeneralTab(model: model)
+                        case "general": GeneralTab(model: model, mood: cloud.mood)
                         case "widget": WidgetTab(model: model)
                         case "touchbar": TouchBarTab(model: model)
                         case "buttons": ButtonsTab(model: model)
-                        case "cowork": CoworkTab(model: model, mood: cloud.mood)
                         default: StatsTab(model: model)
                         }
                     }
@@ -72,14 +79,14 @@ struct SettingsView: View {
             cloud.start()
             if let step = model.tourStep { tab = SettingsTour.stops[step].tab }
             if let request = model.settingsTabRequest {
-                tab = request
+                tab = Self.resolve(request)
                 model.settingsTabRequest = nil
             }
         }
         // Asked to show a tab (an achievement's bubble: Widget).
         .onChange(of: model.settingsTabRequest) { request in
             guard let request else { return }
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = request }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = Self.resolve(request) }
             model.settingsTabRequest = nil
         }
         // The tour takes you from tab to tab.
@@ -459,8 +466,9 @@ struct CloudButton<Label: View>: View {
     }
 }
 
-/// Rows that wait behind "More" (owner's request, 20.10): the last line of a
-/// box opens them, and they stay open next time.
+/// Rows that wait behind "More…" (owner's request, 20.10; in every group
+/// since 27.10): the last line of a box opens them, and they stay open next
+/// time. `count` is how many rows are in there now: none, no line.
 struct MoreRows<Content: View>: View {
     let key: String
     let count: Int
@@ -475,6 +483,10 @@ struct MoreRows<Content: View>: View {
     }
 
     var body: some View {
+        if count > 0 { rows }
+    }
+
+    private var rows: some View {
         VStack(spacing: 0) {
             if open {
                 VStack(spacing: 0) { content }
@@ -486,7 +498,7 @@ struct MoreRows<Content: View>: View {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
                         .rotationEffect(.degrees(open ? 90 : 0))
-                    Text(open ? "Less" : "More").font(.system(size: 12))
+                    Text(open ? "Less" : "More…").font(.system(size: 12))
                     if !open {
                         Text("\(count)").font(.system(size: 10, weight: .semibold).monospacedDigit())
                             .padding(.horizontal, 5).frame(height: 15)
@@ -758,11 +770,33 @@ func settingBinding(_ model: AppModel, _ key: String, _ get: @escaping (Config) 
 
 // MARK: - General
 
+/// Four groups, each with its main rows and the rarer ones behind its own
+/// More… (owner, 27.10). Connections is everything Clouding Bar listens to:
+/// Claude Code, VS Code, Codex and Cowork, once three tabs' worth.
 struct GeneralTab: View {
     @ObservedObject var model: AppModel
+    @Environment(\.grayButtons) private var gray
+    var mood: CloudMood? = nil
+    @State private var keyOpen = false
+    @State private var key = ""
 
     private func binding(_ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
         settingBinding(model, key, get)
+    }
+
+    private let coworkNotes = [
+        "off": "Cowork chats are not tracked. The plugin saves context to a connected folder.",
+        "thresholds": "On every message, free. If the plugin can't reach the folder, Claude saves it: first reply, 50, 80, 90%.",
+        "every": "On every message, free. If the plugin can't reach the folder, Claude saves it after every reply: +5–15% usage.",
+    ]
+
+    /// A note under a group's rows, closed off with the line the rows have.
+    private func note(_ text: String) -> some View {
+        Text(text).font(.system(size: 11)).foregroundColor(.sSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
     }
 
     var body: some View {
@@ -772,46 +806,76 @@ struct GeneralTab: View {
                     SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
                                      selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
                 }
-                SettingsRow(title: "Colours", hint: "Grey: buttons, tabs and icons without bright colours") {
-                    SettingsSegments(options: [("color", "Colourful"), ("gray", "Grey")],
-                                     selected: model.config.buttonColors, tint: 0xFF9F0A) { model.setConfig("buttonColors", $0) }
-                }
                 SettingsRow(title: "Open at login") {
                     CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 }
-                if model.pluginActive {
-                    SettingsRow(title: "Open with Claude", hint: "The plugin opens Clouding Bar when a Claude session starts") {
-                        CBSwitch(title: "Open with Claude", on: binding("openWithClaude") { $0.openWithClaude })
-                    }
-                }
-                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses",
-                            divider: model.updatesPossible) {
+                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
                 }
-                if model.updatesPossible {
-                    SettingsRow(title: "Updates",
-                                hint: model.updateText + " · GitHub, once a day; nothing about you is sent",
-                                divider: false) {
-                        HStack(spacing: 10) {
-                            if model.updateVersion != nil {
-                                Button("Install") { model.installUpdate() }
-                            } else {
-                                Button("Check Now") { model.checkForUpdates() }
-                            }
-                            CBSwitch(title: "Check for updates", on: binding("checkUpdates") { $0.checkUpdates })
+                SettingsRow(title: "Voice language", hint: "Hold the right ⌥ key alone, or use the mic") {
+                    Picker("", selection: Binding(get: { model.config.voiceLanguage },
+                                                  set: { model.setConfig("voiceLanguage", $0) })) {
+                        ForEach(VoiceInput.languages, id: \.self) { id in
+                            Text(Locale.current.localizedString(forIdentifier: id).map { "\($0) (\(id))" } ?? id).tag(id)
                         }
+                    }
+                    .labelsHidden()
+                    .frame(width: 210)
+                    .accessibilityLabel("Voice language")
+                }
+                if !model.voiceOffline {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
+                            Text("This language isn't available offline on this Mac. To use it, your voice is sent to Apple's servers for recognition.")
+                                .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        CBCheckbox(title: "Allow sending audio to Apple", on: Binding(
+                            get: { model.config.voiceAllowServer }, set: { model.setConfig("voiceAllowServer", $0) }))
+                            .padding(.horizontal, -12)
+                    }
+                    .padding(12)
+                    .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
+                }
+                MoreRows("app", count: 2 + (model.pluginActive ? 1 : 0) + (model.updatesPossible ? 1 : 0)) {
+                    SettingsRow(title: "Colours", hint: "Grey: buttons, tabs and icons without bright colours") {
+                        SettingsSegments(options: [("color", "Colourful"), ("gray", "Grey")],
+                                         selected: model.config.buttonColors, tint: 0xFF9F0A) { model.setConfig("buttonColors", $0) }
+                    }
+                    if model.pluginActive {
+                        SettingsRow(title: "Open with Claude", hint: "The plugin opens Clouding Bar when a Claude session starts") {
+                            CBSwitch(title: "Open with Claude", on: binding("openWithClaude") { $0.openWithClaude })
+                        }
+                    }
+                    if model.updatesPossible {
+                        SettingsRow(title: "Updates",
+                                    hint: model.updateText + " · GitHub, once a day; nothing about you is sent") {
+                            HStack(spacing: 10) {
+                                if model.updateVersion != nil {
+                                    Button("Install") { model.installUpdate() }
+                                } else {
+                                    Button("Check Now") { model.checkForUpdates() }
+                                }
+                                CBSwitch(title: "Check for updates", on: binding("checkUpdates") { $0.checkUpdates })
+                            }
+                        }
+                    }
+                    SettingsRow(title: "Check before sending",
+                                hint: model.config.voiceReview ? "The words wait in the widget: edit them, then Send"
+                                    : "Typed into the app in front as you stop") {
+                        CBSwitch(title: "Check before sending", on: settingBinding(model, "voiceReview") { $0.voiceReview })
                     }
                 }
             }
 
-            SettingsSection(title: "Claude Code", icon: "sparkle", tint: 0xD97757) {
-                SettingsRow(title: model.pluginActive ? "Plugin and status line" : "Hooks",
+            SettingsSection(title: "Connections", icon: "link", tint: 0xD97757) {
+                SettingsRow(title: model.pluginActive ? "Claude Code: plugin and status line" : "Claude Code: hooks",
                             hint: model.claudeConnected
                                 ? (model.pluginActive ? "Claude Code reports here, through Clouding Bar's plugin" : "Claude Code reports here")
                                 : model.pluginActive
                                     ? "The plugin is in. Connect adds the status line, for the 5-hour limit, and VS Code's wrapper (settings backed up first)."
-                                    : "Not connected yet: Clouding Bar can't see Claude Code. Connect sets it up, VS Code too; your settings are backed up first.",
-                            divider: model.hasCodex || model.hasVSCode || model.setupMessage != nil) {
+                                    : "Not connected yet: Clouding Bar can't see Claude Code. Connect sets it up, VS Code too; your settings are backed up first.") {
                     if model.claudeConnected {
                         Label("Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                     } else {
@@ -831,15 +895,13 @@ struct GeneralTab: View {
                         }
                     }
                     SettingsRow(title: "Codex: live limits and sending",
-                                hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)",
-                                divider: model.hasVSCode || model.setupMessage != nil) {
+                                hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)") {
                         CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
                     }
                 }
                 if model.hasVSCode {
                     SettingsRow(title: "VS Code: limit and sending",
-                                hint: "A small wrapper passes on the 5-hour limit, and takes the widget's messages straight into the chat — no window switched · new chats",
-                                divider: model.setupMessage != nil) {
+                                hint: "A small wrapper passes on the 5-hour limit, and takes the widget's messages straight into the chat — no window switched · new chats") {
                         if model.vscodeWrapped {
                             Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {
@@ -847,17 +909,75 @@ struct GeneralTab: View {
                         }
                     }
                 }
-                if let message = model.setupMessage {
-                    Text(message).font(.system(size: 11)).foregroundColor(.sSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                if let message = model.setupMessage { note(message) }
+                SettingsRow(title: "Cowork", hint: coworkNotes[model.config.coworkMode] ?? "") {
+                    SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
+                                     selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
+                }
+                if model.config.coworkMode != "off" {
+                    SettingsRow(title: "Cowork plugin",
+                                hint: model.oldCoworkPlugin
+                                    ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
+                                    : model.pluginSynced
+                                        ? "Clouding Bar's plugin is installed in Claude Desktop"
+                                        : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
+                        Button("Save zip") { model.makeCoworkPlugin() }
+                    }
+                    SettingsRow(title: "Cowork folders",
+                                hint: (model.coworkFolders.isEmpty
+                                    ? "Connect a folder to a Cowork task; it's found by itself."
+                                    : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
+                                    + " Only tasks with a connected folder can report their context.") {
+                        Button("Add…") { model.chooseCoworkFolder() }
+                    }
+                    SettingsRow(title: "Cowork last status", hint: model.coworkLast ?? "None yet") {
+                        EmptyView()
+                    }
+                    if let message = model.coworkMessage { note(message) }
+                }
+                MoreRows("connections", count: 1) {
+                    SettingsRow(title: "Live limit via claude.ai",
+                                hint: "Desktop and Cowork chats · \(model.liveLimitState)") {
+                        if model.hasLiveKey {
+                            Button("Remove key") { model.removeLiveKey(); keyOpen = false }
+                        } else {
+                            Button(keyOpen ? "Hide" : "Set up…") { withAnimation(.easeOut(duration: 0.2)) { keyOpen.toggle() } }
+                        }
+                    }
+                    if keyOpen && !model.hasLiveKey {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
+                                Text("Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.")
+                                    .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            HStack(spacing: 8) {
+                                SecureField("sessionKey", text: $key)
+                                    .textFieldStyle(.plain).font(.system(size: 12))
+                                    .padding(.horizontal, 8).frame(height: 30)
+                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
+                                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
+                                Button("I understand, turn on") {
+                                    model.saveLiveKey(key)
+                                    key = ""
+                                    keyOpen = false
+                                }
+                                .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
+                                .padding(.horizontal, 12).frame(height: 30)
+                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.tint(0x0071E3, gray: gray)))
+                                .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
                         .padding(12)
+                        .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                    }
                 }
             }
 
             SettingsSection(title: "Context", icon: "gauge.medium", tint: 0xBF5AF2) {
-                SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact",
-                            divider: model.config.contextWarning) {
+                SettingsRow(title: "Warn when it fills up", hint: "The bar turns red and offers /compact") {
                     HStack(spacing: 10) {
                         Picker("", selection: Binding(get: { Int(model.config.contextWarnPercent) },
                                                       set: { model.setConfig("contextWarnPercent", $0) })) {
@@ -870,67 +990,19 @@ struct GeneralTab: View {
                         CBSwitch(title: "Context warning", on: binding("contextWarning") { $0.contextWarning })
                     }
                 }
-                if model.config.contextWarning {
+                // Only matters once the warning is on: nothing behind More… till then.
+                MoreRows("context", count: model.config.contextWarning ? 1 : 0) {
                     SettingsRow(title: "Compact by itself",
-                                hint: "Types /compact at the warning, when Claude is idle and its chat is in front",
-                                divider: false) {
+                                hint: "Types /compact at the warning, when Claude is idle and its chat is in front") {
                         CBSwitch(title: "Compact by itself", on: binding("autoCompact") { $0.autoCompact })
                     }
-                    .transition(.opacity.combined(with: .offset(y: -6)))
                 }
             }
             .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.contextWarning)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 7) {
-                    SectionIcon(symbol: "mic.fill", tint: 0xFF453A)
-                    Text("Voice").font(.system(size: 11, weight: .semibold)).foregroundColor(.sSecondary)
-                }
-                .padding(.leading, 4)
-                VoiceGroup(model: model)
-            }
         }
-    }
-}
-
-/// Dictation language, and whether it works offline on this Mac.
-struct VoiceGroup: View {
-    @ObservedObject var model: AppModel
-
-    var body: some View {
-        SettingsGroup {
-            SettingsRow(title: "Check before sending",
-                        hint: model.config.voiceReview ? "The words wait in the widget: edit them, then Send"
-                            : "Typed into the app in front as you stop") {
-                CBSwitch(title: "Check before sending", on: settingBinding(model, "voiceReview") { $0.voiceReview })
-            }
-            SettingsRow(title: "Language", hint: "Hold the right ⌥ key alone, or use the mic",
-                        divider: !model.voiceOffline) {
-                Picker("", selection: Binding(get: { model.config.voiceLanguage },
-                                              set: { model.setConfig("voiceLanguage", $0) })) {
-                    ForEach(VoiceInput.languages, id: \.self) { id in
-                        Text(Locale.current.localizedString(forIdentifier: id).map { "\($0) (\(id))" } ?? id).tag(id)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 210)
-                .accessibilityLabel("Voice language")
-            }
-            if !model.voiceOffline {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
-                        Text("This language isn't available offline on this Mac. To use it, your voice is sent to Apple's servers for recognition.")
-                            .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    CBCheckbox(title: "Allow sending audio to Apple", on: Binding(
-                        get: { model.config.voiceAllowServer }, set: { model.setConfig("voiceAllowServer", $0) }))
-                        .padding(.horizontal, -12)
-                }
-                .padding(12)
-            }
-        }
+        // Cloud doesn't peek while the key is being typed.
+        .onChange(of: keyOpen && !model.hasLiveKey) { open in mood?.shy = open }
+        .onDisappear { mood?.shy = false }
     }
 }
 
@@ -947,33 +1019,8 @@ struct WidgetTab: View {
         VStack(alignment: .leading, spacing: 18) {
             WidgetPreview(model: model)
                 .tourAnchor("widget.preview")
-            if model.config.achievements.contains("claude-wave") {
-                // Unlocked when Claude first waved at Cloud with a ☁️.
-                SettingsSection(title: "Cloud", icon: "trophy.fill", tint: 0xFFD60A) {
-                    SettingsRow(title: "Cloud's colour", hint: "Unlocked by a wave from Claude ☁️ · in the widget and on the Touch Bar",
-                                divider: false) {
-                        HStack(spacing: 8) {
-                            ForEach(CloudColor.allCases) { c in
-                                let picked = model.config.cloudColor == c.rawValue
-                                Button { model.setConfig("cloudColor", c.rawValue) } label: {
-                                    Circle()
-                                        .fill(Color(c.skin))
-                                        .frame(width: 20, height: 20)
-                                        .overlay(Circle().stroke(Color.accentColor, lineWidth: picked ? 2.5 : 0).padding(-3))
-                                        .overlay(Circle().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
-                                }
-                                .buttonStyle(.plain)
-                                .help(c.label)
-                                .accessibilityLabel(c.label + (picked ? ", picked" : ""))
-                            }
-                        }
-                        .padding(.trailing, 4)
-                    }
-                }
-            }
             SettingsSection(title: "Floating widget", icon: "capsule.fill", tint: 0x0A84FF) {
-                SettingsRow(title: "Show the widget", hint: "A pill over your windows; the panel opens from it",
-                            divider: model.config.widget) {
+                SettingsRow(title: "Show the widget", hint: "A pill over your windows; the panel opens from it") {
                     CBSwitch(title: "Show the widget", on: binding("widget") { $0.widget })
                 }
                 .tourAnchor("widget.show")
@@ -989,7 +1036,18 @@ struct WidgetTab: View {
                             }))
                     }
                     .tourAnchor("widget.notch")
-                    MoreRows("widget", count: 5) {
+                    SettingsRow(title: "Position",
+                                hint: model.config.widgetPosition != nil ? "Where you dragged it"
+                                    : model.config.widgetAtNotch ? "In the notch" : "Top center, under the menu bar") {
+                        Button("Reset") { model.resetWidgetPosition() }
+                            .disabled(model.config.widgetPosition == nil)
+                    }
+                }
+                // Cloud's colour is unlocked by a wave from Claude (a ☁️), and
+                // is there with the widget off: More… is too (owner, 27.10).
+                let cloudColour = model.config.achievements.contains("claude-wave")
+                MoreRows("widget", count: (model.config.widget ? 4 : 0) + (cloudColour ? 1 : 0)) {
+                    if model.config.widget {
                         SettingsRow(title: "Follow the chat at work", hint: "When the one shown is done, it says so, then shows the one still working") {
                             CBSwitch(title: "Follow the chat at work", on: binding("followWorking") { $0.followWorking })
                         }
@@ -1003,11 +1061,25 @@ struct WidgetTab: View {
                         SettingsRow(title: "Open on hover", hint: "Off: click the pill to open it") {
                             CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
                         }
-                        SettingsRow(title: "Position",
-                                    hint: model.config.widgetPosition != nil ? "Where you dragged it"
-                                        : model.config.widgetAtNotch ? "In the notch" : "Top center, under the menu bar") {
-                            Button("Reset") { model.resetWidgetPosition() }
-                                .disabled(model.config.widgetPosition == nil)
+                    }
+                    if cloudColour {
+                        SettingsRow(title: "Cloud's colour", hint: "Unlocked by a wave from Claude ☁️ · in the widget and on the Touch Bar") {
+                            HStack(spacing: 8) {
+                                ForEach(CloudColor.allCases) { c in
+                                    let picked = model.config.cloudColor == c.rawValue
+                                    Button { model.setConfig("cloudColor", c.rawValue) } label: {
+                                        Circle()
+                                            .fill(Color(c.skin))
+                                            .frame(width: 20, height: 20)
+                                            .overlay(Circle().stroke(Color.accentColor, lineWidth: picked ? 2.5 : 0).padding(-3))
+                                            .overlay(Circle().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(c.label)
+                                    .accessibilityLabel(c.label + (picked ? ", picked" : ""))
+                                }
+                            }
+                            .padding(.trailing, 4)
                         }
                     }
                 }
@@ -1124,26 +1196,6 @@ struct TouchBarTab: View {
                         get: { model.config.touchBar != "off" },
                         set: { model.setConfig("touchBar", $0 ? (model.touchBarPresent ? "auto" : "on") : "off") }))
                 }
-                if model.config.touchBar != "off" {
-                    SettingsRow(title: "In every app",
-                                hint: model.config.touchBarEverywhere ? "Not only while Claude Code, VS Code or Claude is in front"
-                                    : "Only while Claude Code, VS Code or Claude is in front") {
-                        CBSwitch(title: "In every app", on: Binding(
-                            get: { model.config.touchBarEverywhere },
-                            set: { model.setConfig("touchBarEverywhere", $0) }))
-                    }
-                    if model.config.touchBarEverywhere {
-                        SettingsRow(title: "Outside Claude",
-                                    hint: model.config.touchBarOutside == "whole"
-                                        ? "The whole Touch Bar, as in Claude's apps; Apple's brightness and volume hidden"
-                                        : "Short: what you keep on it (below), beside Apple's brightness and volume") {
-                            SettingsSegments(options: [("short", "Short bar"), ("whole", "Whole bar")],
-                                             selected: model.config.touchBarOutside, tint: 0xBF5AF2) {
-                                model.setConfig("touchBarOutside", $0)
-                            }
-                        }
-                    }
-                }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(short ? "On the short bar — at hand everywhere, each block its own size" : "On the whole bar")
                         .font(.system(size: 13))
@@ -1173,6 +1225,28 @@ struct TouchBarTab: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(model.config.touchBar != "off" ? Rectangle().fill(Color.sLine).frame(height: 0.5) : nil, alignment: .bottom)
+                // The rarer switches; nothing behind More… with the bar off.
+                MoreRows("touchbar", count: model.config.touchBar == "off" ? 0 : model.config.touchBarEverywhere ? 2 : 1) {
+                    SettingsRow(title: "In every app",
+                                hint: model.config.touchBarEverywhere ? "Not only while Claude Code, VS Code or Claude is in front"
+                                    : "Only while Claude Code, VS Code or Claude is in front") {
+                        CBSwitch(title: "In every app", on: Binding(
+                            get: { model.config.touchBarEverywhere },
+                            set: { model.setConfig("touchBarEverywhere", $0) }))
+                    }
+                    if model.config.touchBarEverywhere {
+                        SettingsRow(title: "Outside Claude",
+                                    hint: model.config.touchBarOutside == "whole"
+                                        ? "The whole Touch Bar, as in Claude's apps; Apple's brightness and volume hidden"
+                                        : "Short: what you keep on it (above), beside Apple's brightness and volume") {
+                            SettingsSegments(options: [("short", "Short bar"), ("whole", "Whole bar")],
+                                             selected: model.config.touchBarOutside, tint: 0xBF5AF2) {
+                                model.setConfig("touchBarOutside", $0)
+                            }
+                        }
+                    }
+                }
             }
             Text("Claude's questions and permission requests always show. Tap the message field (Write) to send Claude a message, typed or dictated; Commands for all your buttons; the model to switch it; the subagents to see who's working. Buttons are set up in Buttons.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
@@ -1902,112 +1976,5 @@ struct ShortcutField: NSViewRepresentable {
             }
             setAccessibilityLabel("Shortcut: " + (combo.map(HotKeys.display) ?? "none"))
         }
-    }
-}
-
-// MARK: - Cowork
-
-struct CoworkTab: View {
-    @ObservedObject var model: AppModel
-    @Environment(\.grayButtons) private var gray
-    var mood: CloudMood? = nil
-    @State private var keyOpen = false
-    @State private var key = ""
-
-    private let notes = [
-        "off": "Cowork chats are not tracked.",
-        "thresholds": "On every message, free. If the plugin can't reach the folder, Claude saves it: first reply, 50, 80, 90%.",
-        "every": "On every message, free. If the plugin can't reach the folder, Claude saves it after every reply: +5–15% usage.",
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Cowork status").font(.system(size: 13))
-                        Text("The plugin saves context to a connected folder").font(.system(size: 11)).foregroundColor(.sSecondary)
-                    }
-                    Spacer()
-                    SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
-                                     selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
-                }
-                Text(notes[model.config.coworkMode] ?? "").font(.system(size: 11)).foregroundColor(.sSecondary)
-            }
-            .padding(12)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.sGroup))
-
-            if model.config.coworkMode != "off" {
-                SettingsGroup {
-                    SettingsRow(title: "Plugin",
-                                hint: model.oldCoworkPlugin
-                                    ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
-                                    : model.pluginSynced
-                                        ? "Clouding Bar's plugin is installed in Claude Desktop"
-                                        : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
-                        Button("Save zip") { model.makeCoworkPlugin() }
-                    }
-                    SettingsRow(title: "Folders",
-                                hint: (model.coworkFolders.isEmpty
-                                    ? "Connect a folder to a Cowork task; it's found by itself."
-                                    : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
-                                    + " Only tasks with a connected folder can report their context.") {
-                        Button("Add…") { model.chooseCoworkFolder() }
-                    }
-                    SettingsRow(title: "Last status", hint: model.coworkLast ?? "None yet", divider: model.coworkMessage != nil) {
-                        EmptyView()
-                    }
-                    if let message = model.coworkMessage {
-                        Text(message).font(.system(size: 11)).foregroundColor(.sSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                    }
-                }
-            }
-
-            SettingsGroup {
-                MoreRows("cowork", count: 1) {
-                SettingsRow(title: "Live limit via claude.ai",
-                            hint: "Desktop and Cowork chats · \(model.liveLimitState)", divider: keyOpen) {
-                    if model.hasLiveKey {
-                        Button("Remove key") { model.removeLiveKey(); keyOpen = false }
-                    } else {
-                        Button(keyOpen ? "Hide" : "Set up…") { withAnimation(.easeOut(duration: 0.2)) { keyOpen.toggle() } }
-                    }
-                }
-                if keyOpen && !model.hasLiveKey {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
-                            Text("Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.")
-                                .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        HStack(spacing: 8) {
-                            SecureField("sessionKey", text: $key)
-                                .textFieldStyle(.plain).font(.system(size: 12))
-                                .padding(.horizontal, 8).frame(height: 30)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
-                                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
-                            Button("I understand, turn on") {
-                                model.saveLiveKey(key)
-                                key = ""
-                                keyOpen = false
-                            }
-                            .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
-                            .padding(.horizontal, 12).frame(height: 30)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Color.tint(0x0071E3, gray: gray)))
-                            .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
-                    .padding(12)
-                    .transition(.opacity.combined(with: .offset(y: 6)))
-                }
-                }
-            }
-        }
-        // Cloud doesn't peek while the key is being typed.
-        .onChange(of: keyOpen && !model.hasLiveKey) { open in mood?.shy = open }
-        .onDisappear { mood?.shy = false }
     }
 }
