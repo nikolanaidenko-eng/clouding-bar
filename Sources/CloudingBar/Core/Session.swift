@@ -145,7 +145,8 @@ final class Session {
     var desktopTitle: String?
 
     /// Distinct on the dark widget, none of them the orange of "needs you".
-    static let colors: [UInt32] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE]
+    static let colors: [UInt32] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE,
+                                  0xFF6B6B, 0xB5E048] // two more for the ten Clouds (owner, 27.10)
 
     /// "Code: main": where it works, from the folder it started in or the
     /// file it touched last.

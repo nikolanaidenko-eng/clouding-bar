@@ -63,6 +63,8 @@ final class AppModel: ObservableObject {
     /// where it runs ("GitHub · VS Code").
     @Published var chatName: String?
     @Published var chatColor: UInt32 = 0x0A84FF
+    /// The active chat's Cloud (its colorIndex); nil: no chat, Settings' colour.
+    @Published var cloudVariant: Int?
     @Published var chatPlace: String?
     /// "Working · 3 min", "Idle · 12 min".
     @Published var chatStatus: String?

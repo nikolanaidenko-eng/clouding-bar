@@ -608,6 +608,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bar.resetCountdown = account.resetCountdown
         bar.contextPercent = active?.contextPercent(windowOverride: config.contextWindowSize)
         bar.activity = activity(of: active)
+        bar.cloudVariant = active.map { $0.colorIndex % Session.colors.count }
         bar.quiet = config.doNotDisturb
         bar.awake = config.widget ? widget.panelOpen : drawer.shown
         bar.shows = Set(short ? config.touchBarShortShows : config.touchBarShows)
@@ -1506,6 +1507,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set(\.project, active?.projectName)
         set(\.chatName, active?.displayName)
         set(\.chatColor, Session.colors[(active?.colorIndex ?? 0) % Session.colors.count])
+        set(\.cloudVariant, active.map { $0.colorIndex % Session.colors.count })
         set(\.chatPlace, active.map { place(of: $0) })
         // The time on its own in the details line, when that shows it.
         let timeApart = config.metrics.contains("time")
@@ -1699,7 +1701,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func beginDone(_ s: Session) {
         doneNow = (s.id, Date().addingTimeInterval(5))
         let alert = DoneBubbleController.Alert(id: s.id, name: s.displayName, detail: place(of: s),
-                                               color: Session.colors[s.colorIndex % Session.colors.count])
+                                               color: Session.colors[s.colorIndex % Session.colors.count],
+                                               variant: s.colorIndex % Session.colors.count)
         // On the widget (or, with neither widget nor Touch Bar, the screen's corner).
         if config.widget || !barShouldShow {
             doneBubble.show(alert, anchor: config.widget ? widget.place : nil)

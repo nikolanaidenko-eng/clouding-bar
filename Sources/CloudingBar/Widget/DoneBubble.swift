@@ -17,6 +17,8 @@ final class DoneBubbleController {
         /// "24H · Desktop": where the chat is.
         let detail: String
         let color: UInt32
+        /// The chat's Cloud (its colorIndex), for a done chat; nil: Settings' colour.
+        var variant: Int?
     }
 
     /// Cloud's bubble was clicked: go to that chat.
@@ -187,7 +189,7 @@ struct DoneBubbleView: View {
         let size = DoneBubbleController.size(for: kind)
         let color = Color(NSColor(hex: anim.alert?.color ?? 0x0A84FF))
         HStack(spacing: 8) {
-            MascotIcon(activity: .sleep, size: 40, awake: true, pokes: anim.pokes, waves: anim.waves)
+            MascotIcon(activity: .sleep, size: 40, awake: true, pokes: anim.pokes, waves: anim.waves, variant: anim.alert?.variant)
                 .frame(width: 40, height: 40)
             HStack(spacing: 10) {
                 Image(systemName: symbol)

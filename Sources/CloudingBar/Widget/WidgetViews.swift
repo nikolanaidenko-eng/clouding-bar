@@ -115,6 +115,8 @@ struct MascotIcon: NSViewRepresentable {
     var pokes = 0
     /// Goes up by one per wave (Claude's ☁️): it sways and smiles.
     var waves = 0
+    /// A chat's Cloud (its colorIndex); nil: the colour picked in Settings.
+    var variant: Int?
 
     final class Coordinator { var pokes = 0; var waves = 0 }
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -122,9 +124,12 @@ struct MascotIcon: NSViewRepresentable {
     func makeNSView(context: Context) -> MascotView {
         context.coordinator.pokes = pokes
         context.coordinator.waves = waves
-        return MascotView(size: size)
+        let view = MascotView(size: size)
+        view.variant = variant
+        return view
     }
     func updateNSView(_ view: MascotView, context: Context) {
+        view.variant = variant
         view.activity = activity
         view.awake = awake
         if pokes != context.coordinator.pokes {
@@ -852,7 +857,7 @@ struct MainPanel: View {
         // One line (a chat's name): centred on Cloud and the button.
         return HStack(alignment: several || !model.hasSession ? .top : .center, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28).cloudOut(model.cloudOut)
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
@@ -1841,7 +1846,7 @@ struct ChatsPanel: View {
     private var header: some View {
         HStack(spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves).frame(width: 28, height: 28).cloudOut(model.cloudOut)
+                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             PanelTabs(state: state)
             Spacer(minLength: 0)
@@ -1865,7 +1870,7 @@ struct ChatsPanel: View {
             HStack(spacing: 10) {
                 Button { toggle(s.id) } label: {
                     HStack(spacing: 10) {
-                        MascotIcon(activity: s.activity, size: 28).frame(width: 28, height: 28)
+                        MascotIcon(activity: s.activity, size: 28, variant: Session.colors.firstIndex(of: s.color)).frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 ChatDot(color: s.color)

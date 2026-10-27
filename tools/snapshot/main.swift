@@ -739,6 +739,32 @@ do { // Cloud's faces: awake, happy, dizzy, shy
     renderView(row, size: row.frame.size, name: "m-faces")
 }
 
+do { // the ten Clouds, one per chat colour (owner, 27.10): 28 pt as on the bar, and big; awake, asleep, waiting
+    func sheet(_ name: String, moods: [(String, (MascotView) -> Void)]) {
+        let cell: CGFloat = 92, rowHeights: [CGFloat] = [36, 92]
+        let height = CGFloat(moods.count) * (rowHeights[0] + rowHeights[1]) + 8
+        let sheet = NSView(frame: NSRect(x: 0, y: 0, width: cell * 10 + 12, height: height))
+        var top: CGFloat = 4
+        for (_, setup) in moods {
+            for (r, size) in [CGFloat(28), 80].enumerated() {
+                for i in 0..<10 {
+                    let v = MascotView(size: size)
+                    v.variant = i
+                    setup(v)
+                    v.frame = NSRect(x: 6 + CGFloat(i) * cell + (cell - size) / 2, y: height - top - rowHeights[r] + (rowHeights[r] - size) / 2,
+                                     width: size, height: size)
+                    sheet.addSubview(v)
+                }
+                top += rowHeights[r]
+            }
+        }
+        renderView(sheet, size: sheet.frame.size, name: name)
+    }
+    sheet("m-clouds", moods: [("awake", { $0.awake = true }), ("sleep", { _ in }), ("wait", { $0.activity = .wait })])
+    sheet("m-clouds-more", moods: [("work", { $0.activity = .work }), ("shy", { $0.shy = true }),
+                                    ("dizzy", { v in for _ in 0..<5 { v.poke() } })])
+}
+
 
 // Everything stacked in one sheet, 12 px apart on grey, for a quick look.
 let sheetWidth = images.map(\.width).max() ?? 0
