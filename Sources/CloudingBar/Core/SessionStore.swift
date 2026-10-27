@@ -388,33 +388,7 @@ final class SessionStore {
             }
             var added = false
             for f in found where !f.archived { added = self.adopt(f, now: now) || added }
-            self.findCodexTerminals()
             if added { self.scheduleSave(); self.onChange?(); self.pollTranscripts() }
-        }
-    }
-
-    /// Codex's chat files open now, with their tabs (tests stand in for it).
-    var codexFiles: () -> [String: Tty.Tab] = Tty.codexFiles
-
-    /// A Codex chat found in its files gets its tab, so it opens and takes
-    /// words like one a hook told of (owner, 27.10): the tab of the Codex
-    /// its file is open in — not a guess by folder or time, which gave one
-    /// chat another's tab (review, 27.10). Its file open nowhere, or two
-    /// chats' files in one tab (`/new` keeps the old one open): none.
-    func findCodexTerminals() {
-        let live = alive
-        let chats = live.filter { $0.ambient }
-        guard !chats.isEmpty else { return }
-        let open = codexFiles()
-        let hooked = Set(live.filter { !$0.ambient }.compactMap(\.tty))
-        var tabs: [String: Tty.Tab] = [:]
-        for s in chats {
-            if let path = s.transcriptPath.map(Tty.real), let tab = open[path], !hooked.contains(tab.tty) { tabs[s.id] = tab }
-        }
-        var shared: [String: Int] = [:]
-        for t in tabs.values { shared[t.tty, default: 0] += 1 }
-        for s in chats {
-            if let t = tabs[s.id], shared[t.tty] == 1 { s.setCodexTerminal((t.tty, t.pid)) } else { s.setCodexTerminal(nil) }
         }
     }
 

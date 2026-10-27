@@ -891,41 +891,6 @@ do {
         check(found.first { $0.path == latePath }?.meta?.interactive == true, "codex files: a file whose first line came late is read again")
         try? fm.removeItem(atPath: latePath)
 
-        // Its tab (owner, 27.10): the one of the Codex its file is open in
-        func termMeta(_ id: String) -> String {
-            line(t0, "session_meta", #"{"id":"\#(id)","cwd":"/Users/me/term","originator":"codex_cli_rs","cli_version":"0.164.0","source":"cli"}"#)
-        }
-        let termId = "019a0000-0000-7000-8000-000000000011", twinId = "019a0000-0000-7000-8000-000000000012"
-        let termPath = dir.appendingPathComponent(rollName(termId)).path, twinPath = dir.appendingPathComponent(rollName(twinId)).path
-        let otherPath = dir.appendingPathComponent(rollName("019a0000-0000-7000-8000-000000000013")).path
-        write([termMeta(termId)], to: termPath, modified: Date())
-        let tabs = SessionStore()
-        var open = [Tty.real(termPath): Tty.Tab(tty: "/dev/ttys042", pid: getpid())]
-        tabs.codexFiles = { open }
-        tabs.pollCodexRollouts()
-        spin { tabs.sessions[termId]?.tty != nil }
-        check(tabs.sessions[termId]?.tty == "/dev/ttys042" && tabs.session(inWindow: "zsh", tty: "/dev/ttys042")?.id == termId,
-              "codex files: a chat gets the tab of the Codex its file is open in — it opens, and takes words there")
-        check(tabs.sessions[ids[4]].map { $0.tty == nil } != false, "codex files: one whose file is open under no tab (VS Code) gets none")
-        // review, 27.10: a guess by folder or time gave a chat another chat's tab
-        open = [Tty.real(otherPath): Tty.Tab(tty: "/dev/ttys042", pid: getpid())]
-        tabs.findCodexTerminals()
-        check(tabs.sessions[termId]?.tty == nil && tabs.session(inWindow: "zsh", tty: "/dev/ttys042") == nil,
-              "codex files: its Codex closed, another chat's Codex in the folder: not its tab")
-        open = [Tty.real(termPath): Tty.Tab(tty: "/dev/ttys042", pid: 99_999)]
-        tabs.findCodexTerminals()
-        check(tabs.sessions[termId]?.tty == nil, "codex files: its Codex gone, a shell left in the tab takes nothing")
-        open = [Tty.real(termPath): Tty.Tab(tty: "/dev/ttys042", pid: getpid())]
-        tabs.findCodexTerminals()
-        check(tabs.sessions[termId]?.tty == "/dev/ttys042", "codex files: open again: its tab again")
-        write([termMeta(twinId)], to: twinPath, modified: Date())
-        open[Tty.real(twinPath)] = Tty.Tab(tty: "/dev/ttys042", pid: getpid())
-        tabs.pollCodexRollouts()
-        spin { tabs.sessions[twinId] != nil }
-        check(tabs.sessions[termId]?.tty == nil && tabs.sessions[twinId]?.tty == nil,
-              "codex files: two chats' files open in one tab (its /new): no tab for either")
-        try? fm.removeItem(atPath: termPath)
-        try? fm.removeItem(atPath: twinPath)
     }
 
     // Connect: only what's new is added
