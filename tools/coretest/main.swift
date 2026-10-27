@@ -105,6 +105,17 @@ let mine = Session(id: "m")
 mine.claudePid = getpid()
 check(mine.isAlive(), "a session whose Claude process runs is alive")
 
+// The folder a VS Code chat started in, after it went elsewhere with cd (owner, 27.10)
+let moved = Session(id: "mv")
+moved.cwd = "/Users/me/GitHub/clouding-bar-promo/out"
+moved.transcriptPath = "/Users/me/.claude/projects/-Users-me-GitHub/mv.jsonl"
+check(moved.startFolder == "/Users/me/GitHub", "start folder: the one the transcripts' folder is named after, not where cd went")
+moved.cwd = "/Users/me/my.app/src"
+moved.transcriptPath = "/Users/me/.claude/projects/-Users-me-my-app/mv.jsonl"
+check(moved.startFolder == "/Users/me/my.app", "start folder: a dot in a name reads as Claude Code writes it")
+moved.transcriptPath = "/Users/me/.claude/projects/-Users-me-elsewhere/mv.jsonl"
+check(moved.startFolder == nil, "start folder: none of its folders: unknown (the cwd is used)")
+
 // Context percent
 let s = Session(id: "x")
 s.contextTokens = 310_000

@@ -1483,28 +1483,49 @@ struct TemplatesButton: View {
     @Environment(\.cbPreview) private var preview
 
     var body: some View {
-        Menu {
-            ForEach(Array(model.menuButtons.enumerated()), id: \.offset) { i, b in
-                Button(b.label) { model.runMenuButton(i) }
-            }
-            // No buttons at all: where to make some.
-            if model.menuButtons.isEmpty {
-                Button("Add buttons…") { model.openSettingsTab("buttons") }
-            }
-        } label: {
+        // A plain button, the menu at the pointer (as the chats'): a SwiftUI
+        // Menu drew its icon off the middle (owner, 27.10).
+        Button { CommandMenu.show(model) } label: {
             Image(systemName: "text.bubble").font(.system(size: size * 0.44))
+                .frame(width: max(size, width ?? size), height: size)
+                .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .disabled(preview) // Settings' copy: nothing typed from it
         .foregroundColor(plain ? .cbSecondary : .cbText)
-        .frame(width: max(size, width ?? size), height: size)
         .background(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
             .fill(Color.white.opacity(plain ? 0.07 : 0.1)))
         .overlay(RoundedRectangle(cornerRadius: max(6, size * 0.26), style: .continuous)
             .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
         .help("Your commands")
         .accessibilityLabel("Commands")
+    }
+}
+
+/// Your buttons as a menu at the pointer; with none, where to make some.
+enum CommandMenu {
+    final class Target: NSObject {
+        let run: (Int) -> Void
+        init(_ run: @escaping (Int) -> Void) { self.run = run }
+        @objc func chosen(_ item: NSMenuItem) { run(item.tag) }
+    }
+    private static var target: Target?
+
+    static func show(_ model: AppModel) {
+        let menu = NSMenu()
+        let t = Target { [weak model] i in
+            guard let model else { return }
+            if i < 0 { model.openSettingsTab("buttons") } else { model.runMenuButton(i) }
+        }
+        target = t
+        let titles = model.menuButtons.map(\.label)
+        for (i, title) in (titles.isEmpty ? ["Add buttons…"] : titles).enumerated() {
+            let item = NSMenuItem(title: title, action: #selector(Target.chosen(_:)), keyEquivalent: "")
+            item.target = t
+            item.tag = titles.isEmpty ? -1 : i
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }
 

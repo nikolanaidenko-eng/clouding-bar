@@ -1737,10 +1737,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let raised = raiseVSCodeWindow(for: session)
-        if !raised, let cwd = session.cwd {
+        if !raised, let folder = session.startFolder ?? session.cwd {
             // Not seen (another Space, a full-screen window): VS Code itself
             // brings up the window that has the folder — a new one only if none does.
-            guard let path = cwd.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+            // The folder the chat started in, not where it went with `cd`
+            // since: that one has no window, and got a new one (owner, 27.10).
+            guard let path = folder.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
                   let url = URL(string: "vscode://file" + path) else { NSSound.beep(); return }
             NSWorkspace.shared.open(url)
         }
@@ -1763,6 +1765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let windows = value as? [AXUIElement] else { return false }
         let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents.count
         let folders = session.cwd.map { Array(URL(fileURLWithPath: $0).pathComponents.dropFirst(home)) } ?? []
+        let start = session.startFolder.map { URL(fileURLWithPath: $0).lastPathComponent }
         var best: (score: Int, window: AXUIElement)?
         for window in windows {
             var title: CFTypeRef?
@@ -1771,6 +1774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let parts = SessionStore.titleParts(text)
             var score = 0
             if let t = session.title, parts.contains(t) { score = 3 }
+            else if let start, parts.contains(start) { score = 2 }
             else if let last = folders.last, parts.contains(last) { score = 2 }
             else if folders.contains(where: parts.contains) { score = 1 }
             if score > (best?.score ?? 0) { best = (score, window) }
