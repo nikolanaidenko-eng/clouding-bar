@@ -450,5 +450,6 @@ wrapper's tap), `Sources/CloudingBarKey` (the Keychain helper).
 purpose — at home or at work — except to provide a product that competes
 with Clouding Bar.
 
-Clouding Bar is not affiliated with or endorsed by Anthropic. Claude is a
-trademark of Anthropic, PBC.
+Clouding Bar is not affiliated with or endorsed by Anthropic, OpenAI or
+Apple. Claude is a trademark of Anthropic, PBC; Codex is a trademark of
+OpenAI; Mac, macOS and Touch Bar are trademarks of Apple Inc.
