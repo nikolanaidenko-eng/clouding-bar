@@ -62,12 +62,30 @@ Subagents (the panel's list, the bar's "agents" button), `Session.trackAgents`:
 | `SubagentStop` | that `agent_id` is done |
 | `Stop` | foreground subagents are done |
 
+### Short chat names (a hook answer)
+
+On `UserPromptSubmit` (never Codex's), if the app has made up a short name for
+the chat (`~/.cloudingbar/names/<session_id>.json`, `{"name":…,"claude":true}`),
+the hook prints, whether or not the app runs:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","sessionTitle":"Login test"}}
+```
+
+Claude Code then writes `{"type":"custom-title","customTitle":"Login test"}` to
+the transcript. Nothing is printed when the transcript already has any
+`custom-title` (ours, done — or one the person gave, which is never
+overwritten), after three offers, or with `"shortNames": false` in the config.
+
 ## Which chat is shown
 
 Each session is a chat. Its name is its title from the transcript — a
 `{"type":"custom-title","customTitle":…}` line (a name you gave it) wins over
 `{"type":"ai-title","aiTitle":…}` (Claude Code's own) — else its project's
-folder. It gets one of eight colours, the first no live chat has.
+folder. A short name made up for it (1–3 words, `ShortNamer`) is shown instead
+of a long title, unless there is a `custom-title` that isn't ours. The tab may
+still carry the old title for a moment, so a window is matched by every title
+the chat has had. It gets one of eight colours, the first no live chat has.
 
 The chat the widget and the bar follow (`SessionStore.focus`):
 

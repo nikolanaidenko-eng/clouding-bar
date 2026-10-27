@@ -17,8 +17,11 @@ final class BarButton: NSButton {
     private let fontSize: CGFloat
 
     /// A title too long for the button plays across it, slowly, and
-    /// starts over (chat names).
+    /// starts over (the model's name). Chat names stand still and are cut
+    /// with "…" (`slide: false`; owner, 27.10: the carousel strains the eyes,
+    /// and the names are short now).
     private let marquee: Bool
+    private let slide: Bool
     private let fullTitle: String
     private let dotColor: UInt32?
     private var scroller: CALayer?
@@ -32,12 +35,13 @@ final class BarButton: NSButton {
     init(_ title: String, style: Style = .normal, fontSize: CGFloat = Palette.buttonFont,
          icon: NSImage? = nil, dot: UInt32? = nil, symbol: (name: String, tint: UInt32)? = nil,
          tint: UInt32? = nil, weight: NSFont.Weight? = nil, border: UInt32? = nil,
-         marquee: Bool = false, onTap: (() -> Void)? = nil) {
+         marquee: Bool = false, slide: Bool = true, onTap: (() -> Void)? = nil) {
         self.style = style
         self.border = border
         self.fontSize = fontSize
         self.onTap = onTap
         self.marquee = marquee && symbol == nil && icon == nil
+        self.slide = slide
         self.fullTitle = title
         self.dotColor = dot
         self.tint = tint
@@ -165,9 +169,10 @@ final class BarButton: NSButton {
         let width = ceil(titleWidth)
         let room = bounds.width - 18 - dotRoom
         guard room > 0 else { return } // a one-letter name needs little
-        // A name that fits stands still (centred); only a longer one slides.
+        // A name that fits stands still (centred); only a longer one slides
+        // (or, for a chat's name, is cut with "…").
         // A point or two over isn't worth sliding: the end gets "…".
-        let slides = width > room + 3 && !Palette.reduceMotion
+        let slides = slide && width > room + 3 && !Palette.reduceMotion
         let shown = min(width, room)
         let x0 = slides ? 9 : (bounds.width - dotRoom - shown) / 2
 
@@ -186,11 +191,18 @@ final class BarButton: NSButton {
         let color = titleColor
         let height = ceil(titleFont.ascender - titleFont.descender) + 2
         let y = (bounds.height - height) / 2
+        var cut = fullTitle
+        if !slides && width > shown {
+            var chars = Array(fullTitle)
+            while !chars.isEmpty, ceil(((String(chars) + "…") as NSString).size(withAttributes: [.font: titleFont]).width) > shown { chars.removeLast() }
+            cut = String(chars).trimmingCharacters(in: .whitespaces) + "…"
+        }
         func copy(at x: CGFloat) -> CATextLayer {
             let text = CATextLayer()
-            text.string = NSAttributedString(string: fullTitle, attributes: [.font: titleFont, .foregroundColor: color])
+            // Cut by hand with "…": a text layer's own truncation drew nothing here.
+            text.string = NSAttributedString(string: slides ? fullTitle : cut, attributes: [.font: titleFont, .foregroundColor: color])
             text.contentsScale = window?.backingScaleFactor ?? 2
-            text.truncationMode = slides ? .none : .end
+            text.truncationMode = .none
             text.frame = CGRect(x: x, y: slides ? 0 : y, width: slides ? width : shown, height: height)
             return text
         }

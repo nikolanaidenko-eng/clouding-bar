@@ -61,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var settings = SettingsWindow(model: model)
     /// Long questions put shorter for the Touch Bar (macOS 26, on this Mac).
     private let shortener = QuestionShortener()
+    /// Short names for chats (owner, 27.10).
+    private let namer = ShortNamer()
     private lazy var drawer = DrawerController(model: model)
     private let voice = VoiceInput()
     private let rightOption = RightOptionHold()
@@ -456,6 +458,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refresh() {
         refreshQueued = false
+        Session.useShortNames = config.shortNames
+        namer.consider(store.alive)
         let key = frontKey
         if key != frontSince.key { frontSince = (key, Date()) }
         // Gone to another chat yourself: the pick is over.
@@ -1389,6 +1393,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.openSession = { [weak self] in self?.openSession($0) }
         model.barChanged = { [weak self] in self?.setNeedsRefresh() }
         shortener.changed = { [weak self] in self?.setNeedsRefresh() }
+        namer.changed = { [weak self] in self?.setNeedsRefresh() }
+        namer.enabled = { [weak self] in self?.config.shortNames ?? false }
+        namer.chats = { [weak self] in self?.store.alive ?? [] }
         model.openSettingsTab = { [weak self] tab in
             self?.model.settingsTabRequest = tab
             self?.openSettings()
@@ -1875,7 +1882,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                   let text = title as? String else { continue }
             let parts = SessionStore.titleParts(text)
             var score = 0
-            if let t = session.title, parts.contains(t) { score = 3 }
+            if session.windowTitles.contains(where: parts.contains) { score = 3 }
             else if let start, parts.contains(start) { score = 2 }
             // Where cd went has a window only by chance: the start folder's wins.
             else if let last = folders.last, parts.contains(last) { score = start == nil ? 2 : 1 }

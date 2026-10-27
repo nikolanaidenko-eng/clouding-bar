@@ -22,6 +22,8 @@ final class TranscriptWatcher {
         var linesRemoved = 0
         /// The chat's title: the one you gave it, else the one Claude Code made up.
         var title: String?
+        var aiTitle: String?
+        var customTitle: String?
         /// Codex rollouts: the model's context window, and Codex's own limits
         /// (used %, resets at in unix seconds, when reported) for its 5-hour
         /// and weekly windows, and its plan.
@@ -172,6 +174,8 @@ final class TranscriptWatcher {
         update.linesAdded = state.linesAdded
         update.linesRemoved = state.linesRemoved
         update.title = state.customTitle ?? state.aiTitle
+        update.aiTitle = state.aiTitle
+        update.customTitle = state.customTitle
         return update
     }
 

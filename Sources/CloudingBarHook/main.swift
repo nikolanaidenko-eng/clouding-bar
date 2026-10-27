@@ -8,6 +8,9 @@ import Foundation
 // and print it as the hook's output:
 //   - PermissionRequest                (Allow / Always / Deny)
 //   - PreToolUse for AskUserQuestion   (pick an option or type an answer)
+// And one answer that needs no app (owner, 27.10): on a message, the chat's
+// short name as `sessionTitle`, if one was made up (SessionTitle.swift) —
+// printed whether or not the app is running.
 //
 // The one rule: Claude must never get stuck because of us. Any trouble —
 // the app isn't running, doesn't answer, hangs, crashes, sends garbage —
@@ -15,6 +18,8 @@ import Foundation
 // carries on exactly as if this hook didn't exist (its own dialog shows).
 
 signal(SIGPIPE, SIG_IGN)
+// A call the app makes itself to name a chat (ShortNamer): not an event of any chat.
+if ProcessInfo.processInfo.environment["CLOUDINGBAR_NAMING"] != nil { exit(0) }
 
 /// Hard limits that hold whatever the app says.
 let ackTimeout = 2.0       // the app must confirm a request this fast
@@ -27,10 +32,21 @@ alarm(UInt32(permissionCap + 30))
 
 let started = Date()
 
-func pass() -> Never { exit(0) }
+/// ~/.cloudingbar (CLOUDINGBAR_DIR overrides it, for the tests).
+let baseDir = ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cloudingbar", isDirectory: true)
+/// Printed on every way out: the title to set, for a message to a chat
+/// that has a short name.
+var titleOutput: Data?
+
+func pass() -> Never {
+    if let titleOutput { FileHandle.standardOutput.write(titleOutput) }
+    exit(0)
+}
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
 guard var event = (try? JSONSerialization.jsonObject(with: input)) as? [String: Any] else { pass() }
+titleOutput = SessionTitle.hookOutput(for: event, codex: CommandLine.arguments.contains("--codex"), base: baseDir)
 
 /// Claude's own pid: from the environment Claude Code gives its hooks, or
 /// by walking up the process tree. The app uses it to tell when a session
@@ -87,8 +103,7 @@ line.append(0x0A)
 
 // MARK: - Socket
 
-let socketPath = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".cloudingbar/cloudingbar.sock").path
+let socketPath = baseDir.appendingPathComponent("cloudingbar.sock").path
 
 let fd = socket(AF_UNIX, SOCK_STREAM, 0)
 guard fd >= 0 else { pass() }
