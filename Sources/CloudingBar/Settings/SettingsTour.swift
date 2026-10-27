@@ -26,12 +26,12 @@ struct TourStop {
 enum SettingsTour {
     static let stops: [TourStop] = [
         TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
-                 text: "Seven stops, about a minute. Everything here can be changed later, and you can skip any time."),
+                 text: "Seven stops, about a minute. Each chat gets its own Cloud, in its colour, with glasses, a crown or a hat, so you know which one is talking. Everything here can be changed later, and you can skip any time."),
         TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
                  text: "Claude Code, VS Code, Codex and Cowork connect in this box. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first.",
                  group: "Connections"),
         TourStop(tab: "general", anchor: "app.more", title: "Only the main rows",
-                 text: "Each box shows what most people need. The rest, like colours, updates or the extra widget switches, waits behind More… in the same box. It stays open next time.",
+                 text: "Each box opens with a click on its name and shows what most people need. The rest, like colours, updates or the extra widget switches, waits behind More… in the same box.",
                  tryText: "Try it: click More…", tried: .more, group: "App"),
         TourStop(tab: "widget", anchor: "widget.preview", title: "The floating widget, your way",
                  text: "A small pill over your windows: the 5-hour limit and how full the chat is. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. The notch and its place are in the box below."),

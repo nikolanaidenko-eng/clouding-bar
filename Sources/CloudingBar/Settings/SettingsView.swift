@@ -877,6 +877,11 @@ struct GeneralTab: View {
                 SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
                     CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
                 }
+                // Owner, 27.10: names that fit a button, no sliding.
+                SettingsRow(title: "Short chat names",
+                            hint: "Haiku names each chat in a word or two, through your Claude Code; VS Code's tabs too") {
+                    CBSwitch(title: "Short chat names", on: binding("shortNames") { $0.shortNames })
+                }
                 SettingsRow(title: "Voice language", hint: "Hold the right ⌥ key alone, or use the mic") {
                     Picker("", selection: Binding(get: { model.config.voiceLanguage },
                                                   set: { model.setConfig("voiceLanguage", $0) })) {
