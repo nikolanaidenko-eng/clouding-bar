@@ -39,7 +39,7 @@ final class ShortNamer {
         var later: TimeInterval?
         for s in sessions where !handled.contains(s.id) && s.shortName == nil {
             // Named by the person, or by Cowork's own first words: not ours.
-            guard s.customTitle == nil, s.entrypoint != "cowork" else { continue }
+            guard s.customTitle == nil, !s.fromClaudeAI else { continue }
             // Codex's chats get no name: their words would go to Anthropic, a
             // recipient they never had (review, 27.10).
             guard s.entrypoint != "codex", !s.ambient else { continue }

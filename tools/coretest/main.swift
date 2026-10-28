@@ -200,148 +200,80 @@ do { // the summary, as /stats: sessions once each, days in a row, the range
 }
 print("     (this week: \(week.headline); \(week.projects.map { "\($0.name) \(Int($0.share * 100))%" }.joined(separator: ", ")))")
 
-// Cowork plugin: built into the test folder, its script run on a fake transcript.
-let pluginDir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
-// /usr/bin/python3 waits for the Xcode license after a macOS update; the
-// Command Line Tools' own runs regardless.
-let python3 = ["/Library/Developer/CommandLineTools/usr/bin/python3", "/usr/bin/python3"]
-    .first { FileManager.default.isExecutableFile(atPath: $0) }!
-let zip = try? Cowork.makePlugin(into: pluginDir)
-check(zip?.lastPathComponent == "clouding-bar-plugin.zip" && zip.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
-      "the plugin's zip is made, for upload in Claude Desktop")
-let coworkScript = Cowork.pluginSource!.appendingPathComponent("hooks/cowork.py").path
-check(FileManager.default.fileExists(atPath: coworkScript), "the plugin has its Cowork script")
-do { // the hook writes into the connected folder itself: working, then done
-    let task = pluginDir.appendingPathComponent("cowork-task")
-    let mac = task.appendingPathComponent("mnt/Notes")
-    try? FileManager.default.removeItem(at: task)
-    try? FileManager.default.createDirectory(at: mac, withIntermediateDirectories: true)
-    try? FileManager.default.createDirectory(at: task.appendingPathComponent("mnt/outputs"), withIntermediateDirectories: true)  // Cowork's own folder: the sign of Cowork
-    let transcript = task.appendingPathComponent("t.jsonl")
-    try? #"{"type":"assistant","timestamp":"2026-10-20T10:02:00.000Z","message":{"id":"r1","model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5,"output_tokens":90}}}"#
-        .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
-    func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil,
-              env: [String: String] = [:]) -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: python3)
-        p.arguments = ["-I", coworkScript]
-        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"].merging(env) { $1 }
-        let input = Pipe(), output = Pipe()
-        p.standardInput = input; p.standardOutput = output
-        try? p.run()
-        var event: [String: Any] = ["hook_event_name": event, "session_id": session, "cwd": cwd.path,
-                                    "transcript_path": transcript.path]
-        if let prompt { event["prompt"] = prompt }
-        input.fileHandleForWriting.write(try! JSONSerialization.data(withJSONObject: event))
-        try? input.fileHandleForWriting.close()
-        p.waitUntilExit()
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    }
-    let out = hook("UserPromptSubmit", cwd: task, prompt: "  Fix the landing page for the bots, and check the forms too  ")
-    let files = Cowork.statusFiles(folder: mac.path)
-    let working = files.first.flatMap(Cowork.read)
-    check(out.isEmpty && files.map(\.lastPathComponent) == ["cowork-s1.json"] && working?.working == true
-          && working?.contextTokens == 40010, "cowork hook: on a message, \"working\" written to the folder itself")
-    _ = hook("Stop", cwd: task)
-    let done = Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)
-    check(done?.working == false && done?.session == "s1", "cowork hook: on the reply, \"done\"")
-    check(working?.title == "Fix the landing page for the bots, and…", "cowork hook: named by your first words")
-    let hour = Int(ISO8601DateFormatter().date(from: "2026-10-20T10:02:00Z")!.timeIntervalSince1970 / 3600)
-    check(working?.usage[hour] == Cowork.Spent(tokens: 100, minutes: 5), "cowork hook: what it spent by hour, for Stats")
-    if let w = working { Cowork.keep(w) }
-    let days = DayStats.cowork(Cowork.kept())
-    let day = days[DayStats.key(Date(timeIntervalSince1970: Double(hour) * 3600))]
-    check(day?.tokens == 100 && day?.minutes == 5 && day?.sessions == ["cowork-s1"]
-          && DayStats.merged([DayStats.key(Date(timeIntervalSince1970: Double(hour) * 3600)): DayStats(tokens: 1, minutes: 10)], days)
-            .values.first?.minutes == 15,
-          "Cowork's days kept and added to Claude Code's")
-    if let h = try? FileHandle(forWritingTo: transcript) {
-        h.seekToEndOfFile(); h.write(Data((#"{"type":"ai-title","aiTitle":"Bots landing"}"# + "\n").utf8)); try? h.close()
-    }
-    _ = hook("Stop", cwd: task)
-    check(Cowork.statusFiles(folder: mac.path).first.flatMap(Cowork.read)?.title == "Bots landing", "…or by its title")
-    store.apply(cowork: Cowork.Status(session: "c1", project: "Notes", contextTokens: 1000, contextWindow: 200_000,
-                                      model: nil, time: Date(), title: "Bots landing"))
-    store.apply(cowork: Cowork.Status(session: "c2", project: "Notes", contextTokens: 9000, contextWindow: 200_000,
-                                      model: nil, time: Date().addingTimeInterval(-60), title: "Mail drafts"))
-    check(store.sessions["cowork-c1"]?.displayName == "Bots landing" && store.sessions["cowork-c2"]?.displayName == "Mail drafts",
-          "two Cowork tasks in one folder, told apart by name")
+// Cowork tasks and chats from claude.ai (1.2.8): its list and a task's events.
+do {
+    let iso = ISO8601DateFormatter()
+    let now = Date()
+    func at(_ ago: Double) -> String { iso.string(from: now.addingTimeInterval(-ago)) }
+    let id = { (n: Int) in "11111111-aaaa-4bbb-8ccc-00000000000\(n)" }
+    let list: [String: Any] = ["data": [
+        ["uuid": id(1), "name": "Bots landing", "model": "claude-sonnet-5-5", "workspace_session_id": "cse_01AbC",
+         "live_status": "running", "live_status_started_at": at(120), "updated_at": at(5), "last_settled_at": at(600)],
+        ["uuid": id(2), "name": "Mail drafts", "workspace_session_id": "cse_02", "needs_input": true,
+         "needs_input_kind": "permission", "updated_at": at(30).replacingOccurrences(of: "Z", with: ".123456+00:00")],
+        ["uuid": id(3), "name": "  Recipe ideas ", "updated_at": at(60), "live_status": NSNull()],
+        ["uuid": id(4), "name": "Old chat", "updated_at": at(5 * 3600)],
+        ["uuid": "../../etc", "name": "Not an id"],
+    ] as [[String: Any]]]
+    let chats = ClaudeAIChats.chats(list)
+    check(chats.count == 4 && chats[0].running && chats[0].isCowork && chats[0].runningSince != nil
+          && chats[1].needsInput == "permission" && chats[1].updatedAt != nil
+          && chats[2].name == "Recipe ideas" && !chats[2].isCowork && !chats[2].running,
+          "claude.ai's list: working, waiting, a plain chat; microseconds read; a bad id left out")
+    check(ClaudeAIChats.chats([["uuid": id(5)]]).count == 1 && ClaudeAIChats.chats(["x": 1]).isEmpty
+          && ClaudeAIChats.isId("cse_01AbC") && !ClaudeAIChats.isId("a/b") && !ClaudeAIChats.isId("chat?x=1"),
+          "claude.ai's list: the older array too; ids only of letters, digits, - and _")
+    store.apply(claudeAI: chats, now: now)
+    let task = store.sessions["cowork-" + id(1)], waiting = store.sessions["cowork-" + id(2)]
+    let plain = store.sessions["claudeai-" + id(3)]
+    check(task?.activity == .work && task?.displayName == "Bots landing" && task?.desktopChat == "/chat/" + id(1)
+          && waiting?.waitingNotice == true && waiting?.activity == .work
+          && plain?.entrypoint == "claude-ai" && plain?.activity == .sleep && plain?.inDesktopApp == true
+          && store.sessions["claudeai-" + id(4)] == nil,
+          "claude.ai's chats as sessions: working, waiting for you, idle; one from 5 hours ago isn't")
+    let events: [String: Any] = ["data": [
+        ["type": "user", "payload": ["type": "user"]],
+        ["type": "assistant", "payload": ["parent_tool_use_id": "toolu_1",
+                                          "message": ["model": "claude-haiku-5-5", "usage": ["input_tokens": 9]]]],
+        ["type": "assistant", "payload": ["message": ["model": "claude-sonnet-5-5", "usage": [
+            "input_tokens": 5, "cache_read_input_tokens": 142_000, "cache_creation_input_tokens": 283, "output_tokens": 50]]]],
+        ["type": "assistant", "payload": ["message": ["model": "claude-sonnet-5-5", "usage": ["input_tokens": 1]]]],
+    ] as [[String: Any]]]
+    let context = ClaudeAIChats.context(events: events)
+    check(context == ClaudeAIChats.Context(tokens: 142_288, model: "claude-sonnet-5-5"),
+          "a Cowork task's context: its newest reply (input + cache), a subagent's aside")
+    if let context { store.apply(claudeAIContext: context, chat: id(1)) }
+    check(task?.contextTokens == 142_288 && task?.contextWindow(override: nil) == 500_000, "…on its session, of 500k")
     check(Cowork.window(model: "claude-sonnet-5-5") == 500_000 && Cowork.window(model: "claude-opus-5-5[1m]") == 1_000_000
           && Cowork.window(model: "claude-haiku-5-5") == 200_000, "Cowork's window: 500k, 1M for [1m], 200k for Haiku")
-    check(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id == "cowork-c1"
-          && store.focus(windowTitle: "Claude", sticky: ["cowork-c2"], desktop: true)?.id == "cowork-c2"
-          && store.focus(windowTitle: "Claude", sticky: ["a"], desktop: true)?.id == "cowork-c1",
+    check(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id == task?.id
+          && store.focus(windowTitle: "Claude", sticky: [waiting?.id ?? ""], desktop: true)?.id == waiting?.id,
           "Claude Desktop in front: its chats, the picked one or the latest")
+    check(store.focus(windowTitle: nil, sticky: [waiting?.id ?? ""], desktop: true, desktopChat: "/chat/" + id(3))?.id == plain?.id,
+          "Claude Desktop shows a chat by its page: that one, over the picked one")
     check(SessionStore.sameTitle("⚡ Блог: черновики постов", "блог: черновики постов")
           && SessionStore.sameTitle("Fix the landing page for the bots, and check", "Fix the landing page for the bots, and…")
           && !SessionStore.sameTitle("Bots", "Bots landing")
           && SessionStore.sameTitle("Cowork task summary", "Cowork task summary export")
           && SessionStore.titleScore("Блог: сбор идей за неделю", "Сбор идей Блог") == 1,
           "titles: emoji, case and \"…\" aside; Claude Desktop's shorter name")
-    check(store.focus(windowTitle: "⚡ Mail drafts", sticky: ["cowork-c1"], desktop: true)?.id == "cowork-c2",
-          "Claude Desktop shows a chat by its title: that one, over the picked one")
-    store.link(store.sessions["cowork-c1"]!, desktopChat: "/chat/aaa", title: "⚡ Блог: черновики постов")
-    check(store.sessions["cowork-c1"]?.displayName == "Блог: черновики постов"
-          && store.focus(windowTitle: nil, sticky: ["cowork-c2"], desktop: true, desktopChat: "/chat/aaa")?.id == "cowork-c1",
-          "a chat learned: named as Claude Desktop names it, followed by its page")
-    store.link(store.sessions["cowork-c2"]!, desktopChat: "/chat/aaa", title: "Other")
-    check(store.sessions["cowork-c1"]?.desktopChat == nil && store.session(inDesktop: nil, chat: "/chat/aaa")?.id == "cowork-c2",
-          "one chat, one session")
+    var finished = chats
+    finished[0].running = false
+    finished[0].settledAt = now
+    store.apply(claudeAI: finished, now: now)
+    check(task?.activity == .sleep && task?.finishedAt != nil, "a task's reply ends: done, your turn")
+    store.forgetClaudeAI()
+    check(!store.sessions.keys.contains { $0.hasPrefix("cowork-") || $0.hasPrefix("claudeai-") }, "signed out: its chats are gone")
 
-    check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/.gitignore").path),
-          "cowork hook: git ignores it")
-    // Off in Clouding Bar (Settings → Cowork): the folder says so, the plugin is quiet.
-    Cowork.setMode("off", folders: [mac.path])
-    _ = hook("UserPromptSubmit", cwd: task, session: "s-off")
-    check(!FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/cowork-s-off.json").path),
-          "cowork hook: quiet when Cowork is off in Clouding Bar")
-    Cowork.setMode("thresholds", folders: [mac.path])
-    _ = hook("UserPromptSubmit", cwd: task, session: "s-on")
-    check(FileManager.default.fileExists(atPath: mac.appendingPathComponent(".clouding-bar/cowork-s-on.json").path),
-          "…and reports again when it's on")
-    let untouched = pluginDir.appendingPathComponent("cowork-untouched")
-    try? FileManager.default.createDirectory(at: untouched, withIntermediateDirectories: true)
-    Cowork.setMode("off", folders: [untouched.path])
-    check(!FileManager.default.fileExists(atPath: untouched.appendingPathComponent(".clouding-bar").path),
-          "Cowork off: nothing written where the plugin never was")
-    let server = pluginDir.appendingPathComponent("linux-server")
-    try? FileManager.default.createDirectory(at: server, withIntermediateDirectories: true)
-    check(hook("Stop", cwd: server, session: UUID().uuidString).isEmpty, "cowork hook: quiet on a Linux that isn't Cowork")
-    let lonely = pluginDir.appendingPathComponent("cowork-nofolder")
-    try? FileManager.default.createDirectory(at: lonely.appendingPathComponent("mnt/outputs"), withIntermediateDirectories: true)
-    do { // on the Mac (Claude Code, not Cowork) it does nothing
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: python3)
-        p.arguments = ["-I", coworkScript]
-        let input = Pipe(), output = Pipe()
-        p.standardInput = input; p.standardOutput = output
-        try? p.run()
-        input.fileHandleForWriting.write(Data(#"{"hook_event_name":"Stop","session_id":"mac","transcript_path":"\#(transcript.path)"}"#.utf8))
-        try? input.fileHandleForWriting.close()
-        p.waitUntilExit()
-        check(output.fileHandleForReading.readDataToEndOfFile().isEmpty, "cowork hook: quiet in Claude Code on the Mac")
-    }
-    check(hook("Stop", cwd: lonely, session: UUID().uuidString).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
-    // Cowork in the cloud: no mnt/ here at all, the folders stay on the user's computer.
-    let cloud = pluginDir.appendingPathComponent("cowork-cloud")
-    try? FileManager.default.createDirectory(at: cloud, withIntermediateDirectories: true)
-    let rc = "rc-" + UUID().uuidString
-    let remote = ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork", "XDG_RUNTIME_DIR": cloud.path]
-    let asked = hook("Stop", cwd: cloud, session: rc, env: remote)
-    let modeFile = cloud.appendingPathComponent("clouding-bar-\(getuid())/\(rc).mode")
-    check(asked.contains("\"decision\": \"block\"") && asked.contains("device_bash") && asked.contains("cowork-\(rc).json")
-          && asked.contains("says off") && asked.contains("<<'EOF'") && asked.contains(modeFile.path),
-          "cowork hook: in the cloud, Claude is asked to write it on the user's computer, and to leave the mode it found")
-    check(hook("Stop", cwd: cloud, session: rc, env: remote).isEmpty,
-          "cowork hook: in the cloud, mode not known yet: not again at once")
-    try? "every".write(to: modeFile, atomically: true, encoding: .utf8)
-    check(hook("Stop", cwd: cloud, session: rc, env: remote).contains("\"decision\": \"block\"")
-          && hook("Stop", cwd: cloud, session: rc, env: remote).contains("\"decision\": \"block\""),
-          "cowork hook: in the cloud, \"every reply\" as Claude found it in the folder")
-    try? "off".write(to: modeFile, atomically: true, encoding: .utf8)
-    check(hook("Stop", cwd: cloud, session: rc, env: remote).isEmpty, "cowork hook: in the cloud, quiet when Clouding Bar is off there")
-    check(hook("Stop", cwd: cloud, session: UUID().uuidString, env: ["CLAUDE_CODE_ENTRYPOINT": "remote"]).isEmpty,
-          "cowork hook: quiet in Claude Code on the web")
+    // Stats keep what the plugin reported before 1.2.8.
+    let hour = 500_000
+    try? #"{"s1": {"project": "Notes", "usage": {"500000": {"tokens": 100, "minutes": 5}}}}"#
+        .write(to: Config.directory.appendingPathComponent("cowork-usage.json"), atomically: true, encoding: .utf8)
+    let days = DayStats.cowork(Cowork.kept())
+    let key = DayStats.key(Date(timeIntervalSince1970: Double(hour) * 3600))
+    check(days[key]?.tokens == 100 && days[key]?.minutes == 5 && days[key]?.sessions == ["cowork-s1"]
+          && DayStats.merged([key: DayStats(tokens: 1, minutes: 10)], days).values.first?.minutes == 15,
+          "Cowork's days from before 1.2.8 kept and added to Claude Code's")
 }
 
 // MARK: The plugin and Claude Code's settings
@@ -366,14 +298,13 @@ do {
     try? "{}".write(to: settings, atomically: true, encoding: .utf8)
     let account = home.appendingPathComponent("plugins/synced/account")
     try? fm.createDirectory(at: account, withIntermediateDirectories: true)
-    try? #"{"plugins": [{"name": "clouding-bar"}, {"name": "clouding-bar-cowork"}]}"#
+    try? #"{"plugins": [{"name": "clouding-bar"}]}"#
         .write(to: account.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
-    check(Setup.pluginActive && Setup.pluginSynced && Setup.oldCoworkPlugin,
-          "the plugin from Claude Desktop (synced) counts; the old Cowork one is noticed")
+    check(Setup.pluginActive && Setup.pluginSynced, "the plugin from Claude Desktop (synced) counts")
     unsetenv("CLOUDINGBAR_CLAUDE_SETTINGS")
 
     // The plugin's hook script on the Mac: to the app's hook program, or aside.
-    let runSh = Cowork.pluginSource!.appendingPathComponent("hooks/run.sh").path
+    let runSh = ProcessInfo.processInfo.environment["CLOUDINGBAR_PLUGIN"]! + "/hooks/run.sh"
     let fakeHome = home.appendingPathComponent("user")
     let ours = fakeHome.appendingPathComponent(".cloudingbar")
     try? fm.createDirectory(at: ours, withIntermediateDirectories: true)
@@ -1430,12 +1361,14 @@ do { // settings.json as a link (dotfiles): Connect writes the file it points to
           "settings.json behind a link: written through it, the link kept")
     if let saved { setenv("CLOUDINGBAR_CLAUDE_SETTINGS", saved, 1) } else { unsetenv("CLOUDINGBAR_CLAUDE_SETTINGS") }
 }
-do { // a Cowork status file with absurd numbers (anyone's repo could bring one): read within bounds, no crash
-    let f = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("cowork-huge.json")
-    try? #"{"session":"x","context_tokens":9e18,"context_window":1,"t":1e300,"usage":{"5":[9e18,9e18]}}"#
-        .write(to: f, atomically: true, encoding: .utf8)
-    let st = Cowork.read(f)
-    check(st?.contextTokens == 10_000_000 && st?.contextWindow == 1_000, "Cowork file with absurd numbers: kept in bounds")
+do { // claude.ai's answers with absurd numbers or the wrong types: read within bounds, no crash
+    let huge: [String: Any] = ["data": [["type": "assistant", "payload": ["message": ["usage": [
+        "input_tokens": 9e18, "cache_read_input_tokens": -5, "cache_creation_input_tokens": "x"]]]]]]
+    check(ClaudeAIChats.context(events: huge)?.tokens == 10_000_000, "claude.ai events with absurd numbers: kept in bounds")
+    let odd: [Any] = [["uuid": 5], ["uuid": "a", "name": 7, "live_status": 1, "needs_input": "yes", "updated_at": "never"], "x"]
+    let read = ClaudeAIChats.chats(odd)
+    check(read.count == 1 && read[0].name == nil && !read[0].running && read[0].needsInput == nil && read[0].updatedAt == nil,
+          "claude.ai's list with the wrong types: what's wrong is left out")
 }
 
 do { // Connect sets VS Code's wrapper only where none of your own is: absent → ours, ours from before → ours, yours → left

@@ -225,14 +225,6 @@ struct Config: Equatable {
     /// Small metrics in the widget: "model", "lines", "git", "agents", "cost".
     var metrics: [String] = []
 
-    /// Cowork status through the plugin: "off", "thresholds", "every".
-    var coworkMode = "off"
-    /// You picked the Cowork mode yourself (else the plugin installed in
-    /// Claude Desktop turns it on, at "thresholds").
-    var coworkModeSet = false
-    /// The Mac folder connected in Cowork, where the status file lands.
-    var coworkFolder: String?
-
     /// Once a day, ask GitHub whether a newer release is out (a release
     /// build only; nothing about you is sent).
     var checkUpdates = true
@@ -338,11 +330,9 @@ struct Config: Equatable {
         if let v = obj["codexServer"] as? Bool { config.codexServer = v }
         if let v = obj["screenshot"] as? Bool { config.screenshot = v }
         if let v = obj["metrics"] as? [String] { config.metrics = v }
-        if let v = obj["coworkMode"] as? String { config.coworkMode = v; config.coworkModeSet = true }
         if let v = obj["checkUpdates"] as? Bool { config.checkUpdates = v }
         if let v = obj["openWithClaude"] as? Bool { config.openWithClaude = v }
         if let v = obj["shortNames"] as? Bool { config.shortNames = v }
-        if let v = obj["coworkFolder"] as? String { config.coworkFolder = v }
         if let v = obj["voiceLanguage"] as? String { config.voiceLanguage = v }
         if let v = obj["voiceAllowServer"] as? Bool { config.voiceAllowServer = v }
         if let v = obj["summaryPrompt"] as? String { config.summaryPrompt = v }

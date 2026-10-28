@@ -165,8 +165,11 @@ final class Session {
         return [title, customTitle, aiTitle, shortName].compactMap { $0 }.filter { seen.insert($0).inserted }
     }
 
-    /// A chat of the Claude desktop app: Cowork, or Code in the app.
-    var inDesktopApp: Bool { entrypoint == "cowork" || entrypoint == "claude-desktop" }
+    /// A chat of the Claude desktop app: Cowork, a claude.ai chat, or Code in the app.
+    var inDesktopApp: Bool { fromClaudeAI || entrypoint == "claude-desktop" }
+    /// Known from claude.ai's list of the account's chats (a Cowork task or
+    /// a chat), not from a hook.
+    var fromClaudeAI: Bool { entrypoint == "cowork" || entrypoint == "claude-ai" }
     /// Its chat in the Claude desktop app ("/chat/64a92e6f-…") and the name
     /// the app gives it, once known to be this session.
     var desktopChat: String?
@@ -214,8 +217,8 @@ final class Session {
         if ambient {
             return now.timeIntervalSince(lastSeen) < (activity == .work ? CodexRollouts.freshness : CodexRollouts.freshness / 4)
         }
-        // Cowork reports only now and then; without news for 3 hours it's over.
-        return now.timeIntervalSince(lastSeen) < (entrypoint == "cowork" ? 3 : 12) * 3600
+        // A chat from claude.ai's list: shown while it was active in the last 3 hours.
+        return now.timeIntervalSince(lastSeen) < (fromClaudeAI ? 3 : 12) * 3600
     }
 
     // MARK: Persistence
