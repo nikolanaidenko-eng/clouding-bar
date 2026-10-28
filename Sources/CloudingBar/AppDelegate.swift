@@ -287,8 +287,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             readDesktopPrompt()
         }
-        if ticks % 10 == 0 {
-            refreshSetupStatus()
+        if ticks % 10 == 0 { refreshSetupStatus() }
+        // A closed chat leaves the list within 2 s (was 10, owner 28.10).
+        if ticks % 2 == 0 {
             let gone = Set(store.prune())
             for r in requests where r.sessionId.map(gone.contains) ?? false { finish(r, "session gone → dropped") }
         }
@@ -1362,6 +1363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showTour() {
         DebugLog.tap("tour")
         openSettings()
+        SettingsTour.begin()
         model.tourStep = 0
     }
 

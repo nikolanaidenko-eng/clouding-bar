@@ -956,13 +956,14 @@ struct GeneralTab: View {
                             Button("Set Up") { model.wrapVSCode() }
                         }
                     }
+                    .tourAnchor("vscode")
                 }
                 if let message = model.setupMessage { note(message) }
                 SettingsRow(title: "claude.ai: Cowork, chats and limit",
                             hint: model.hasLiveKey && model.config.claudeAIChats != true
                                 ? "The whole account's limit · \(model.liveLimitState). Cowork tasks and chats aren't read with this key: Sign Out, then Sign In to show them"
                                 : model.hasLiveKey
-                                ? "Cowork tasks and your chats from the last 3 hours — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
+                                ? "Cowork tasks and your chats of the last half hour — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
                                 : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai",
                             // The box's last row has no line under it.
                             divider: !model.accessibilityTrusted) {
@@ -972,6 +973,7 @@ struct GeneralTab: View {
                         Button("Sign In…") { model.signInClaudeAI() }
                     }
                 }
+                .tourAnchor("claudeai")
                 if !model.accessibilityTrusted {
                     SettingsRow(title: "Accessibility",
                                 hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility",
@@ -993,6 +995,7 @@ struct GeneralTab: View {
                             Button("Connect") { model.connectCodex() }
                         }
                     }
+                    .tourAnchor("codex")
                     if let message = model.codexMessage { note(message) }
                     SettingsRow(title: "Codex: live limits and sending",
                                 hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)",
@@ -1220,7 +1223,7 @@ struct TouchBarTab: View {
                                           ("model", "Model"), ("agents", "Agents"), ("lines", "Lines"),
                                           ("branch", "Branch"), ("cost", "Cost"), ("chat", "Write"),
                                           ("templates", "Commands"), ("buttons", "Buttons"),
-                                          ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 8)
+                                          ("shot", "Screenshot"), ("mic", "Mic")], small: true, wrapAfter: 7) // rows about even, as the short bar's (owner, 28.10)
                     }
                 }
                 .padding(12)

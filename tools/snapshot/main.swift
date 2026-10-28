@@ -721,6 +721,7 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
 }
 
 // The tour in the settings window, at a few of its stops.
+SettingsTour.begin()
 for step in SettingsTour.stops.indices {
     let m = sampleModel()
     m.touchBarPresent = true

@@ -204,7 +204,7 @@ final class ClaudeAI {
     private func fetchContexts(org: String, key: String) {
         let now = Date()
         let due = chats.filter { chat in
-            guard chat.isCowork, now.timeIntervalSince(chat.lastActive ?? .distantPast) < 3 * 3600 else { return false }
+            guard chat.isCowork, now.timeIntervalSince(chat.lastActive ?? .distantPast) < ClaudeAIChats.recent else { return false }
             guard let read = contextRead[chat.uuid] else { return true }
             if chat.running { return now.timeIntervalSince(read.at) >= 30 }
             return chat.settledAt != read.settled

@@ -117,14 +117,22 @@ final class SessionStore {
     }
 
     /// Cowork tasks and claude.ai chats as claude.ai lists them: each one
-    /// that runs, waits for you or was active in the last 3 hours is a
-    /// session of its own, known by its chat in Claude Desktop.
+    /// that runs, waits for you or was active in the last half hour is a
+    /// session of its own, known by its chat in Claude Desktop. One the
+    /// list no longer has, or has archived, is gone at once.
     func apply(claudeAI chats: [ClaudeAIChats.Chat], now: Date = Date()) {
         var changed = false
-        for chat in chats {
+        // Left to `prune`, which also drops what was asked in them. An empty
+        // list (or one not read right) takes nothing away (review, 28.10).
+        let listed = Set(chats.filter { !$0.archived }.map(ClaudeAIChats.sessionId))
+        for s in sessions.values where s.fromClaudeAI && !listed.contains(s.id) && !chats.isEmpty {
+            s.lastEvent = .distantPast
+            changed = true
+        }
+        for chat in chats where !chat.archived {
             let id = ClaudeAIChats.sessionId(chat)
             let active = min(chat.lastActive ?? .distantPast, now)
-            guard chat.running || chat.needsInput != nil || now.timeIntervalSince(active) < 3 * 3600 else { continue }
+            guard chat.running || chat.needsInput != nil || now.timeIntervalSince(active) < ClaudeAIChats.recent else { continue }
             let session = sessions[id] ?? newSession(id, now: active)
             sessions[id] = session
             session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
@@ -348,7 +356,30 @@ final class SessionStore {
     func prune() -> [String] {
         let now = Date()
         ended = ended.filter { now.timeIntervalSince($0.value) < 24 * 3600 }
-        let dead = sessions.values.filter { !$0.isAlive(now: now) }.map(\.id)
+        // A Codex closed in its terminal says nothing, and its file stays
+        // fresh for up to an hour: gone once no Codex runs in its folder (28.10).
+        // One running in a folder no chat has (`codex -C dir`, `codex resume`
+        // from elsewhere) may be any chat's: then their files decide, as before (review, 28.10).
+        var shut = Set<String>()
+        let inTerminal = sessions.values.filter { $0.ambient && $0.entrypoint == "codex" && $0.codexHost == "Terminal" }
+        if !inTerminal.isEmpty {
+            let running = Set(codexTerminalFolders())
+            let folders = Set(inTerminal.compactMap { $0.cwd.map(Tty.realPath) })
+            if running.isSubset(of: folders) {
+                shut = Set(inTerminal.filter { !($0.cwd.map { running.contains(Tty.realPath($0)) } ?? false) }.map(\.id))
+            }
+        }
+        // A Claude in a terminal or VS Code runs one chat at a time: an older
+        // one on its process (another chat opened in its tab, no SessionEnd) is gone (28.10).
+        let oneChat = sessions.values.filter { ($0.entrypoint == "cli" || $0.entrypoint == "claude-vscode") && $0.claudePid != nil }
+        var newest: [Int32: Session] = [:]
+        for s in oneChat {
+            let pid = s.claudePid!
+            if let n = newest[pid], n.lastEvent >= s.lastEvent { continue }
+            newest[pid] = s
+        }
+        for s in oneChat where newest[s.claudePid!] !== s { shut.insert(s.id) }
+        let dead = sessions.values.filter { !$0.isAlive(now: now) || shut.contains($0.id) }.map(\.id)
         guard !dead.isEmpty else { return [] }
         for id in dead {
             // A Codex chat closed with no SessionEnd: its file, still fresh,
@@ -472,6 +503,8 @@ final class SessionStore {
 
     /// The folders a Codex program runs in, in a terminal (tests stand in for it).
     var codexFoldersOpen: (Set<String>) -> Set<String> = Tty.codexFolders
+    /// Every Codex program's folder in a terminal, as the kernel gives it (tests stand in for it).
+    var codexTerminalFolders: () -> [String] = Tty.codexTerminalFolders
 
     /// A Codex chat takes words from its server only while a Codex runs in
     /// its folder: closed, its chat stays loaded in Codex's server for up to

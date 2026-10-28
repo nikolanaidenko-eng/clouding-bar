@@ -4,7 +4,9 @@ import SwiftUI
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is and what to
 /// try; Cloud hops onto it. Seven stops across the tabs (cut down from
-/// thirteen, owner, 25.10; Cowork folded into General, 27.10).
+/// thirteen, owner, 25.10; Cowork folded into General, 27.10). Rewritten
+/// 28.10 (owner: too much air, not how it works or where to connect what):
+/// a stop for each thing to connect, then the widget, the bar, the buttons.
 struct TourStop {
     let tab: String
     /// The `tourAnchor` it lights up.
@@ -19,28 +21,42 @@ struct TourStop {
     /// The General group the anchor sits in: opened for the stop (groups
     /// are folded, owner, 27.10).
     var group: String? = nil
+    /// Only on a Mac that has it (VS Code, Codex): looked at as the tour starts.
+    var only: (() -> Bool)? = nil
 
     enum Tried { case notch, more }
 }
 
 enum SettingsTour {
-    static let stops: [TourStop] = [
-        TourStop(tab: "general", anchor: "cloud", title: "Hi, I'm Cloud.",
-                 text: "Seven stops, about a minute. Each chat gets its own Cloud, in its colour, with glasses, a crown or a hat, so you know which one is talking. Everything here can be changed later, and you can skip any time."),
-        TourStop(tab: "general", anchor: "hooks", title: "This is the link to Claude Code",
-                 text: "Claude Code, VS Code and Cowork connect in this box; Codex has a box of its own below. Connected means I can see your sessions. If not, press Connect: your settings.json is backed up first.",
+    /// This tour's stops, fixed as it starts (`begin`): none comes or goes midway.
+    private(set) static var stops: [TourStop] = all
+
+    /// The stops for this Mac, before the first one shows.
+    static func begin() { stops = all.filter { $0.only?() ?? true } }
+
+    static let all: [TourStop] = [
+        TourStop(tab: "general", anchor: "cloud", title: "How Clouding Bar works",
+                 text: "It follows the chat in front — a Terminal or iTerm tab, VS Code, Claude Desktop — and shows its 5-hour limit and context in the widget and on the Touch Bar. Each chat has its own colour and Cloud. First, what to connect."),
+        TourStop(tab: "general", anchor: "hooks", title: "Claude Code: Connect",
+                 text: "Once, for Terminal and VS Code: chats, permission requests and the 5-hour limit come here. Your settings.json is backed up first. Then allow Accessibility when macOS asks: without it, buttons can't type into a chat.",
                  group: "Claude"),
-        TourStop(tab: "general", anchor: "app.more", title: "Only the main rows",
-                 text: "Each box shows two or three rows most people need. The rest, like the look, short chat names or updates, waits behind More… in the same box.",
-                 tryText: "Try it: click More…", tried: .more, group: "App"),
-        TourStop(tab: "widget", anchor: "widget.preview", title: "The floating widget, your way",
-                 text: "A small pill over your windows: the 5-hour limit and how full the chat is. Drag an item onto another to swap them, its right edge to make it wider; in the panel, pull a block by the bar over it. The notch and its place are in the box below."),
-        TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The same on the Touch Bar",
-                 text: "Your Touch Bar, live: the whole bar and the short one beside Apple's buttons. Drag a block to move it, its right edge to size it. Claude's questions and permission requests show up there too: answer with a tap."),
-        TourStop(tab: "buttons", anchor: "buttons.list", title: "Your own buttons",
-                 text: "A phrase, a /command, a key or a link, on the Touch Bar and in the widget, all of them behind Commands. A tap sends it to the chat you're in, or puts text in for you to finish."),
-        TourStop(tab: "stats", anchor: "stats.limits", title: "Your week in numbers",
-                 text: "The 5-hour limit and the weekly one, and below them your sessions, time and projects. Blue is fine, orange from 70%, red from 90%."),
+        TourStop(tab: "general", anchor: "vscode", title: "VS Code: Set Up",
+                 text: "Claude's panel in VS Code doesn't pass the limit on. Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat, no window switched. For chats opened after it.",
+                 group: "Claude", only: { Setup.hasVSCode }),
+        TourStop(tab: "general", anchor: "claudeai", title: "Cowork and claude.ai: Sign In",
+                 text: "Cowork runs in the cloud, out of the hooks' reach. Sign In to claude.ai here: Cowork tasks and your chats join the list — working, done or waiting for you — and a click opens one in Claude Desktop. The key stays in Keychain.",
+                 group: "Claude"),
+        TourStop(tab: "general", anchor: "codex", title: "Codex (beta)",
+                 text: "Codex chats show up by themselves, read from Codex's own files. Connect adds its hooks, for permission requests on the bar. Codex asks you to trust them once: Trust all, or /hooks.",
+                 group: "Codex", only: { Setup.hasCodex }),
+        TourStop(tab: "widget", anchor: "widget.preview", title: "The widget",
+                 text: "A pill over your windows: the chat, its limit and context. Hover 2 s or click for the panel: chats as tabs, a message line, screenshot, mic, your buttons. Drag it to the top of the screen for the notch. Here: drag to swap, pull an edge to resize."),
+        TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The Touch Bar",
+                 text: "Claude's bar while Terminal, VS Code or Claude is in front. Tap the chat's name to switch chats. Permission requests and Claude's questions come here: answer with a tap. Drag a block to move it, pull its edge to size it."),
+        TourStop(tab: "buttons", anchor: "buttons.list", title: "Your buttons",
+                 text: "A phrase, a /command, a key or a link. A tap sends it to the chat you're in; a text button puts words in for you to finish. They sit on the Touch Bar and in the panel, all of them behind Commands."),
+        TourStop(tab: "general", anchor: "help", title: "Write, speak, show",
+                 text: "Hold the right ⌥ key to dictate into the chat. The screenshot button puts an area of the screen in; files dropped on the widget go with your next message. This tour is here again behind ?."),
     ]
 }
 
