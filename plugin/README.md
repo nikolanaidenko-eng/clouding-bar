@@ -15,8 +15,8 @@ or in the notch — and lets you answer permissions and questions from there.
   in Claude Code (not from Cowork, which runs in a Linux sandbox). Cowork itself doesn't need the
   plugin: to see Cowork tasks in Clouding Bar, open the app's Settings → General → Claude →
   claude.ai → **Sign In…** and sign in to claude.ai in the window that opens; it closes by itself.
-  In Cowork the plugin's guide only helps get the app: with a folder connected to the task it puts the
-  newest .dmg there.
+  In Cowork the plugin's guide only helps get the app: it puts the newest .dmg in your Downloads
+  (asking for access to it) and tells you what to click.
 - Not sure what's next? Ask Claude "walk me through Clouding Bar" (the `guide` skill).
 
 ## What it does
