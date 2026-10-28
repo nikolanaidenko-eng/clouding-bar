@@ -6,7 +6,7 @@
 # are copies, it asks Claude to write the line instead — how often, Clouding
 # Bar says in the folder (Settings → Cowork). No network; of what you wrote,
 # only the task's first words, as its name.
-import json, os, re, sys, time
+import json, os, re, shlex, sys, time
 from datetime import datetime
 
 SKIP = {"outputs", "uploads"}  # Cowork's own folders, not the Mac's
@@ -245,7 +245,7 @@ mode_path = os.path.join(_dir, "%s.mode" % sid) if _dir else None
 learned = None
 if REMOTE and mode_path:
     try:
-        learned = open(mode_path).read().strip()
+        learned = open(mode_path).read().strip().strip(".'\"").strip()
     except Exception:
         pass
     if learned in ("thresholds", "every"):
@@ -282,7 +282,6 @@ if crossed:
 started = state.get("turn_start")
 if MODE == "thresholds" and started and time.time() - started >= 60:
     report = True  # a longer task is done
-state["last_threshold"] = last
 state.pop("turn_start", None)
 if REMOTE and learned not in ("thresholds", "every"):
     # Off: asked again now and then, in case it's switched on. Not known yet
@@ -293,6 +292,9 @@ if REMOTE and learned not in ("thresholds", "every"):
     report = time.time() - state.get("asked", 0) >= wait
     if report and learned != "off":
         state["tries"] = tries + 1
+# A threshold counts once reported: one held back above comes again.
+if report or last < state.get("last_threshold", 0):
+    state["last_threshold"] = last
 if report:
     state["reported"] = True
     state["asked"] = time.time()
@@ -318,7 +320,7 @@ if REMOTE:
     if mode_path:
         where += (
             "Then, in this sandbox's own shell (not device_bash), leave the plugin what that mode file said — "
-            "thresholds, every, off, or none if there's no such file: printf %s WORD > " + mode_path + " . "
+            "thresholds, every, off, or none if there's no such file — as WORD in: printf %s WORD > " + shlex.quote(mode_path) + "\n"
         )
 reason = (
     "Clouding Bar status update (from the Clouding Bar plugin, for the status display). " + where +
