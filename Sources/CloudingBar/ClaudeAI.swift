@@ -195,13 +195,13 @@ final class ClaudeAI {
             self.note("chats: \(chats.count) read, fields \(first?.keys.sorted().joined(separator: ",") ?? "none")")
             self.chats = chats
             self.onChats?(chats)
-            self.fetchContexts(key: key)
+            self.fetchContexts(org: org, key: key)
         }
     }
 
     /// A Cowork task's events: while it works (every 30 s), after a reply
     /// ended, or once if never read.
-    private func fetchContexts(key: String) {
+    private func fetchContexts(org: String, key: String) {
         let now = Date()
         let due = chats.filter { chat in
             guard chat.isCowork, now.timeIntervalSince(chat.lastActive ?? .distantPast) < 3 * 3600 else { return false }
@@ -212,8 +212,13 @@ final class ClaudeAI {
         for chat in due.prefix(3) {
             guard let workspace = chat.workspace else { continue }
             contextRead[chat.uuid] = (now, chat.settledAt)
-            get("/v1/code/sessions/\(workspace)/events?limit=30", key: key,
-                headers: ["anthropic-version": "2023-06-01"]) { [weak self] status, json in
+            // As claude.ai's own page asks (without the organization: 401), newest
+            // first, without the kinds that carry no reply.
+            let skip = ["stream_event", "tool_progress", "tool_use_summary", "keep_alive", "thinking_trace",
+                        "transcript", "env_manager_log"].map { "&exclude_types=" + $0 }.joined()
+            get("/v1/code/sessions/\(workspace)/events?limit=30&sort_order=desc" + skip, key: key,
+                headers: ["anthropic-version": "2023-06-01", "anthropic-beta": "ccr-byoc-2025-07-29",
+                          "anthropic-client-feature": "ccr", "x-organization-uuid": org]) { [weak self] status, json in
                 guard let self else { return }
                 guard status == 200 else {
                     self.note("cowork events: HTTP \(status)")

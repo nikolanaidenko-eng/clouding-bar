@@ -29,7 +29,9 @@ if ! xcrun --find swiftc >/dev/null 2>&1 && [ -d /Applications/Xcode.app/Content
 fi
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" packaging/Info.plist)
-OUT=build/release
+# OUT=… to build elsewhere: in a folder iCloud syncs (Documents) the bundle gets
+# Finder info that codesign refuses ("detritus not allowed").
+OUT=${OUT:-build/release}
 APP="$OUT/Clouding Bar.app"
 DMG="$OUT/Clouding-Bar-$VERSION.dmg"
 PROFILE=${NOTARY_PROFILE:-clouding-bar}
@@ -95,6 +97,7 @@ mv "$OUT/CloudingBar" "$OUT/cloudingbar-hook" "$OUT/cloudingbar-tap" "$OUT/cloud
 cp hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh "$APP/Contents/Resources/hooks/"
 
 echo "Signing…"
+xattr -cr "$APP"
 sign() { codesign --force --options runtime $TIMESTAMP ${KEYCHAIN[@]+"${KEYCHAIN[@]}"} --sign "$IDENTITY" "$@"; }
 sign --identifier dev.cloudingbar.hook "$APP/Contents/MacOS/cloudingbar-hook"
 sign --identifier dev.cloudingbar.tap "$APP/Contents/MacOS/cloudingbar-tap"
