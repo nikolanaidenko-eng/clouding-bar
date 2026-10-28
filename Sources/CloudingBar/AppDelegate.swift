@@ -1588,6 +1588,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let source: String
         switch s.entrypoint {
         case "cowork": source = "Cowork"
+        case "claude-ai": source = "claude.ai"
         case "claude-vscode": source = "VS Code"
         case "cli": source = "Terminal"
         case "claude-desktop": source = "Desktop"
@@ -1595,7 +1596,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         default: source = "Claude Code"
         }
         // A titled chat names its project too; an untitled one is its project.
-        return ([s.title != nil ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
+        // claude.ai's chats have no project ("Cowork · Cowork" was).
+        return ([s.title != nil && !s.fromClaudeAI ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
     }
 
     /// A chat's name on the Touch Bar, Cowork's marked as such (its chats
@@ -2645,6 +2647,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         claudeAI.onChats = { [weak self] chats in self?.store.apply(claudeAI: chats) }
         claudeAI.onContext = { [weak self] uuid, context in self?.store.apply(claudeAIContext: context, chat: uuid) }
+        claudeAI.onRejected = { [weak self] in
+            // Its chats would stay "working" for hours.
+            self?.store.forgetClaudeAI()
+            self?.model.liveKeyRejected = true
+        }
         model.signInClaudeAI = { [weak self] in
             self?.claudeAISignIn.show { key in
                 guard let self, let key else { return }
@@ -2653,7 +2660,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     return
                 }
                 DebugLog.tap("claude.ai signed in")
+                self.setConfig("claudeAIChats", true)
+                self.claudeAI.readChats = true
                 self.model.hasLiveKey = true
+                self.model.liveKeyRejected = false
                 self.model.liveLimitState = "Checking…"
                 self.claudeAI.start()
             }
@@ -2663,13 +2673,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.claudeAI.stop()
             self?.store.forgetClaudeAI()
             self?.model.hasLiveKey = false
+            self?.model.liveKeyRejected = false
             self?.model.liveLimitState = "Off"
             DebugLog.tap("claude.ai signed out, key removed")
         }
         model.hasLiveKey = ClaudeAI.hasKey
         if model.hasLiveKey {
+            // A key pasted before 1.2.8 was given for the limit: the chats
+            // only once you say so (review, 28.10).
+            claudeAI.readChats = config.claudeAIChats == true
             model.liveLimitState = "Checking…"
             claudeAI.start()
+            if config.claudeAIChats == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.askClaudeAIChats() }
+            }
         }
+    }
+
+    /// Once, for a key from before 1.2.8: the chats too, or the limit alone.
+    private func askClaudeAIChats() {
+        let alert = NSAlert()
+        alert.messageText = "Show your Cowork tasks and claude.ai chats too?"
+        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It only reads, only from claude.ai, and keeps the chats' names on this Mac. You can sign out any time in Settings → Connections."
+        alert.addButton(withTitle: "Show Them")
+        alert.addButton(withTitle: "Only the Limit")
+        NSApp.activate(ignoringOtherApps: true)
+        let yes = alert.runModal() == .alertFirstButtonReturn
+        setConfig("claudeAIChats", yes)
+        DebugLog.tap("claude.ai chats: \(yes ? "shown" : "limit only")")
+        claudeAI.readChats = yes
+        if yes { claudeAI.start() }
     }
 }

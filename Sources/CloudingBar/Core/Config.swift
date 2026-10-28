@@ -196,6 +196,10 @@ struct Config: Equatable {
     var buttonColors = "color"
     /// "Not Now" to connecting to Claude Code: don't ask at every launch.
     var setupDeclined = false
+    /// claude.ai's chats read with the key, not the limit alone: true once
+    /// you signed in (1.2.8) or said yes for a key pasted before; nil, not
+    /// asked yet.
+    var claudeAIChats: Bool?
     /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
     /// The island's size in the notch, set by pulling its ends or bottom:
@@ -320,6 +324,7 @@ struct Config: Equatable {
         if let v = obj["appearance"] as? String, ["auto", "light", "dark"].contains(v) { config.appearance = v }
         if let v = obj["buttonColors"] as? String, ["color", "gray"].contains(v) { config.buttonColors = v }
         if let v = obj["setupDeclined"] as? Bool { config.setupDeclined = v }
+        if let v = obj["claudeAIChats"] as? Bool { config.claudeAIChats = v }
         if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
         if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }

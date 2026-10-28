@@ -7,9 +7,9 @@ https://claude.com/docs/plugins/pre-submission-checklist.md, https://claude.com/
 
 - **Name:** Clouding Bar (plugin id `clouding-bar`)
 - **Category:** Productivity (developer tools if offered)
-- **Short description:** Every Claude Code and Cowork chat on your Mac's Touch Bar, a floating pill or the notch; answer permissions and questions from there.
-- **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. No account, no analytics, no server.
-- **Works in:** Claude Code (Mac) and Cowork. Hooks are ignored in Chat (platform-support table), so Chat gets nothing from it.
+- **Short description:** Every Claude Code chat on your Mac's Touch Bar, a floating pill or the notch; answer permissions and questions from there.
+- **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. No account, no analytics, no server. (Cowork tasks show in the Mac app through its own optional claude.ai sign-in, not through this plugin; the plugin never talks to claude.ai.)
+- **Works in:** Claude Code (Mac). In Cowork it only helps install the Mac app (its guide); Cowork's tasks reach the app through the app's own claude.ai sign-in. Hooks are ignored in Chat (platform-support table), so Chat gets nothing from it.
 - **Repository:** https://github.com/nikolanaidenko-eng/clouding-bar, plugin path `plugin`, branch `main`. License: PolyForm Shield 1.0.0.
 - **Icon:** `plugin/.claude-plugin/icon.png` (1024x1024, from the app icon).
 
@@ -20,7 +20,7 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 ## Data handling answers (from README, "Private by design")
 
 - **Reads or stores personal data?** Chat titles and status of the user's own Claude sessions, kept locally in `~/.cloudingbar` on the user's Mac. Never reads Claude Code credentials.
-- **Sends data elsewhere than declared connectors?** No server of ours, no analytics. Exceptions, all user-visible: (1) once a day a plain request to GitHub's public releases list for the update check (can be switched off) and the download on install; (2) optional short chat names: the app runs the user's own `claude -p` with Haiku, so the chat title and first 400 letters of the first message go to Anthropic, same place the chat already goes (switchable off); (3) dictation uses on-device recognition, audio goes to Apple only if the user ticks "Allow sending audio to Apple" (off by default); (4) opt-in "Live limit via claude.ai": session key stays in Keychain, goes only to claude.ai.
+- **Sends data elsewhere than declared connectors?** No server of ours, no analytics. Exceptions, all user-visible: (1) once a day a plain request to GitHub's public releases list for the update check (can be switched off) and the download on install; (2) optional short chat names: the app runs the user's own `claude -p` with Haiku, so the chat title and first 400 letters of the first message go to Anthropic, same place the chat already goes (switchable off); (3) dictation uses on-device recognition, audio goes to Apple only if the user ticks "Allow sending audio to Apple" (off by default); (4) opt-in "claude.ai sign-in (limit, Cowork tasks and chats)": session key stays in Keychain, goes only to claude.ai.
 - **Retention:** local files only, removed by the Uninstall steps in the README; nothing is retained by us.
 - **For people under 18?** No, a developer tool, not aimed at minors.
 

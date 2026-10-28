@@ -1,7 +1,7 @@
 {
   "name": "clouding-bar",
   "version": "1.2.8",
-  "description": "Clouding Bar for Claude on your Mac: see every Claude Code and Cowork chat on the Touch Bar, a floating pill or the notch, and answer permissions and questions from there. /clouding-bar:install gets the app.",
+  "description": "Clouding Bar for Claude on your Mac: see every Claude Code chat on the Touch Bar, a floating pill or the notch, and answer permissions and questions from there. /clouding-bar:install gets the app.",
   "author": {
     "name": "@wvnikola",
     "url": "https://t.me/wvnikola"

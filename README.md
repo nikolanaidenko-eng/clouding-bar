@@ -247,7 +247,8 @@ folder are needed. If you'd like Cowork to fetch the app for you, add the
 plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
 marketplace** → `nikolanaidenko-eng/clouding-bar`), connect a folder to the
 task and ask "walk me through Clouding Bar": it puts the newest .dmg in that
-folder.
+folder. Had the plugin before 1.2.8? Update it there (or remove it): older ones
+still ask Cowork to save its status to a folder, which nothing reads now.
 
 ### From Codex: the plugin
 
@@ -371,8 +372,9 @@ The protocol is written down in [docs/protocol.md](docs/protocol.md).
 
 ### Private by design
 
-Clouding Bar talks only to Claude Code on your Mac. There is no account,
-no analytics, no server. It never reads Claude Code's credentials.
+Clouding Bar talks to Claude Code on your Mac. It has no account of its own,
+no analytics and no server, and it never reads Claude Code's credentials. Its
+only talk with claude.ai is the optional sign-in below, off until you use it.
 
 **Short chat names.** To keep a chat's name short enough for a button, the
 app asks Claude Code's own small model (Haiku), once per chat, for a name of
@@ -402,17 +404,32 @@ never following redirects:
 
 - `/api/organizations` — once;
 - `/api/organizations/{org}/usage` — every minute (the 5-hour and weekly limit);
-- `/api/organizations/{org}/chat_conversations_v2` — every 20 s while a chat
-  runs or waits, else every minute (names and states);
+- `/api/organizations/{org}/chat_conversations_v2` (or the older
+  `chat_conversations`, if claude.ai doesn't know it) — every 20 s while a
+  chat runs or waits, else every minute (names and states);
 - `/v1/code/sessions/{id}/events` — for a Cowork task that is running or just
-  finished (context and model).
+  finished (context and model). This answer holds the task's messages too: the
+  app keeps only the latest reply's model and token counts, in memory, and
+  writes none of the messages to disk or to its log.
 
-Sign In opens a window with claude.ai's own sign-in page; once you're signed
-in, the app takes the session key from that page's cookie, keeps it only in
-the macOS Keychain and closes the window. **Sign Out** deletes the key. The
-key gives full access to your account; it never leaves your Mac except to
-claude.ai. Nothing is written to claude.ai. These addresses aren't an
-official API and may stop working at any time.
+Sign In opens a window with claude.ai's own sign-in pages (and Google's or
+Apple's, if you sign in with one), in a browser store that is thrown away
+when the window closes. Once you're signed in, the app takes the session key
+from that page's cookie, keeps it only in the macOS Keychain and closes the
+window. The key gives full access to your account; it never leaves your Mac
+except to claude.ai. Nothing is written to claude.ai. Signing in starts a new
+login session on your account, as signing in anywhere does (claude.ai may
+email you about it).
+
+The names, states, model and context of the chats shown (those active in the
+last 3 hours; names up to 200 characters) are kept in
+`~/.cloudingbar/sessions.json`, so the list is back after a restart; no
+message text is kept. **Sign Out** deletes the key from your Mac and forgets
+these chats. The login session itself stays valid on claude.ai until it
+expires; to end it at once, log out of all devices in claude.ai's settings.
+A key pasted by hand in a version before 1.2.8 was given for the limit: it
+reads the chats only once you say yes to the question 1.2.8 asks once.
+These addresses aren't an official API and may stop working at any time.
 
 ## Settings
 
@@ -461,7 +478,8 @@ optional.
    `~/.cloudingbar/statusline-original`).
 4. In VS Code, remove `claudeCode.claudeProcessWrapper` if you set it up.
 5. `rm -rf ~/.cloudingbar`. Sign Out of claude.ai in Settings first, or delete
-   the key from Keychain. (Older versions) folders you connected to Cowork may
+   the key from Keychain ("Clouding Bar · claude.ai session key"); to end the
+   login session too, log out of all devices in claude.ai's settings. (Older versions) folders you connected to Cowork may
    hold a `.clouding-bar` folder — safe to delete.
 
 ## Development

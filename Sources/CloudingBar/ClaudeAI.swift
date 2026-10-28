@@ -17,9 +17,15 @@ final class ClaudeAI {
     var onChats: (([ClaudeAIChats.Chat]) -> Void)?
     /// A Cowork task's context (by its chat's uuid).
     var onContext: ((String, ClaudeAIChats.Context) -> Void)?
+    /// claude.ai turned the key down (401, 403): nothing more is asked.
+    var onRejected: (() -> Void)?
+    /// The chats too, not the limit alone: a key pasted before 1.2.8 was
+    /// given for the limit, and reads the chats only once you say so.
+    var readChats = true
 
     private var timer: Timer?
     private var orgId: String?
+    private var nextOrg = Date.distantPast
     private var nextUsage = Date.distantPast
     private var nextChats = Date.distantPast
     private var chats: [ClaudeAIChats.Chat] = []
@@ -27,6 +33,8 @@ final class ClaudeAI {
     private var contextRead: [String: (at: Date, settled: Date?)] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
     private var asking: Set<String> = []
+    /// One more at each stop: an answer to a request from before is dropped.
+    private var generation = 0
     /// The newer list first; the older one if claude.ai doesn't know it.
     private var listPath = "chat_conversations_v2?limit=20&offset=0"
     /// claude.ai said "too many" (429): nothing asked until then, the wait
@@ -103,9 +111,12 @@ final class ClaudeAI {
     func stop() {
         timer?.invalidate()
         timer = nil
+        generation += 1
+        asking = []
         orgId = nil
         chats = []
         contextRead = [:]
+        nextOrg = .distantPast
         nextUsage = .distantPast
         nextChats = .distantPast
     }
@@ -118,6 +129,9 @@ final class ClaudeAI {
         guard let key = Self.readKey() else { stop(); return }
         guard Date() >= pausedUntil else { return }
         guard let org = orgId else {
+            // Once — again only a minute after it didn't work.
+            guard Date() >= nextOrg else { return }
+            nextOrg = Date().addingTimeInterval(60)
             get("/api/organizations", key: key) { [weak self] status, json in
                 guard let self, self.accepted(status, what: "organizations") else { return }
                 // The first organization that can chat (a personal account has one).
@@ -137,7 +151,7 @@ final class ClaudeAI {
             nextUsage = now.addingTimeInterval(60)
             fetchUsage(org: org, key: key)
         }
-        if now >= nextChats {
+        if readChats, now >= nextChats {
             nextChats = now.addingTimeInterval(busy ? 20 : 60)
             fetchChats(org: org, key: key)
         }
@@ -225,6 +239,7 @@ final class ClaudeAI {
         case 401, 403:
             onState?("Signed out by claude.ai (HTTP \(status)). Sign in again.")
             stop()
+            onRejected?()
         default: onState?("claude.ai answered HTTP \(status) (\(what))")
         }
         return false
@@ -253,6 +268,7 @@ final class ClaudeAI {
                      _ done: @escaping (Int, Any?) -> Void) {
         guard let u = URL(string: "https://claude.ai" + path), u.host == "claude.ai",
               asking.insert(path).inserted else { return }
+        let generation = self.generation
         var request = URLRequest(url: u, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.httpMethod = "GET"
         request.setValue("sessionKey=\(key)", forHTTPHeaderField: "Cookie")
@@ -261,9 +277,9 @@ final class ClaudeAI {
         request.httpShouldHandleCookies = false
         Self.session.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
-                self?.asking.remove(path)
                 // Stopped meanwhile (signed out): the answer is dropped.
-                guard let self, self.timer != nil else { return }
+                guard let self, self.generation == generation, self.timer != nil else { return }
+                self.asking.remove(path)
                 let status = error == nil ? (response as? HTTPURLResponse)?.statusCode ?? 0 : 0
                 if status == 429 {
                     self.pausedUntil = Date().addingTimeInterval(self.pause)

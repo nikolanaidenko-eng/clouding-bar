@@ -132,7 +132,8 @@ final class SessionStore {
             session.title = chat.name ?? session.title
             if let model = chat.model { session.model = model }
             if session.desktopChat != chat.page { link(session, desktopChat: chat.page, title: nil) }
-            session.lastEvent = max(session.lastEvent, active)
+            // Working or waiting is now, however long ago it began.
+            session.lastEvent = max(session.lastEvent, chat.running || chat.needsInput != nil ? now : active)
             // Waiting for you, as with a hook's Notification: the turn isn't over.
             let activity: Activity = chat.running || chat.needsInput != nil ? .work : .sleep
             if session.activity != activity {
@@ -207,7 +208,8 @@ final class SessionStore {
         }
         let candidates = alive
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
-        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates, halves: true) } ?? []
+        // A chat from claude.ai's list lives in Claude Desktop, never in this window.
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromClaudeAI }, halves: true) } ?? []
         if let top = ranked.first {
             // The same name on two chats ("Review"): not told apart by it, so on to
             // the one picked or last seen, never the first found (review, 27.10).
@@ -220,13 +222,15 @@ final class SessionStore {
     }
 
     /// The Claude desktop app's chat its window shows: by the chat, else by
-    /// its title.
+    /// its title — only among chats whose page isn't known: one known by its
+    /// page is that page alone, so another chat of a like name shown there
+    /// isn't taken for it (review, 28.10: a queued message went into it).
     func session(inDesktop shown: String?, chat: String? = nil) -> Session? {
         let inApp = alive.filter(\.inDesktopApp)
         if let chat, let s = inApp.first(where: { $0.desktopChat == chat }) { return s }
         guard let shown else { return nil }
         // The closest title; none when two are as close.
-        let scored = inApp.map { s in
+        let scored = inApp.filter { $0.desktopChat == nil }.map { s in
             (score: ([s.desktopTitle].compactMap { $0 } + s.windowTitles).map { Self.titleScore(shown, $0) }.max() ?? 0, session: s)
         }.filter { $0.score > 0 }.sorted { $0.score > $1.score }
         guard let top = scored.first, scored.filter({ $0.score == top.score }).count == 1 else { return nil }
@@ -283,7 +287,8 @@ final class SessionStore {
         // A chat found only in Codex's files has no tab or process to tell
         // its window by: a folder's name alone matched a shell or an editor
         // there, and words went into it. Never in front.
-        let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient })
+        // Nor one from claude.ai's list: it lives in Claude Desktop.
+        let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient && !$0.fromClaudeAI })
         guard let top = ranked.first else { return nil }
         // Short names made two chats' titles equal: words go only to the one chat
         // the title tells, at any score (review, 27.10).

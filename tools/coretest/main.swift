@@ -251,6 +251,14 @@ do {
           "Claude Desktop in front: its chats, the picked one or the latest")
     check(store.focus(windowTitle: nil, sticky: [waiting?.id ?? ""], desktop: true, desktopChat: "/chat/" + id(3))?.id == plain?.id,
           "Claude Desktop shows a chat by its page: that one, over the picked one")
+    // Review, 28.10: Desktop shows an old chat of a like name, not in the list.
+    check(store.session(inDesktop: "Recipe ideas for the week", chat: "/chat/99999999-aaaa-4bbb-8ccc-000000000009") == nil
+          && store.session(inDesktop: "Recipe ideas", chat: nil) == nil,
+          "a chat known by its page isn't taken for another of a like name shown there")
+    store.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "code-recipe", "cwd": "/Users/me/Recipe ideas"]))
+    check(store.session(inWindow: "Recipe ideas — Visual Studio Code")?.id == "code-recipe",
+          "a VS Code window isn't a claude.ai chat's, whatever their names")
+    store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "code-recipe", "cwd": "/Users/me/Recipe ideas"]))
     check(SessionStore.sameTitle("⚡ Блог: черновики постов", "блог: черновики постов")
           && SessionStore.sameTitle("Fix the landing page for the bots, and check", "Fix the landing page for the bots, and…")
           && !SessionStore.sameTitle("Bots", "Bots landing")

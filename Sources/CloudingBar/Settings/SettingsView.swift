@@ -970,10 +970,14 @@ struct GeneralTab: View {
                 }
                 if let message = model.setupMessage { note(message) }
                 SettingsRow(title: "claude.ai: Cowork, chats and limit",
-                            hint: model.hasLiveKey
+                            hint: model.hasLiveKey && model.config.claudeAIChats != true
+                                ? "The whole account's limit · \(model.liveLimitState). Cowork tasks and chats aren't read with this key: Sign Out, then Sign In to show them"
+                                : model.hasLiveKey
                                 ? "Cowork tasks and your chats from the last 3 hours — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
-                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai") {
-                    if model.hasLiveKey {
+                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai",
+                            // The box's last row has no line under it (More… comes only with Codex).
+                            divider: model.hasCodex || !model.accessibilityTrusted) {
+                    if model.hasLiveKey && !model.liveKeyRejected {
                         Button("Sign Out") { model.removeLiveKey() }
                     } else {
                         Button("Sign In…") { model.signInClaudeAI() }
@@ -981,7 +985,8 @@ struct GeneralTab: View {
                 }
                 if !model.accessibilityTrusted {
                     SettingsRow(title: "Accessibility",
-                                hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility") {
+                                hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility",
+                                divider: model.hasCodex) {
                         Button("Open Settings") { model.openAccessibility() }
                     }
                 }

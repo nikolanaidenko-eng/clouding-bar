@@ -323,8 +323,17 @@ Fields used from a conversation: `uuid`, `name`, `model`, `updated_at`,
 request).
 
 Events come newest first. From `assistant` events the app reads
-`payload.message.model` and `payload.message.usage`; the context is
-`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.
+`payload.message.model` and `payload.message.usage` (a subagent's, with a
+`parent_tool_use_id`, aside); the context is
+`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`. The
+answer holds the task's messages too; they are dropped once it's read, never
+kept or logged.
+
+Each chat becomes a session `cowork-<uuid>` (a Cowork task) or
+`claudeai-<uuid>`: `name` → its title, `uuid` → its Desktop page
+(`/chat/<uuid>`), kept in `sessions.json` with its state, model and context.
+Sign Out forgets them. A 429 quiets every request for a minute, doubling up
+to 15.
 
 A chat opens in Claude Desktop by its id: `claude://claude.ai/chat/<uuid>`.
 Only chats active in the last 3 hours are shown.
