@@ -1288,11 +1288,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.tap("connect to Codex")
             do {
                 try Setup.connectCodex()
-                self?.model.setupMessage = Setup.codexPluginActive
+                self?.model.codexMessage = Setup.codexPluginActive
                     ? "Codex already has Clouding Bar's plugin, which brings the hooks: nothing to add. Codex runs them once you trust them (Trust all, or /hooks)."
                     : "Done. Codex runs the hooks only once you trust them: start it and choose Trust all (or run /hooks). A hook added later asks again, for itself only."
             } catch {
-                self?.model.setupMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
+                self?.model.codexMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
             }
             self?.refreshSetupStatus()
         }
@@ -2694,7 +2694,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func askClaudeAIChats() {
         let alert = NSAlert()
         alert.messageText = "Show your Cowork tasks and claude.ai chats too?"
-        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It only reads, only from claude.ai, and keeps the chats' names on this Mac. You can sign out any time in Settings → Connections."
+        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It only reads, only from claude.ai, and keeps the chats' names on this Mac. You can sign out any time in Settings → General → Claude."
         alert.addButton(withTitle: "Show Them")
         alert.addButton(withTitle: "Only the Limit")
         NSApp.activate(ignoringOtherApps: true)

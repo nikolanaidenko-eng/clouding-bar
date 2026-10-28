@@ -302,7 +302,7 @@ Question answered via `PreToolUse`:
 ## Cowork and chats through claude.ai
 
 Cowork tasks and claude.ai / Claude Desktop chats are read from claude.ai,
-once the user signs in (Settings → General → Connections → claude.ai →
+once the user signs in (Settings → General → Claude → claude.ai →
 **Sign In…**). The app takes the `sessionKey` cookie from claude.ai's own
 sign-in page, keeps it only in the macOS Keychain, and sends it as a cookie.
 Only read-only GET requests, only to claude.ai, redirects never followed.

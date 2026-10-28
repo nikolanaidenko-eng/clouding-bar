@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-/// Settings → Connections → claude.ai → Sign In…: claude.ai's own sign-in
+/// Settings → General → Claude → claude.ai → Sign In…: claude.ai's own sign-in
 /// page in a window of ours, with a browser store of its own that nothing
 /// keeps. Once you're signed in, the session key is taken from the page's
 /// cookie, handed on for the Keychain, and the window closes — no key to

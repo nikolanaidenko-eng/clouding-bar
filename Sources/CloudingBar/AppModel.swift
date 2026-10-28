@@ -157,7 +157,7 @@ final class AppModel: ObservableObject {
     /// That session's chat is the window in front (Insert types into it).
     @Published var chatInFront = false
 
-    // Settings → General → Connections → claude.ai: the limit, Cowork tasks
+    // Settings → General → Claude → claude.ai: the limit, Cowork tasks
     // and chats, read with the key its sign-in window takes.
     @Published var hasLiveKey = false
     /// claude.ai turned the key down: Sign In again.
@@ -237,6 +237,8 @@ final class AppModel: ObservableObject {
     @Published var hasVSCode = false
     @Published var vscodeWrapped = false
     @Published var setupMessage: String?
+    /// The same for Codex's Connect, in its own box.
+    @Published var codexMessage: String?
     /// The last Connect failed (`setupMessage` says why).
     var setupFailed = false
     var connectClaude: () -> Void = {}

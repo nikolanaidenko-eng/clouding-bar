@@ -656,7 +656,7 @@ do { // a fresh install, no chat open: the widget's copy in Settings shows examp
     renderView(host, size: NSSize(width: SettingsView.width, height: 560), name: "s-widget-nochat")
 }
 // Every More… starts closed, as on a first run; the *-more renders open them.
-let generalGroups = ["App", "Connections", "Context"]
+let generalGroups = ["App", "Claude", "Codex", "Context"]
 let moreKeys = ["app", "connections", "context", "widget", "shows", "touchbar", "stats"]
 for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
 for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
@@ -666,7 +666,8 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
     if tab == "general" { m.voiceOffline = false; m.config.voiceLanguage = "uk-UA" }
     if tab == "stats" { m.weekPercent = 23; m.weekReset = "Thu 14:00" }
     if tab == "general" { // claude.ai signed in: Cowork's row in Connections
-        m.hasLiveKey = true; m.liveLimitState = "On"
+        m.hasLiveKey = true; m.liveLimitState = "On"; m.config.claudeAIChats = true
+        m.hasCodex = true; m.codexConnected = true; m.codexServerState = "Connected"
     }
     m.hasNotch = tab == "widget"
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
@@ -702,7 +703,7 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
         renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560), name: "s-general-open")
         renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560),
                    name: "s-general-open-light", light: true)
-        SettingsFolds.shared.show("Connections")
+        SettingsFolds.shared.show("Claude")
         renderView(NSHostingView(rootView: SettingsView(model: m, tab: tab)), size: NSSize(width: SettingsView.width, height: 560), name: "s-general-open2")
         SettingsFolds.shared.reset()
     }

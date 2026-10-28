@@ -13,7 +13,7 @@ or in the notch — and lets you answer permissions and questions from there.
   install **clouding-bar** (the Chat tab ignores hooks). The Mac app comes separately —
   the .dmg from <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>, or `/clouding-bar:install`
   in Claude Code (not from Cowork, which runs in a Linux sandbox). Cowork itself doesn't need the
-  plugin: to see Cowork tasks in Clouding Bar, open the app's Settings → General → Connections →
+  plugin: to see Cowork tasks in Clouding Bar, open the app's Settings → General → Claude →
   claude.ai → **Sign In…** and sign in to claude.ai in the window that opens; it closes by itself.
   In Cowork the plugin's guide only helps get the app: with a folder connected to the task it puts the
   newest .dmg there.
