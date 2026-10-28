@@ -242,8 +242,8 @@ Cowork tasks then show up in the chats list. No plugin and no connected
 folder are needed. If you'd like Cowork to fetch the app for you, add the
 plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
 marketplace** → `nikolanaidenko-eng/clouding-bar`) and ask a task "walk me
-through Clouding Bar": it puts the newest .dmg in your Downloads (it asks for
-access to the folder) and tells you what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
+through Clouding Bar": it gives you the link to the newest .dmg and tells you
+what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
 still ask Cowork to save its status to a folder, which nothing reads now.
 
 ### For Codex
