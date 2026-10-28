@@ -336,7 +336,8 @@ Sign Out forgets them. A 429 quiets every request for a minute, doubling up
 to 15.
 
 A chat opens in Claude Desktop by its id: `claude://claude.ai/chat/<uuid>`.
-Only chats active in the last 3 hours are shown.
+Shown: chats at work, waiting for you, or active in the last half hour (3 hours
+till 28.10). One archived (`is_archived`) or no longer in the list is dropped at once.
 
 Older versions wrote `.clouding-bar/cowork-<session>.json` into folders
 connected to a Cowork task. Nothing writes or reads them now; they are safe

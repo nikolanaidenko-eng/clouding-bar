@@ -274,6 +274,42 @@ do {
     check(task?.activity == .sleep && task?.finishedAt != nil, "a task's reply ends: done, your turn")
     store.forgetClaudeAI()
     check(!store.sessions.keys.contains { $0.hasPrefix("cowork-") || $0.hasPrefix("claudeai-") }, "signed out: its chats are gone")
+    // Closed chats leave the list (owner, 28.10)
+    store.apply(claudeAI: chats, now: now)
+    var archived = chats
+    archived[2].archived = true
+    store.apply(claudeAI: archived, now: now)
+    store.prune()
+    check(store.sessions["claudeai-" + id(3)] == nil && store.sessions["cowork-" + id(1)] != nil, "claude.ai: a chat archived there is gone at once")
+    store.apply(claudeAI: [], now: now)
+    store.prune()
+    check(store.sessions["cowork-" + id(2)] != nil, "claude.ai: an empty list (or one not read right) takes nothing away")
+    store.apply(claudeAI: Array(chats.prefix(1)), now: now)
+    check(store.prune().contains("cowork-" + id(2)) && store.sessions["cowork-" + id(1)] != nil,
+          "claude.ai: one its list no longer has (deleted) too, through prune (what it asked goes with it)")
+    check(store.sessions["cowork-" + id(1)]?.isAlive(now: now.addingTimeInterval(25 * 60)) == true
+          && store.sessions["cowork-" + id(1)]?.isAlive(now: now.addingTimeInterval(31 * 60)) == false,
+          "claude.ai: a chat that's done is shown for half an hour, not three hours")
+    var stale = chats[2]
+    stale.updatedAt = now.addingTimeInterval(-40 * 60)
+    store.apply(claudeAI: [stale], now: now)
+    check(store.sessions["claudeai-" + id(3)] == nil, "claude.ai: one last active 40 minutes ago isn't shown")
+    store.forgetClaudeAI()
+
+    // One Claude process, one chat (owner, 28.10): another chat opened in its tab, the one before is gone
+    let tab = SessionStore()
+    func start(_ id: String, _ entry: String, pid: Int32, at: Date = Date()) {
+        tab.apply(Inbound(raw: ["session_id": id, "hook_event_name": "SessionStart", "cwd": "/Users/me/proj",
+                                "claude_entrypoint": entry, "claude_pid": Int(pid)]), now: at)
+    }
+    start("old-chat", "claude-vscode", pid: getpid(), at: Date().addingTimeInterval(-60))
+    start("new-chat", "claude-vscode", pid: getpid())
+    start("terminal-chat", "cli", pid: getppid())
+    start("desktop-chat", "claude-desktop", pid: getppid(), at: Date().addingTimeInterval(-60))
+    tab.prune()
+    check(tab.sessions["old-chat"] == nil && tab.sessions["new-chat"] != nil, "one process: the older chat on it is gone")
+    check(tab.sessions["terminal-chat"] != nil && tab.sessions["desktop-chat"] != nil,
+          "one process: another process's chat stays, and Claude Desktop's are left as they are")
 
     // Stats keep what the plugin reported before 1.2.8.
     let hour = 500_000
@@ -860,6 +896,30 @@ do {
         check(!idle.isAlive(), "codex files: a chat whose file stopped changing is gone after a quarter of an hour")
         idle.activity = .work
         check(idle.isAlive(), "codex files: an hour while a turn is on")
+        // Closed in its terminal (28.10): gone at the next look, not after its file goes stale
+        let termId = "019a0000-0000-7000-8000-000000000011"
+        let termPath = dir.appendingPathComponent(rollName(termId)).path
+        write([meta(termId, "codex_cli_rs", #""cli""#), event(now, #"{"type":"task_complete","turn_id":"x"}"#)], to: termPath, modified: now)
+        let tabs = SessionStore()
+        var tabOpen = ["/Users/me/proj"]
+        tabs.codexTerminalFolders = { tabOpen }
+        tabs.pollCodexRollouts()
+        spin { tabs.sessions[termId] != nil }
+        check(tabs.sessions[termId]?.codexHost == "Terminal", "codex files: a chat of Codex in a terminal")
+        tabs.prune()
+        check(tabs.sessions[termId] != nil && tabs.sessions[ids[4]] != nil, "codex files: kept while a Codex runs in its folder")
+        // Review, 28.10: `codex -C proj` started in ~ runs in ~, its chat says proj
+        tabOpen = ["/Users/me"]
+        tabs.prune()
+        check(tabs.sessions[termId] != nil, "codex files: a Codex in a folder no chat has may be its: kept, its file decides")
+        tabOpen = []
+        tabs.prune()
+        check(tabs.sessions[termId] == nil, "codex files: its terminal's Codex closed: gone, its file fresh or not")
+        check(tabs.sessions[ids[4]] != nil, "codex files: a VS Code one stays (its Codex has no terminal to look for)")
+        tabs.pollCodexRollouts()
+        spin({ tabs.sessions[termId] != nil }, seconds: 0.6)
+        check(tabs.sessions[termId] == nil, "codex files: and isn't brought back by its file")
+        try? fm.removeItem(atPath: termPath)
 
         // Never typed into (review, 27.10): a shell or an editor on its folder isn't its window
         let typing = SessionStore()

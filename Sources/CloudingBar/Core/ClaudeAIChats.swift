@@ -20,12 +20,18 @@ enum ClaudeAIChats {
         /// When its last reply ended.
         var settledAt: Date?
         var updatedAt: Date?
+        /// Archived in claude.ai or Claude Desktop: not shown.
+        var archived = false
 
         var isCowork: Bool { workspace != nil }
         var lastActive: Date? { [updatedAt, settledAt, runningSince].compactMap { $0 }.max() }
         /// Its page in Claude Desktop, as DesktopChat reads it.
         var page: String { "/chat/" + uuid }
     }
+
+    /// How long a chat that's done is shown after it was last active (3 hours
+    /// till 28.10; owner: closed chats stayed in the list).
+    static let recent: TimeInterval = 30 * 60
 
     /// What claude.ai shows a chat in, by the session id the app keeps.
     static func sessionId(_ chat: Chat) -> String { (chat.isCowork ? "cowork-" : "claudeai-") + chat.uuid }
@@ -47,6 +53,7 @@ enum ClaudeAIChats {
             }
             chat.settledAt = date(o["last_settled_at"])
             chat.updatedAt = date(o["updated_at"])
+            chat.archived = o["is_archived"] as? Bool == true
             return chat
         }
     }

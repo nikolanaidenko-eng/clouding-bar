@@ -217,8 +217,8 @@ final class Session {
         if ambient {
             return now.timeIntervalSince(lastSeen) < (activity == .work ? CodexRollouts.freshness : CodexRollouts.freshness / 4)
         }
-        // A chat from claude.ai's list: shown while it was active in the last 3 hours.
-        return now.timeIntervalSince(lastSeen) < (fromClaudeAI ? 3 : 12) * 3600
+        // A chat from claude.ai's list: shown while it was active in the last half hour.
+        return now.timeIntervalSince(lastSeen) < (fromClaudeAI ? ClaudeAIChats.recent : 12 * 3600)
     }
 
     // MARK: Persistence

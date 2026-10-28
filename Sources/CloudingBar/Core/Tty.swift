@@ -20,9 +20,15 @@ enum Tty {
         guard !folders.isEmpty else { return [] }
         var real: [String: String] = [:]
         for f in folders { real[realPath(f)] = f }
+        return Set(codexTerminalFolders().compactMap { real[$0] })
+    }
+
+    /// Where every Codex program in a terminal runs, as the kernel gives the
+    /// folder (`codex -C dir` keeps the one it was started in).
+    static func codexTerminalFolders() -> [String] {
         var pids = [pid_t](repeating: 0, count: 4096)
         let n = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))) // a count of pids
-        var open = Set<String>()
+        var running: [String] = []
         for pid in pids.prefix(max(0, min(n, pids.count))) where pid > 1 {
             var info = kinfo_proc()
             var size = MemoryLayout<kinfo_proc>.stride
@@ -38,13 +44,13 @@ enum Tty {
             let cwd = withUnsafePointer(to: &path.pvi_cdir.vip_path) {
                 $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
             }
-            if let f = real[cwd] { open.insert(f) }
+            running.append(cwd)
         }
-        return open
+        return running
     }
 
     /// The path as the kernel gives a process's folder ("/private/tmp/x").
-    private static func realPath(_ path: String) -> String {
+    static func realPath(_ path: String) -> String {
         guard let p = realpath(path, nil) else { return path }
         defer { free(p) }
         return String(cString: p)

@@ -163,9 +163,10 @@ A first version for **Windows** is in [windows/](windows/README.md).
   what doesn't work.
 
 **And**
-- A **tour** on first launch (and behind the ? in Settings): seven stops
-  through the settings window — it dims but for one thing at a time, a card
-  says what it is and what to try, and Cloud hops onto it.
+- A **tour** on first launch (and behind the ? in Settings): what to
+  connect where — Claude Code, VS Code, claude.ai for Cowork, Codex — then
+  the widget, the Touch Bar and your buttons. It dims the settings window but
+  for one thing at a time, a card says what it does, and Cloud hops onto it.
 - **Everything is optional**: each number, detail and control has its own
   switch in Settings. What most people need is up front; the rest waits
   behind **More**.
@@ -421,8 +422,8 @@ except to claude.ai. Nothing is written to claude.ai. Signing in starts a new
 login session on your account, as signing in anywhere does (claude.ai may
 email you about it).
 
-The names, states, model and context of the chats shown (those active in the
-last 3 hours; names up to 200 characters) are kept in
+The names, states, model and context of the chats shown (those at work,
+waiting for you or active in the last half hour; names up to 200 characters) are kept in
 `~/.cloudingbar/sessions.json`, so the list is back after a restart; no
 message text is kept. **Sign Out** deletes the key from your Mac and forgets
 these chats. The login session itself stays valid on claude.ai until it
