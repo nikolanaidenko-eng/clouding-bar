@@ -5,9 +5,17 @@ description: What Clouding Bar can do and how to set it up, in Cowork or in Clau
 
 # Walking someone through Clouding Bar
 
-Answer in the user's language and keep it short: what it does in a few lines, then the setup
-steps for where they are right now. Don't run commands or change files, except putting the installer
-in a connected folder in Cowork (below).
+**First see where you are — never ask the user.** Run `uname -s; echo "$CLAUDE_CODE_ENTRYPOINT"`:
+
+- `Linux` — Cowork, in its sandbox (`remote_cowork`: Cowork in the cloud, where the Mac is
+  reached only through device tools such as `device_bash`). Follow **In Cowork**.
+- `Darwin` — Claude Code on a Mac (the terminal, VS Code or Claude Desktop's Code tab). Follow
+  **In Claude Code**.
+
+Give only the steps for where you are: never the other place's, never "tell me where you are".
+Then, in the user's language: two or three lines on what Clouding Bar does (not the whole list
+below), and in the same reply get them set up — in Cowork, put the installer in their Downloads
+right away. Don't run anything else or change other files.
 
 ## What it is
 
@@ -23,13 +31,6 @@ or in the notch — and lets you answer from there.
   chat; dictation too.
 - A heads-up when another chat finishes; stats of how much you used.
 
-## Where are you?
-
-- **Cowork** — this chat runs in Cowork's Linux sandbox, with the task's folders under `mnt/`.
-  Follow "In Cowork".
-- **Claude Code on a Mac** — the terminal, VS Code or Claude Desktop's Code tab. Follow
-  "In Claude Code".
-
 ## In Cowork
 
 The Mac app does the work here; this plugin does nothing in Cowork. What's left happens on the Mac.
@@ -39,9 +40,9 @@ Where the folders are: in Cowork on the Mac, under `mnt/` here. In Cowork in the
 computer, under `~/mnt/` for the tool that runs commands there (`device_bash`); do anything with
 them through that tool.
 
-**Getting the app.** If Clouding Bar is already on this Mac (from Claude Code or a .dmg), skip to
-"See Cowork tasks". Otherwise put the installer on the user's Mac yourself — don't wait to be
-asked, don't send them to GitHub, and don't ask them to type anything to you. It can't be
+**Getting the app.** Unless they said it's on their Mac already (you can't see its Applications
+from here), put the installer on their Mac yourself — don't wait to be asked, don't send them to
+GitHub or to Claude Code, and don't ask them to type anything to you. It can't be
 installed from Cowork itself (there's no macOS here, so `/clouding-bar:install` won't work in this chat).
 
 1. **A folder on the Mac to put it in.** Downloads is the one to use. In Cowork in the cloud, ask
@@ -85,7 +86,7 @@ answered there (Claude Desktop's window has to be on the current desktop).
    to `~/.claude/settings.json`, and in VS Code a small wrapper), then allow Accessibility.
 3. Chats that were already open show up after `/reload-plugins` in them, or in a new chat.
 
-## Good to know
+## Good to know (only if they ask)
 
 - No account, no analytics, no server of its own. The plugin itself uses no network, except
   `/clouding-bar:install` downloading the app from GitHub.
