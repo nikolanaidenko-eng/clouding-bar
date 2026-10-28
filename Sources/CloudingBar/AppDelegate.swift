@@ -112,7 +112,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         chmod(Config.directory.path, 0o700)
         Config.moveTemplates()
         config = Config.load()
-        MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
         setUpMainMenu()
         setUpMenuBarItem()
         _ = KeySender.ensureTrusted() // macOS's Accessibility prompt, the first time
@@ -121,7 +120,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store.load()
         SessionTitle.prune(base: Config.directory)
         store.onChange = { [weak self] in self?.setNeedsRefresh() }
-        store.onCloudWave = { [weak self] in self?.cloudWavesBack() }
 
         // Hooks, the status line and the tap talk to the app here.
         let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in
@@ -1382,7 +1380,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func reloadConfig() {
         config = Config.load()
-        MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
         refresh()
     }
 
@@ -1483,7 +1480,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Config.save(key, value)
         config = Config.load()
-        MascotView.color = CloudColor(rawValue: config.cloudColor) ?? .classic
         if key == "coworkMode", let mode = value as? String {
             Cowork.setMode(mode, folders: watchedCoworkFolders)
         }
@@ -1637,28 +1633,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return (frontApp?.bundleIdentifier ?? "") + "|" + (shown ?? "")
     }
 
-    // MARK: - ☁️
-
-    /// Claude put ☁️ in a reply, the first in its chat (the note in
-    /// MascotView.swift says why): Cloud waves back in the widget and on the
-    /// Touch Bar, and climbs out of the screen's corner to say so. The very
-    /// first time, that's an achievement: Cloud's colours, in Settings → Widget.
-    private func cloudWavesBack() {
-        model.cloudWaves += 1
-        touchBar.barView.waveCharacter()
-        let first = !config.achievements.contains("claude-wave")
-        DebugLog.note(first ? "☁️ Claude waved: achievement unlocked" : "☁️ Claude waved, Cloud waves back")
-        if first { setConfig("achievements", config.achievements + ["claude-wave"]) }
-        guard !config.doNotDisturb || first else { return }
-        let alert = first
-            ? DoneBubbleController.Alert(kind: .achievement, id: "achievement", name: "Achievement: A wave from Claude",
-                                         detail: "Thanks for using Clouding Bar! Cloud's colours are unlocked — click to pick one.",
-                                         color: 0xFFD60A)
-            : DoneBubbleController.Alert(kind: .wave, id: "wave", name: "Claude waved ☁️",
-                                         detail: "Cloud waves back", color: 0x64A8FF)
-        doneBubble.show(alert, anchor: nil)
-    }
-
     // MARK: - Another chat done
 
     /// Chats that finished while another was shown, waiting their turn to be
@@ -1673,12 +1647,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bubble.onOpen = { [weak self] id in
             guard let self else { return }
             switch id {
-            case "achievement":
-                DebugLog.tap("achievement: open settings")
-                self.model.settingsTabRequest = "widget"
-                self.openSettings()
-            case "wave":
-                break
             default:
                 DebugLog.tap("done elsewhere: open")
                 self.endDone()

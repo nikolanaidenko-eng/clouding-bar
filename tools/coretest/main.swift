@@ -505,37 +505,6 @@ do { // a turn that ended on an API error: no Stop comes, the chat is free again
     store.apply(Inbound(raw: ["session_id": "sf", "hook_event_name": "StopFailure", "cwd": "/Users/me/p", "claude_pid": Int(getpid())]))
     check(store.sessions["sf"]?.activity == .sleep, "hooks: StopFailure ends the turn like Stop")
 }
-do { // ☁️ in Claude's words just now: Cloud waves back, once a chat; old replies and code don't count
-    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
-    let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    func reply(_ blocks: String, at date: Date = Date()) -> String {
-        #"{"type":"assistant","timestamp":"\#(f.string(from: date))","message":{"id":"\#(UUID().uuidString)","model":"claude-opus-5-5","content":\#(blocks),"usage":{"input_tokens":1,"output_tokens":1}}}"#
-    }
-    /// One chat's transcript, growing by each batch of replies: whether each look waved.
-    func waves(_ batches: [String]...) -> [Bool] {
-        let file = dir.appendingPathComponent("wave-\(UUID().uuidString).jsonl")
-        let watcher = TranscriptWatcher()
-        var text = ""
-        return batches.map { replies in
-            text += replies.map { $0 + "\n" }.joined()
-            try? text.write(to: file, atomically: true, encoding: .utf8)
-            var got: [TranscriptWatcher.Update] = []
-            let done = DispatchSemaphore(value: 0)
-            watcher.poll([(id: "w", path: file.path)]) { got = $0; done.signal() }
-            while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
-            return got.first?.waved == true
-        }
-    }
-    let words = #"[{"type":"text","text":"Done ☁️"}]"#
-    let code = #"[{"type":"tool_use","name":"Write","input":{"content":"// ☁️ hello"}}]"#
-    let old = Date().addingTimeInterval(-600)
-    check(waves([reply(words)]) == [true] && waves([reply(words, at: old)]) == [false] && waves([reply(code)]) == [false],
-          "☁️ in a fresh reply's words waves; an old reply or code doesn't")
-    check(waves([reply(words)], [reply(words)]) == [true, false] && waves([reply(words, at: old), reply(words)]) == [false]
-          && waves([reply(code)], [reply(words)]) == [false, true],
-          "Cloud waves back once a chat: not again, nor after an earlier ☁️ (an app restart reads it)")
-}
 do { // a reply counts once, even written again much later; the title is read
     let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
     let file = dir.appendingPathComponent("dupes.jsonl")

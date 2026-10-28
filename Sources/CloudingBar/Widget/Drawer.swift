@@ -328,7 +328,7 @@ struct DrawerView: View {
         let c = DrawerController.character
         VStack(alignment: .leading, spacing: -8) { // Cloud stands on the panel's top edge
             MascotIcon(activity: model.request != nil ? .wait : model.activity, size: c,
-                       awake: anim.awake, pokes: anim.pokes, waves: model.cloudWaves, variant: model.cloudVariant)
+                       awake: anim.awake, pokes: anim.pokes, variant: model.cloudVariant)
                 .frame(width: c, height: c)
                 .overlay(CloudGrip(onMouseDown: drag, onHover: hover))
                 .offset(y: -anim.hop + anim.rise * (c + DrawerController.gap + 6))

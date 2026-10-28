@@ -113,17 +113,14 @@ struct MascotIcon: NSViewRepresentable {
     var awake = false
     /// Goes up by one per poke; each one makes it jump and smile.
     var pokes = 0
-    /// Goes up by one per wave (Claude's ☁️): it sways and smiles.
-    var waves = 0
     /// A chat's Cloud (its colorIndex); nil: the colour picked in Settings.
     var variant: Int?
 
-    final class Coordinator { var pokes = 0; var waves = 0 }
+    final class Coordinator { var pokes = 0 }
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> MascotView {
         context.coordinator.pokes = pokes
-        context.coordinator.waves = waves
         let view = MascotView(size: size)
         view.variant = variant
         return view
@@ -135,10 +132,6 @@ struct MascotIcon: NSViewRepresentable {
         if pokes != context.coordinator.pokes {
             context.coordinator.pokes = pokes
             view.poke()
-        }
-        if waves != context.coordinator.waves {
-            context.coordinator.waves = waves
-            view.wave()
         }
     }
 }
@@ -857,7 +850,7 @@ struct MainPanel: View {
         // One line (a chat's name): centred on Cloud and the button.
         return HStack(alignment: several || !model.hasSession ? .top : .center, spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
+                MascotIcon(activity: model.activity, size: 28, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
@@ -1848,7 +1841,7 @@ struct ChatsPanel: View {
     private var header: some View {
         HStack(spacing: 10) {
             if !state.hidesHeaderCharacter {
-                MascotIcon(activity: model.activity, size: 28, waves: model.cloudWaves, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
+                MascotIcon(activity: model.activity, size: 28, variant: model.cloudVariant).frame(width: 28, height: 28).cloudOut(model.cloudOut)
             }
             PanelTabs(state: state)
             Spacer(minLength: 0)

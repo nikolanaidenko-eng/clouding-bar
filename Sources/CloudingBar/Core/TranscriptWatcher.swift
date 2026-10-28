@@ -40,9 +40,6 @@ final class TranscriptWatcher {
         var codexTokens: (input: Int, output: Int)?
         /// The file's first line, read when it is first looked at.
         var codexMeta: CodexRollout.Meta?
-        /// A reply of the last minute with ☁️ in its words, the chat's first:
-        /// Claude waving at Cloud (see the note in MascotView.swift).
-        var waved = false
     }
 
     private struct State {
@@ -65,10 +62,6 @@ final class TranscriptWatcher {
         var edits = Set<String>()
         var aiTitle: String?
         var customTitle: String?
-        /// Claude has put ☁️ in this chat before (read from the whole file,
-        /// so it holds after a restart): Cloud waves back once a chat — a
-        /// fork worked on with Claude would get it every reply (owner, 24.10).
-        var waved = false
     }
 
     private let queue = DispatchQueue(label: "cloudingbar.transcripts", qos: .utility)
@@ -79,7 +72,6 @@ final class TranscriptWatcher {
     private static let chunk = 8 << 20
 
     private static let assistantMark = Data(#""type":"assistant""#.utf8)
-    private static let cloudMark = Data("☁".utf8)
     private static let stamp: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -281,19 +273,6 @@ final class TranscriptWatcher {
             if isInterrupt, obj["type"] as? String == "user" {
                 update.interrupted = true
                 continue
-            }
-            // ☁️ in what Claude says (not in code it writes): the chat's
-            // first, and just now.
-            if isAssistant, !state.waved, line.range(of: Self.cloudMark) != nil,
-               let blocks = (obj["message"] as? [String: Any])?["content"] as? [[String: Any]],
-               // ☁ itself, with or without the emoji selector after it
-               blocks.contains(where: { $0["type"] as? String == "text"
-                   && ($0["text"] as? String)?.unicodeScalars.contains("\u{2601}") == true }) {
-                state.waved = true
-                if let when = (obj["timestamp"] as? String).flatMap(Self.stamp.date(from:)),
-                   Date().timeIntervalSince(when) < 60 {
-                    update.waved = true
-                }
             }
             // The turn ended on an API error (the Mac slept, the network
             // dropped, the limit): no Stop comes, like an interrupt (review, 27.10).

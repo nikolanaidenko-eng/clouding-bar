@@ -88,7 +88,7 @@ struct SettingsView: View {
                 model.settingsTabRequest = nil
             }
         }
-        // Asked to show a tab (an achievement's bubble: Widget).
+        // Asked to show a tab (from the widget's menu buttons: Buttons).
         .onChange(of: model.settingsTabRequest) { request in
             guard let request else { return }
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { tab = Self.resolve(request) }
@@ -1117,10 +1117,7 @@ struct WidgetTab: View {
                             .disabled(model.config.widgetPosition == nil)
                     }
                 }
-                // Cloud's colour is unlocked by a wave from Claude (a ☁️), and
-                // is there with the widget off: More… is too (owner, 27.10).
-                let cloudColour = model.config.achievements.contains("claude-wave")
-                MoreRows("widget", count: (model.config.widget ? 4 : 0) + (cloudColour ? 1 : 0)) {
+                MoreRows("widget", count: model.config.widget ? 4 : 0) {
                     if model.config.widget {
                         SettingsRow(title: "Follow the chat at work", hint: "When the one shown is done, it says so, then shows the one still working") {
                             CBSwitch(title: "Follow the chat at work", on: binding("followWorking") { $0.followWorking })
@@ -1134,26 +1131,6 @@ struct WidgetTab: View {
                         }
                         SettingsRow(title: "Open on hover", hint: "Off: click the pill to open it") {
                             CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
-                        }
-                    }
-                    if cloudColour {
-                        SettingsRow(title: "Cloud's colour", hint: "Unlocked by a wave from Claude ☁️ · in the widget and on the Touch Bar") {
-                            HStack(spacing: 8) {
-                                ForEach(CloudColor.allCases) { c in
-                                    let picked = model.config.cloudColor == c.rawValue
-                                    Button { model.setConfig("cloudColor", c.rawValue) } label: {
-                                        Circle()
-                                            .fill(Color(c.skin))
-                                            .frame(width: 20, height: 20)
-                                            .overlay(Circle().stroke(Color.accentColor, lineWidth: picked ? 2.5 : 0).padding(-3))
-                                            .overlay(Circle().stroke(Color.black.opacity(0.15), lineWidth: 0.5))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .help(c.label)
-                                    .accessibilityLabel(c.label + (picked ? ", picked" : ""))
-                                }
-                            }
-                            .padding(.trailing, 4)
                         }
                     }
                 }
