@@ -32,7 +32,15 @@ or in the notch — and lets you answer from there.
 
 ## In Cowork
 
-The plugin already does its part here. What's left happens on the Mac:
+The plugin already does its part here. What's left happens on the Mac.
+
+First check `mnt/`: if no folder from the user's Mac is connected to this task, say that first —
+connect one (any folder they work in, there's no special Clouding Bar folder; in Cowork's
+folder picker). Without one, Clouding Bar has nowhere to read the task from, and there's nowhere
+to put the installer.
+
+One Clouding Bar app serves Claude Code, Cowork and Codex. If it's already on this Mac (from
+Claude Code or a .dmg), skip step 1.
 
 1. **Get the Mac app.** It can't be installed from Cowork — there's no macOS here, so
    `/clouding-bar:install` won't work in this chat. Offer to put the installer in a folder
