@@ -6,7 +6,8 @@ description: What Clouding Bar can do and how to set it up, in Cowork or in Clau
 # Walking someone through Clouding Bar
 
 Answer in the user's language and keep it short: what it does in a few lines, then the setup
-steps for where they are right now. This is an explanation — don't run commands or change files.
+steps for where they are right now. Don't run commands or change files, except downloading the
+installer in Cowork when the user wants it (below).
 
 ## What it is
 
@@ -33,11 +34,19 @@ or in the notch — and lets you answer from there.
 
 The plugin already does its part here. What's left happens on the Mac:
 
-1. **Install the Mac app.** It can't be installed from Cowork — there's no macOS here, so
-   `/clouding-bar:install` won't work in this chat. Download it from
-   <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest> (the
-   `Clouding-Bar-….dmg`), open it and drag Clouding Bar into Applications. Or, in Claude Code on
-   the Mac, run `/clouding-bar:install`.
+1. **Get the Mac app.** It can't be installed from Cowork — there's no macOS here, so
+   `/clouding-bar:install` won't work in this chat. Offer to put the installer in a folder
+   connected to this task, so all the user does is open it on the Mac:
+   ```
+   url=$(curl -fsSL https://api.github.com/repos/nikolanaidenko-eng/clouding-bar/releases/latest \
+     | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].startswith('Clouding-Bar-') and a['name'].endswith('.dmg')][0])")
+   curl -fL "$url" -o "<the connected folder>/${url##*/}"
+   ```
+   Then tell them: open that `Clouding-Bar-….dmg` in Finder and drag Clouding Bar into
+   Applications. If the download is blocked here, give the link instead — it's the official one
+   and always has the newest release: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>
+   (the `Clouding-Bar-….dmg` under Assets). Or, in Claude Code on the Mac: `/clouding-bar:install`.
+   Don't try to install it yourself by controlling the screen: opening the .dmg is quicker.
 2. **Open Clouding Bar.** It asks to connect to Claude Code (say **Connect**) and for
    Accessibility, the one permission it needs.
 3. **Connect a folder to this task**, if none is. The plugin writes the task's status — context
