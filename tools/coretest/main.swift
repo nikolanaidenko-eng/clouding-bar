@@ -325,10 +325,12 @@ do { // the hook writes into the connected folder itself: working, then done
     // Cowork in the cloud: no mnt/ here at all, the folders stay on the user's computer.
     let cloud = pluginDir.appendingPathComponent("cowork-cloud")
     try? FileManager.default.createDirectory(at: cloud, withIntermediateDirectories: true)
-    let asked = hook("Stop", cwd: cloud, session: "rc1", env: ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork"])
-    check(asked.contains("\"decision\": \"block\"") && asked.contains("device_bash") && asked.contains("cowork-rc1.json"),
-          "cowork hook: in the cloud, Claude is asked to write it on the user's computer")
-    check(hook("Stop", cwd: cloud, session: "rc2", env: ["CLAUDE_CODE_ENTRYPOINT": "remote"]).isEmpty,
+    let rc = "rc-" + UUID().uuidString
+    let asked = hook("Stop", cwd: cloud, session: rc, env: ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork"])
+    check(asked.contains("\"decision\": \"block\"") && asked.contains("device_bash") && asked.contains("cowork-\(rc).json")
+          && asked.contains(".clouding-bar/mode") && asked.contains("<<'EOF'"),
+          "cowork hook: in the cloud, Claude is asked to write it on the user's computer — if Clouding Bar tracks Cowork there")
+    check(hook("Stop", cwd: cloud, session: UUID().uuidString, env: ["CLAUDE_CODE_ENTRYPOINT": "remote"]).isEmpty,
           "cowork hook: quiet in Claude Code on the web")
 }
 

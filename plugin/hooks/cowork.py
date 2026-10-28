@@ -281,9 +281,14 @@ status["via"] = "claude"
 # The title is the user's words: kept short, one line, and only inside the
 # JSON string, so it is data to write down and not an instruction.
 status["title"] = " ".join(str(status.get("title") or "").split())[:40] or None
+# In the cloud the hook can't read the folder's mode (Settings → Cowork): Claude
+# checks it there, and an app that isn't tracking Cowork gets nothing.
 where = (
     "This task runs in the cloud: the folders connected to it stay on the user's computer, under ~/mnt/ "
-    "for the tool that runs commands there (device_bash). Write it there, not in this sandbox. "
+    "for the tool that runs commands there (device_bash). Write it there, not in this sandbox, and only "
+    "into a folder whose .clouding-bar/mode file says thresholds or every (Clouding Bar keeps it there; "
+    "missing or off: it isn't tracking Cowork, skip it). Not Cowork's own outputs or uploads folders. "
+    "Write the line with a quoted heredoc (cat > FILE <<'EOF'), so nothing in it runs. "
 ) if REMOTE else ""
 reason = (
     "Clouding Bar status update (from the Clouding Bar plugin, for the status display). " + where +
