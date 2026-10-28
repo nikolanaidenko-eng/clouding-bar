@@ -237,7 +237,9 @@ explains the rest.
 Claude Code needs no plugin then: **Connect** in the app sets it up (or use
 the plugin above). Codex too: Connect adds its hooks when Codex is on the Mac
 (or use the Codex plugin below). Cowork is the one that needs the plugin, in
-Claude Desktop — a plugin in Claude Code doesn't reach Cowork.
+Claude Desktop — a plugin in Claude Code doesn't reach Cowork. The other way
+it does: a plugin installed in Claude Desktop comes to Claude Code with your
+claude.ai account a few minutes later.
 
 ### From Codex: the plugin
 
