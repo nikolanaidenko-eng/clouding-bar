@@ -231,8 +231,13 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 
 Clouding Bar turns its Cowork status on by itself (Settings → Cowork: off,
 thresholds, every reply). Ask Cowork "walk me through Clouding Bar" and it
-explains the rest. A plugin installed in Claude Desktop also comes to Claude
-Code with your claude.ai account, so there you only need the app.
+explains the rest.
+
+**One app, three ways in.** You install the Mac app once, however you get it.
+Claude Code needs no plugin then: **Connect** in the app sets it up (or use
+the plugin above). Codex too: Connect adds its hooks when Codex is on the Mac
+(or use the Codex plugin below). Cowork is the one that needs the plugin, in
+Claude Desktop — a plugin in Claude Code doesn't reach Cowork.
 
 ### From Codex: the plugin
 
