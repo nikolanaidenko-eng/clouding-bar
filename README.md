@@ -173,12 +173,16 @@ A first version for **Windows** is in [windows/](windows/README.md).
   week, the month or everything, your sessions, active time, tokens and
   days in a row, your favourite model and peak hour; every day of the last
   half year as a square (point at one to see it); the projects the time
-  went to — for Claude Code, Cowork or both. From local transcripts (and
-  what the Cowork plugin reports), kept after Claude Code clears old ones.
-- **Cowork** chats show up too, through Clouding Bar's plugin installed in
-  Claude Desktop: it notes each task's name and context in a folder you
-  connected to it, where Clouding Bar picks it up — two tasks in one folder
-  are two chats.
+  went to. From local transcripts, kept after Claude Code clears old ones.
+  Cowork history from older versions stays; new Cowork use isn't counted.
+- **Cowork** tasks and claude.ai / Claude Desktop chats show up too, through
+  your claude.ai account: Settings → General → Connections → claude.ai →
+  **Sign In…**. The chats list shows each one's name and whether it's
+  working, done or waiting for you (a permission or a question); for Cowork
+  tasks also the context and the model. Click one to open it in Claude
+  Desktop. The account-wide 5-hour and weekly limit come with it (Desktop,
+  Cowork and claude.ai chats count too). No plugin, no connected folder,
+  nothing asked of Claude, no extra tokens.
 - **Keeps itself up to date**: once a day it looks on GitHub for a newer
   release and offers it — one click, checked before it's installed.
 
@@ -200,13 +204,11 @@ you get it. What else each place needs:
 | Where you work with Claude | What it needs |
 |---|---|
 | Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
-| Cowork in Claude Desktop | the plugin, installed in Claude Desktop, and the app |
+| Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings. The plugin isn't needed |
 | Codex | the app, then **Connect** in it. The Codex plugin is optional |
 
 - A plugin installed in **Claude Desktop** comes to Claude Code by itself, with
   your claude.ai account, a few minutes later.
-- A plugin installed in **Claude Code** doesn't reach Cowork: there, install
-  it in Claude Desktop too.
 
 ### From Claude Code: the plugin
 
@@ -233,19 +235,19 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 
 ### In Cowork (Claude Desktop)
 
-1. Claude Desktop → **Customize** → **Plugins** → **Add** → **Add marketplace**,
-   and type `nikolanaidenko-eng/clouding-bar`.
-2. Install **clouding-bar** from it — the same plugin as in Claude Code.
-3. Get the Mac app, if you haven't: the [.dmg](#download) below, or
+1. Get the Mac app, if you haven't: the [.dmg](#download) below, or
    `/clouding-bar:install` in Claude Code. (Not from Cowork: it runs in a
    Linux sandbox, not on your Mac.) Open it, say **Connect**, allow
    Accessibility.
-4. Connect a folder to your Cowork task. The plugin writes the task's status
-   there (`.clouding-bar/`), and Clouding Bar reads it — macOS asks once.
+2. Open **Settings → General → Connections → claude.ai → Sign In…** and sign
+   in to claude.ai in the window that opens. It closes by itself.
 
-Clouding Bar turns its Cowork status on by itself (Settings → Cowork: off,
-thresholds, every reply). Ask Cowork "walk me through Clouding Bar" and it
-explains the rest.
+Cowork tasks then show up in the chats list. No plugin and no connected
+folder are needed. If you'd like Cowork to fetch the app for you, add the
+plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
+marketplace** → `nikolanaidenko-eng/clouding-bar`), connect a folder to the
+task and ask "walk me through Clouding Bar": it puts the newest .dmg in that
+folder.
 
 ### From Codex: the plugin
 
@@ -329,8 +331,7 @@ and only once — updates keep them.
 | Screen Recording | the screenshot button | only if you use it |
 
 Clouding Bar doesn't ask for your Documents or Desktop: the git branch of a
-project there is read by the hook, inside Claude Code. (With Cowork on, a
-folder you connected to Cowork there is read by the app, so macOS asks once.)
+project there is read by the hook, inside Claude Code.
 
 ### VS Code
 
@@ -393,12 +394,25 @@ to Apple* (off by default, Settings → General → App), your voice goes to
 Apple's servers for recognition. The **update check**: once a day a plain request to
 GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
-App → More… → Updates turns the check off). And, opt-in, **Settings → General →
-Connections → More… → Live limit via claude.ai**, which reads your account-wide limit (desktop and Cowork chats
-included) from claude.ai with your session key. The key stays in your
-Keychain, behind a helper that answers only Clouding Bar, and goes only to
-claude.ai, at most once a minute. That address isn't an official API and
-may stop working.
+App → More… → Updates turns the check off). And, off until you sign in,
+**Settings → General → Connections → claude.ai → Sign In…**: the app then
+reads your account's limit, Cowork tasks and chats from claude.ai. Only
+read-only GET requests, only to claude.ai, with the session key as a cookie,
+never following redirects:
+
+- `/api/organizations` — once;
+- `/api/organizations/{org}/usage` — every minute (the 5-hour and weekly limit);
+- `/api/organizations/{org}/chat_conversations_v2` — every 20 s while a chat
+  runs or waits, else every minute (names and states);
+- `/v1/code/sessions/{id}/events` — for a Cowork task that is running or just
+  finished (context and model).
+
+Sign In opens a window with claude.ai's own sign-in page; once you're signed
+in, the app takes the session key from that page's cookie, keeps it only in
+the macOS Keychain and closes the window. **Sign Out** deletes the key. The
+key gives full access to your account; it never leaves your Mac except to
+claude.ai. Nothing is written to claude.ai. These addresses aren't an
+official API and may stop working at any time.
 
 ## Settings
 
@@ -410,7 +424,7 @@ as you move the pointer, and walks along the tabs.
   More…: open at login (and with Claude), do not disturb, the dictation
   language, appearance (auto, light, dark), short chat names, colourful or
   grey buttons, updates; the Claude Code connection (and Codex, in beta, the
-  5-hour limit in VS Code, Cowork); the context warning.
+  5-hour limit in VS Code, claude.ai for Cowork and the limit); the context warning.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
   keep the pill visible, open on hover, its position; what it shows (a chip
@@ -423,8 +437,6 @@ as you move the pointer, and walks along the tabs.
 - **Buttons** — your buttons and their shortcuts, a set per project, shown
   on the Touch Bar as you edit them; Commands lists them all, and one can
   be kept only there, out of the row.
-- **Cowork** — how often it reports, the plugin (or its zip, to upload)
-  and its folders; behind More, the claude.ai limit.
 - **Stats** — see above.
 
 Everything is stored in `~/.cloudingbar/config.json`; every key is
@@ -448,8 +460,9 @@ optional.
    (your previous status line command is in
    `~/.cloudingbar/statusline-original`).
 4. In VS Code, remove `claudeCode.claudeProcessWrapper` if you set it up.
-5. `rm -rf ~/.cloudingbar`, and in folders you connected to Cowork, their
-   `.clouding-bar` folder.
+5. `rm -rf ~/.cloudingbar`. Sign Out of claude.ai in Settings first, or delete
+   the key from Keychain. (Older versions) folders you connected to Cowork may
+   hold a `.clouding-bar` folder — safe to delete.
 
 ## Development
 

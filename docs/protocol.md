@@ -299,42 +299,39 @@ Question answered via `PreToolUse`:
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","updatedInput":{"questions":[…],"answers":{…}}}}
 ```
 
-## Cowork status file
+## Cowork and chats through claude.ai
 
-Cowork runs Claude in a machine of its own, so its hooks can't reach the
-app. The `clouding-bar-cowork` plugin (made in Settings → Cowork) works
-around that. Its hooks fire on `UserPromptSubmit` and `Stop`; each time they
-work out the context fill from the transcript and write one line to
-`.clouding-bar/cowork-<session>.json` in the task's connected folders, as
-Cowork mounts them (`<cwd>/mnt/*`, `~/mnt/*`, at most three) — when they
-are shared straight from the Mac (virtiofs, 9p or fuse in `/proc/self/mounts`,
-which is Cowork running on this Mac):
+Cowork tasks and claude.ai / Claude Desktop chats are read from claude.ai,
+once the user signs in (Settings → General → Connections → claude.ai →
+**Sign In…**). The app takes the `sessionKey` cookie from claude.ai's own
+sign-in page, keeps it only in the macOS Keychain, and sends it as a cookie.
+Only read-only GET requests, only to claude.ai, redirects never followed.
+Nothing is written to claude.ai. The addresses are unofficial and can stop
+working at any time.
 
-```json
-{"v":2,"t":1792100000,"session":"…","project":"…","context_tokens":104000,"context_window":200000,"model":"claude-opus-5-5","title":"Bots landing","state":"working"}
-```
+| request | when | used for |
+|---|---|---|
+| `/api/organizations` | once | the organization id |
+| `/api/organizations/{org}/usage` | every minute | the 5-hour and weekly limit |
+| `/api/organizations/{org}/chat_conversations_v2` | every 20 s while a chat runs or waits, else every minute | the chats list |
+| `/v1/code/sessions/{id}/events` | for a Cowork task that is running or just finished | context and model |
 
-`usage` is what the chat spent, by unix hour: `{"<hour>": [tokens, minutes]}`
-— tokens as Stats counts them (fresh input, cache writes, output, each reply
-once), minutes with a reply (5-minute spans). The app keeps it per chat in
-`~/.cloudingbar/cowork-usage.json` for Stats.
+Fields used from a conversation: `uuid`, `name`, `model`, `updated_at`,
+`live_status` (`"running"` or null), `live_status_started_at`, `needs_input`,
+`needs_input_kind` (`"permission"` or `"question"`), `last_settled_at`,
+`workspace_session_id` (set for a Cowork task: the `{id}` of the events
+request).
 
-`title` is the task's title from its transcript, else your first words in
-it (up to 40 characters), so two tasks in one folder are told apart. `state`
-is `working` from your message to Claude's reply, then `done`. A
-`.gitignore` with `*` sits next to it; files of tasks quiet for 3 days are
-removed.
+Events come newest first. From `assistant` events the app reads
+`payload.message.model` and `payload.message.usage`; the context is
+`input_tokens + cache_read_input_tokens + cache_creation_input_tokens`.
 
-Cowork in the cloud works on copies of the folders, which reach the Mac only
-when Claude writes. There the Stop hook asks Claude to write the line to the same
-`.clouding-bar/cowork-<session>.json` (with `"via":"claude"`), as often as the
-mode says: after a task's first reply, at 50, 80, 90% and after a turn of a
-minute or more; or after every reply.
+A chat opens in Claude Desktop by its id: `claude://claude.ai/chat/<uuid>`.
+Only chats active in the last 3 hours are shown.
 
-The app finds the connected folders in Claude Desktop's own records and
-reads every `cowork-*.json` in them every 2 s. Each task is a session
-`cowork-<session>`, which ends after 3 hours without news; a `working` line
-older than 30 minutes counts as done.
+Older versions wrote `.clouding-bar/cowork-<session>.json` into folders
+connected to a Cowork task. Nothing writes or reads them now; they are safe
+to delete.
 
 Claude Desktop's window title doesn't say which chat it shows, so with the
 app in front the widget follows its chats (Cowork, Code): the one you

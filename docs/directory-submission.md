@@ -8,7 +8,7 @@ https://claude.com/docs/plugins/pre-submission-checklist.md, https://claude.com/
 - **Name:** Clouding Bar (plugin id `clouding-bar`)
 - **Category:** Productivity (developer tools if offered)
 - **Short description:** Every Claude Code and Cowork chat on your Mac's Touch Bar, a floating pill or the notch; answer permissions and questions from there.
-- **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. In Cowork it writes one line of status (context use, working or done) to a folder connected to the task. No account, no analytics, no server.
+- **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. No account, no analytics, no server.
 - **Works in:** Claude Code (Mac) and Cowork. Hooks are ignored in Chat (platform-support table), so Chat gets nothing from it.
 - **Repository:** https://github.com/nikolanaidenko-eng/clouding-bar, plugin path `plugin`, branch `main`. License: PolyForm Shield 1.0.0.
 - **Icon:** `plugin/.claude-plugin/icon.png` (1024x1024, from the app icon).
@@ -28,7 +28,7 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 
 1. `plugin/hooks/run.sh` execs `~/.cloudingbar/cloudingbar-hook`, a program outside the plugin, and reads `~/.claude/settings.json` (to step aside). Expect a "held for a reviewer" finding. README explains it.
 2. `scripts/install-app.sh` downloads and installs an app from GitHub (verifies Developer ID signature and notarization). Same: explain in the review notes.
-3. The plugin sits in a subfolder (`plugin/`), so "Scripts the validator couldn't follow" (run.sh calls cowork.py) will probably hold the version. The doc's remedy is a plugin at its own repository root; not done.
+3. The plugin sits in a subfolder (`plugin/`), so "Scripts the validator couldn't follow" will probably hold the version. The doc's remedy is a plugin at its own repository root; not done.
 4. PolyForm Shield is source-available, not OSI open source: check against the Software Directory Policy.
 
 ## What the owner clicks

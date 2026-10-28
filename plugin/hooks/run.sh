@@ -6,7 +6,6 @@
 #   question, and steps aside within two seconds when the app isn't there.
 #   A new session also opens the app if it's closed — or, with no app yet,
 #   says how to get it.
-#   In Cowork (Linux): cowork.py notes the task's context for the app.
 #   Anywhere else: nothing.
 event=$1
 here=$(dirname "$0")
@@ -39,22 +38,6 @@ Darwin)
   fi
   [ -x "$hook" ] && exec "$hook"
   exit 0
-  ;;
-Linux)
-  case "$event" in
-  UserPromptSubmit|Stop) ;;
-  *) exit 0 ;;
-  esac
-  # Cowork only: not WSL, and a mnt/ folder as Cowork lays it out (the
-  # script checks the task's own folder too) — or Cowork in the cloud, whose
-  # folders stay on the user's computer and so aren't in reach here.
-  [ -n "${WSL_DISTRO_NAME:-}" ] && exit 0
-  [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] && exit 0
-  if [ "${CLAUDE_CODE_ENTRYPOINT:-}" != remote_cowork ]; then
-    [ -d "$PWD/mnt" ] || [ -d "$HOME/mnt" ] || exit 0
-  fi
-  command -v python3 >/dev/null 2>&1 || exit 0
-  exec python3 "$here/cowork.py"
   ;;
 *)
   exit 0

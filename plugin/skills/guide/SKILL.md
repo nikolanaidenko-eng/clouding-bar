@@ -12,7 +12,7 @@ in a connected folder in Cowork (below).
 ## What it is
 
 Clouding Bar is a Mac menu bar app (macOS 12 or later). This plugin is only its link to Claude:
-it reports what each chat is doing, and the app shows it — on the Touch Bar, in a floating pill
+it reports what each Claude Code chat is doing, and the app shows it — on the Touch Bar, in a floating pill
 or in the notch — and lets you answer from there.
 
 - Every chat with its own colour, its own Cloud and a short name: working, waiting for you, done.
@@ -32,27 +32,17 @@ or in the notch — and lets you answer from there.
 
 ## In Cowork
 
-The plugin already does its part here. What's left happens on the Mac.
+The Mac app does the work here; this plugin does nothing in Cowork. What's left happens on the Mac.
 
 Where the folders are: in Cowork on the Mac, under `mnt/` here. In Cowork in the cloud
 (`CLAUDE_CODE_ENTRYPOINT` is `remote_cowork`), not here at all — they stay on the user's
 computer, under `~/mnt/` for the tool that runs commands there (`device_bash`); do anything with
 them through that tool.
 
-**Start with the folder — always, before anything else.** Check whether a folder from the
-user's Mac is connected to this task. If none is, the first thing you say is: connect one
-(any folder they work in, there's no special Clouding Bar folder; **+ → Add folder** in Claude
-Desktop). Say why in a line: Clouding Bar sees a Cowork task only through a connected folder, and
-the installer will go into it. Don't lead with downloading the app some other way, or with
-Claude Code: the user came here to use Clouding Bar in Cowork, and without a folder Cowork
-won't reach it anyway.
-
-One Clouding Bar app serves Claude Code, Cowork and Codex. If it's already on this Mac (from
-Claude Code or a .dmg), skip step 1. Claude Code and Codex need no plugin: **Connect** in the
-app sets them up. Cowork needs this plugin in Claude Desktop; from there it also comes to
-Claude Code a few minutes later, but a plugin installed in Claude Code doesn't reach Cowork.
-
-Once a folder is connected:
+**Getting the app.** If Clouding Bar is already on this Mac (from Claude Code or a .dmg), skip to
+"See Cowork tasks". Otherwise a folder is needed, for the installer only: check whether a folder
+from the user's Mac is connected to this task. If none is, say: connect one (any folder they work
+in; **+ → Add folder** in Claude Desktop), because the installer will go into it. Then:
 
 1. **Put the installer in it** — don't wait to be asked; it can't be installed from Cowork
    itself (there's no macOS here, so `/clouding-bar:install` won't work in this chat):
@@ -68,17 +58,15 @@ Once a folder is connected:
    `Clouding-Bar-….dmg` under Assets). Don't try to install it yourself by controlling the
    screen: opening the .dmg is quicker.
 2. **Open Clouding Bar.** It asks to connect to Claude Code (say **Connect**) and for
-   Accessibility, the one permission it needs. macOS asks once to let it read the folder.
-3. Within a minute Clouding Bar marks the folder (`.clouding-bar/mode`) and switches its Cowork
-   status on by itself; from the next reply this task shows up on the bar. How often it reports:
-   Clouding Bar → Settings → Cowork (off, thresholds, every reply).
-4. A question Cowork asks in Claude Desktop shows up on the Touch Bar and in the pill, and can be
-   answered there (Claude Desktop's window has to be on the current desktop).
+   Accessibility, the one permission it needs.
 
-If a hook asks you to write a line to `.clouding-bar/cowork-….json` in a connected folder, that's
-this plugin: Clouding Bar can't reach this task any other way. Do what it asks — that line, and
-in the cloud the one word it asks you to leave in this sandbox — and nothing else; in the cloud
-the line goes in with `device_bash`, into the folder under `~/mnt/` there.
+**See Cowork tasks.** In the app: Settings → General → Connections → claude.ai → **Sign In…**.
+Sign in to claude.ai in the window that opens; it closes by itself. Cowork tasks (and claude.ai
+and Claude Desktop chats) then show up in the chats list, with the account-wide 5-hour limit.
+No plugin, no folder, nothing for you to write.
+
+A question Cowork asks in Claude Desktop shows up on the Touch Bar and in the pill, and can be
+answered there (Claude Desktop's window has to be on the current desktop).
 
 ## In Claude Code
 
