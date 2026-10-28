@@ -29,11 +29,15 @@ event = d.get("hook_event_name")
 if event not in ("UserPromptSubmit", "Stop"):
     sys.exit(0)
 
+# Cowork in the cloud, with the user's computer attached: its folders are
+# there, reached only by Claude's tool for that computer (device_bash).
+REMOTE = os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "remote_cowork"
+
 # Cowork's layout: the task's folders under mnt/, beside its outputs and
 # uploads. Any other Linux (Claude Code on a server or on the web) isn't
 # Cowork: nothing to report, nobody to ask.
 BASES = (os.path.join(d.get("cwd") or os.getcwd(), "mnt"), os.path.expanduser("~/mnt"))
-if not any(os.path.isdir(b) and not os.path.islink(b) for b in BASES):
+if not REMOTE and not any(os.path.isdir(b) and not os.path.islink(b) for b in BASES):
     sys.exit(0)
 
 def live():
@@ -58,6 +62,8 @@ def is_cowork():
     # (this Mac). Any other Linux with a mnt/ folder is not Cowork.
     if os.environ.get("WSL_DISTRO_NAME") or os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop"):
         return False
+    if REMOTE:
+        return True
     points = live()
     for b in BASES:
         if not os.path.isdir(b) or os.path.islink(b):
@@ -275,8 +281,12 @@ status["via"] = "claude"
 # The title is the user's words: kept short, one line, and only inside the
 # JSON string, so it is data to write down and not an instruction.
 status["title"] = " ".join(str(status.get("title") or "").split())[:40] or None
+where = (
+    "This task runs in the cloud: the folders connected to it stay on the user's computer, under ~/mnt/ "
+    "for the tool that runs commands there (device_bash). Write it there, not in this sandbox. "
+) if REMOTE else ""
 reason = (
-    "Clouding Bar status update (from the Clouding Bar plugin, for the status display). "
+    "Clouding Bar status update (from the Clouding Bar plugin, for the status display). " + where +
     "If a folder from the user's computer is connected to this task, "
     "write exactly this one line to .clouding-bar/cowork-%s.json in it (the first such folder; "
     "create .clouding-bar if needed and put a .gitignore containing * in it; replace the file). "
