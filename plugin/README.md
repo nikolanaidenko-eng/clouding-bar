@@ -10,9 +10,13 @@ or in the notch — and lets you answer permissions and questions from there.
   and `/clouding-bar:install`. (Older Claude Code: `/plugin marketplace add nikolanaidenko-eng/clouding-bar`,
   then `/plugin install clouding-bar@clouding-bar`.)
 - Claude Desktop: Customize → Plugins → Add → Add marketplace → `nikolanaidenko-eng/clouding-bar`, then
-  install **clouding-bar** (it works in Cowork; the Chat tab ignores hooks). The Mac app comes separately —
+  install **clouding-bar** (the Chat tab ignores hooks). The Mac app comes separately —
   the .dmg from <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>, or `/clouding-bar:install`
-  in Claude Code (not from Cowork, which runs in a Linux sandbox). Then connect a folder to the Cowork task.
+  in Claude Code (not from Cowork, which runs in a Linux sandbox). Cowork itself doesn't need the
+  plugin: to see Cowork tasks in Clouding Bar, open the app's Settings → General → Connections →
+  claude.ai → **Sign In…** and sign in to claude.ai in the window that opens; it closes by itself.
+  In Cowork the plugin's guide only helps get the app: with a folder connected to the task it puts the
+  newest .dmg there.
 - Not sure what's next? Ask Claude "walk me through Clouding Bar" (the `guide` skill).
 
 ## What it does
@@ -25,11 +29,8 @@ or in the notch — and lets you answer permissions and questions from there.
   question and steps aside within two seconds when the app isn't running. A new session opens
   the app if it's closed. If you connected Clouding Bar the older way (its hook in
   `~/.claude/settings.json`), the plugin stays out of the way: no event twice.
-- **In Cowork**, on every message and reply it writes one line of JSON — the task's context
-  use, working or done — to `.clouding-bar/` in a folder connected to the task, where the app
-  reads it. With Cowork in the cloud it asks Claude to write it (how often: Clouding Bar →
-  Settings → Cowork). Nothing at all when Cowork is off there (in the cloud, where the plugin can't see the folder, it asks Claude to check at most every 30 minutes).
-- Anywhere else (Windows, a Linux server, Claude Code on the web) it does nothing.
+- **In Cowork** the plugin does nothing; the app reads Cowork tasks from claude.ai (see above).
+- Anywhere else (Windows, a Linux server, Cowork, Claude Code on the web) it does nothing.
 
 The 5-hour limit and the context reach the app through its status line, which a plugin can't
 set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, backed up).
