@@ -20,11 +20,11 @@ struct SettingsView: View {
         ("buttons", "Buttons", 0xFF9F0A), ("stats", "Stats", 0x30D158)]
     static let width: CGFloat = 600
 
-    /// A tab asked for by name. Cowork lives in General → Connections now
-    /// (owner, 27.10), in its claude.ai row: asked for, it opens General with that group.
+    /// A tab asked for by name. Cowork lives in General → Claude now
+    /// (owner, 27.10), in its claude.ai row of the Claude box: asked for, it opens General with that box.
     static func resolve(_ request: String) -> String {
         guard request == "cowork" else { return request }
-        SettingsFolds.shared.show("Connections")
+        SettingsFolds.shared.show("Claude")
         return "general"
     }
 
@@ -832,9 +832,9 @@ func settingBinding(_ model: AppModel, _ key: String, _ get: @escaping (Config) 
 
 // MARK: - General
 
-/// Four groups, each with its main rows and the rarer ones behind its own
-/// More… (owner, 27.10). Connections is everything Clouding Bar listens to:
-/// Claude Code, VS Code, Codex and Cowork, once three tabs' worth.
+/// Groups, each with its main rows and the rarer ones behind its own
+/// More… (owner, 27.10). Claude and Codex (a box each, owner 28.10) are
+/// everything Clouding Bar listens to, once three tabs' worth.
 struct GeneralTab: View {
     @ObservedObject var model: AppModel
     @Environment(\.grayButtons) private var gray
@@ -932,7 +932,8 @@ struct GeneralTab: View {
                 }
             }
 
-            SettingsSection(title: "Connections", icon: "link", tint: 0xD97757) {
+            // Claude and Codex, each in a box of its own (owner, 28.10).
+            SettingsSection(title: "Claude", icon: "link", tint: 0xD97757) {
                 SettingsRow(title: model.pluginActive ? "Claude Code: plugin and status line" : "Claude Code: hooks",
                             hint: model.claudeConnected
                                 ? (model.pluginActive ? "Claude Code reports here, through Clouding Bar's plugin" : "Claude Code reports here")
@@ -946,18 +947,6 @@ struct GeneralTab: View {
                     }
                 }
                 .tourAnchor("hooks")
-                if model.hasCodex {
-                    SettingsRow(title: "Codex · beta",
-                                hint: model.codexConnected
-                                    ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
-                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
-                        if model.codexConnected {
-                            Label(model.codexViaPlugin ? "Plugin" : "Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
-                        } else {
-                            Button("Connect") { model.connectCodex() }
-                        }
-                    }
-                }
                 if model.hasVSCode {
                     SettingsRow(title: "VS Code: limit and sending",
                                 hint: "A small wrapper passes on the 5-hour limit, and takes the widget's messages straight into the chat — no window switched · new chats") {
@@ -975,8 +964,8 @@ struct GeneralTab: View {
                                 : model.hasLiveKey
                                 ? "Cowork tasks and your chats from the last 3 hours — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
                                 : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai",
-                            // The box's last row has no line under it (More… comes only with Codex).
-                            divider: model.hasCodex || !model.accessibilityTrusted) {
+                            // The box's last row has no line under it.
+                            divider: !model.accessibilityTrusted) {
                     if model.hasLiveKey && !model.liveKeyRejected {
                         Button("Sign Out") { model.removeLiveKey() }
                     } else {
@@ -986,16 +975,29 @@ struct GeneralTab: View {
                 if !model.accessibilityTrusted {
                     SettingsRow(title: "Accessibility",
                                 hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility",
-                                divider: model.hasCodex) {
+                                divider: false) {
                         Button("Open Settings") { model.openAccessibility() }
                     }
                 }
-                MoreRows("connections", count: model.hasCodex ? 1 : 0) {
-                    if model.hasCodex {
-                        SettingsRow(title: "Codex: live limits and sending",
-                                    hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)") {
-                            CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
+            }
+
+            if model.hasCodex {
+                SettingsSection(title: "Codex", icon: "terminal", tint: 0x8E8E93) {
+                    SettingsRow(title: "Codex · beta",
+                                hint: model.codexConnected
+                                    ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
+                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
+                        if model.codexConnected {
+                            Label(model.codexViaPlugin ? "Plugin" : "Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
+                        } else {
+                            Button("Connect") { model.connectCodex() }
                         }
+                    }
+                    if let message = model.codexMessage { note(message) }
+                    SettingsRow(title: "Codex: live limits and sending",
+                                hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)",
+                                divider: false) {
+                        CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
                     }
                 }
             }

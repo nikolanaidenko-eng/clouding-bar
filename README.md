@@ -176,7 +176,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
   went to. From local transcripts, kept after Claude Code clears old ones.
   Cowork history from older versions stays; new Cowork use isn't counted.
 - **Cowork** tasks and claude.ai / Claude Desktop chats show up too, through
-  your claude.ai account: Settings → General → Connections → claude.ai →
+  your claude.ai account: Settings → General → Claude → claude.ai →
   **Sign In…**. The chats list shows each one's name and whether it's
   working, done or waiting for you (a permission or a question); for Cowork
   tasks also the context and the model. Click one to open it in Claude
@@ -239,7 +239,7 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
    `/clouding-bar:install` in Claude Code. (Not from Cowork: it runs in a
    Linux sandbox, not on your Mac.) Open it, say **Connect**, allow
    Accessibility.
-2. Open **Settings → General → Connections → claude.ai → Sign In…** and sign
+2. Open **Settings → General → Claude → claude.ai → Sign In…** and sign
    in to claude.ai in the window that opens. It closes by itself.
 
 Cowork tasks then show up in the chats list. No plugin and no connected
@@ -397,7 +397,7 @@ Apple's servers for recognition. The **update check**: once a day a plain reques
 GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, off until you sign in,
-**Settings → General → Connections → claude.ai → Sign In…**: the app then
+**Settings → General → Claude → claude.ai → Sign In…**: the app then
 reads your account's limit, Cowork tasks and chats from claude.ai. Only
 read-only GET requests, only to claude.ai, with the session key as a cookie,
 never following redirects:
@@ -440,8 +440,9 @@ as you move the pointer, and walks along the tabs.
 - **General** — each box shows two or three main rows, the rest behind
   More…: open at login (and with Claude), do not disturb, the dictation
   language, appearance (auto, light, dark), short chat names, colourful or
-  grey buttons, updates; the Claude Code connection (and Codex, in beta, the
-  5-hour limit in VS Code, claude.ai for Cowork and the limit); the context warning.
+  grey buttons, updates; Claude (the Claude Code connection, the 5-hour limit
+  in VS Code, claude.ai for Cowork and the limit); Codex, in beta, in a box of
+  its own (its hooks, live limits and sending); the context warning.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
   keep the pill visible, open on hover, its position; what it shows (a chip

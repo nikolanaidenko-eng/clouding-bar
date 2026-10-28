@@ -60,7 +60,7 @@ in; **+ → Add folder** in Claude Desktop), because the installer will go into 
 2. **Open Clouding Bar.** It asks to connect to Claude Code (say **Connect**) and for
    Accessibility, the one permission it needs.
 
-**See Cowork tasks.** In the app: Settings → General → Connections → claude.ai → **Sign In…**.
+**See Cowork tasks.** In the app: Settings → General → Claude → claude.ai → **Sign In…**.
 Sign in to claude.ai in the window that opens; it closes by itself. Cowork tasks (and claude.ai
 and Claude Desktop chats) then show up in the chats list, with the account-wide 5-hour limit.
 No plugin, no folder, nothing for you to write.
