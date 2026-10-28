@@ -246,7 +246,9 @@ do {
     check(task?.contextTokens == 142_288 && task?.contextWindow(override: nil) == 500_000, "…on its session, of 500k")
     check(Cowork.window(model: "claude-sonnet-5-5") == 500_000 && Cowork.window(model: "claude-opus-5-5[1m]") == 1_000_000
           && Cowork.window(model: "claude-haiku-5-5") == 200_000, "Cowork's window: 500k, 1M for [1m], 200k for Haiku")
-    check(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id == task?.id
+    // Working and waiting are both now: the latest is one of the two.
+    check([task?.id, waiting?.id].contains(store.focus(windowTitle: "Claude", sticky: [], desktop: true)?.id)
+          && store.focus(windowTitle: "Claude", sticky: [plain?.id ?? ""], desktop: true)?.id == plain?.id
           && store.focus(windowTitle: "Claude", sticky: [waiting?.id ?? ""], desktop: true)?.id == waiting?.id,
           "Claude Desktop in front: its chats, the picked one or the latest")
     check(store.focus(windowTitle: nil, sticky: [waiting?.id ?? ""], desktop: true, desktopChat: "/chat/" + id(3))?.id == plain?.id,
