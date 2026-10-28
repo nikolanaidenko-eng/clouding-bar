@@ -66,7 +66,7 @@ Nothing was found; ask OpenAI.
 - Short description (≤ 80): Install Clouding Bar, the Mac app that shows Codex on your Touch Bar and notch.
 - Long description: Clouding Bar is a free Mac app that shows your Codex and Claude Code chats at a glance — on the Touch Bar, in a floating pill or in the notch — and lets you answer permission requests from there. This plugin's skill installs the app: it downloads the newest release from GitHub, checks that it is signed with Clouding Bar's Developer ID (Team ID 8RFNMA23CG) and notarized by Apple, and puts it in Applications.
 - Category: Productivity
-- Developer: Nikola Naidenko
+- Developer: Clouding Bar
 - Website / support / source: https://github.com/nikolanaidenko-eng/clouding-bar (issues: https://github.com/nikolanaidenko-eng/clouding-bar/issues)
 - Privacy policy / terms: no page exists yet. The README section "Private by design" (https://github.com/nikolanaidenko-eng/clouding-bar#private-by-design) is the text; a standalone page is needed if the portal insists. Licence: PolyForm Shield 1.0.0.
 - Default prompt: "Install the Clouding Bar app on this Mac"

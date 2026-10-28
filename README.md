@@ -217,13 +217,22 @@ Accessibility. Chats that were already open show up after `/reload-plugins`
 in them, or start a new one. From then on a new Claude session opens
 Clouding Bar if it's closed (Settings → General → Open with Claude).
 
-**Cowork, if you use it:** in Claude Desktop → Customize → Plugins, add the
-same marketplace (`nikolanaidenko-eng/clouding-bar`) and install
-**clouding-bar** — the same plugin, in Cowork too. Clouding Bar turns its
-Cowork status on by itself (Settings → Cowork: off, thresholds, every reply).
-A plugin installed in Claude Desktop also comes to Claude Code with your
-claude.ai account, so there you only need the app: `/clouding-bar:install`,
-or the .dmg below.
+### In Cowork (Claude Desktop)
+
+1. Claude Desktop → **Customize** → **Plugins** → **Add** → **Add marketplace**,
+   and type `nikolanaidenko-eng/clouding-bar`.
+2. Install **clouding-bar** from it — the same plugin as in Claude Code.
+3. Get the Mac app, if you haven't: the [.dmg](#download) below, or
+   `/clouding-bar:install` in Claude Code. (Not from Cowork: it runs in a
+   Linux sandbox, not on your Mac.) Open it, say **Connect**, allow
+   Accessibility.
+4. Connect a folder to your Cowork task. The plugin writes the task's status
+   there (`.clouding-bar/`), and Clouding Bar reads it — macOS asks once.
+
+Clouding Bar turns its Cowork status on by itself (Settings → Cowork: off,
+thresholds, every reply). Ask Cowork "walk me through Clouding Bar" and it
+explains the rest. A plugin installed in Claude Desktop also comes to Claude
+Code with your claude.ai account, so there you only need the app.
 
 ### From Codex: the plugin
 

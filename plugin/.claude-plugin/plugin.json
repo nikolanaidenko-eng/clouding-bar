@@ -1,9 +1,9 @@
 {
   "name": "clouding-bar",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Clouding Bar for Claude on your Mac: see every Claude Code and Cowork chat on the Touch Bar, a floating pill or the notch, and answer permissions and questions from there. /clouding-bar:install gets the app.",
   "author": {
-    "name": "Nikola Naidenko",
+    "name": "Clouding Bar",
     "url": "https://github.com/nikolanaidenko-eng/clouding-bar"
   },
   "homepage": "https://github.com/nikolanaidenko-eng/clouding-bar",

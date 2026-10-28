@@ -10,7 +10,10 @@ or in the notch — and lets you answer permissions and questions from there.
   and `/clouding-bar:install`. (Older Claude Code: `/plugin marketplace add nikolanaidenko-eng/clouding-bar`,
   then `/plugin install clouding-bar@clouding-bar`.)
 - Claude Desktop: Customize → Plugins → Add → Add marketplace → `nikolanaidenko-eng/clouding-bar`, then
-  install **clouding-bar** (it works in Cowork; the Chat tab ignores hooks).
+  install **clouding-bar** (it works in Cowork; the Chat tab ignores hooks). The Mac app comes separately —
+  the .dmg from <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>, or `/clouding-bar:install`
+  in Claude Code (not from Cowork, which runs in a Linux sandbox). Then connect a folder to the Cowork task.
+- Not sure what's next? Ask Claude "walk me through Clouding Bar" (the `guide` skill).
 
 ## What it does
 
