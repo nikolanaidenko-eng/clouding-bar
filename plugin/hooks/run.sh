@@ -46,10 +46,13 @@ Linux)
   *) exit 0 ;;
   esac
   # Cowork only: not WSL, and a mnt/ folder as Cowork lays it out (the
-  # script checks the task's own folder too).
+  # script checks the task's own folder too) — or Cowork in the cloud, whose
+  # folders stay on the user's computer and so aren't in reach here.
   [ -n "${WSL_DISTRO_NAME:-}" ] && exit 0
   [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] && exit 0
-  [ -d "$PWD/mnt" ] || [ -d "$HOME/mnt" ] || exit 0
+  if [ "${CLAUDE_CODE_ENTRYPOINT:-}" != remote_cowork ]; then
+    [ -d "$PWD/mnt" ] || [ -d "$HOME/mnt" ] || exit 0
+  fi
   command -v python3 >/dev/null 2>&1 || exit 0
   exec python3 "$here/cowork.py"
   ;;

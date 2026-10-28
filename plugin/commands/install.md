@@ -3,7 +3,11 @@ description: Install or update the Clouding Bar app on this Mac (the newest rele
 allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/install-app.sh")
 ---
 
-Install the Clouding Bar Mac app. Run exactly this with the Bash tool, nothing else:
+Install the Clouding Bar Mac app.
+
+First: if this chat isn't running on the Mac itself — Cowork (in the cloud or in its Linux sandbox), or any Linux — don't run anything. Say in one sentence that the app is installed on the Mac, not from here, and walk the user through it as the plugin's `guide` skill says (In Cowork).
+
+On a Mac, run exactly this with the Bash tool, nothing else:
 
 ```
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/install-app.sh"

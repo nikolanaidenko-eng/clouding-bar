@@ -220,11 +220,12 @@ do { // the hook writes into the connected folder itself: working, then done
     let transcript = task.appendingPathComponent("t.jsonl")
     try? #"{"type":"assistant","timestamp":"2026-10-20T10:02:00.000Z","message":{"id":"r1","model":"claude-opus-5-5","usage":{"input_tokens":5,"cache_read_input_tokens":40000,"cache_creation_input_tokens":5,"output_tokens":90}}}"#
         .appending("\n").write(to: transcript, atomically: true, encoding: .utf8)
-    func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil) -> String {
+    func hook(_ event: String, cwd: URL, session: String = "s1", prompt: String? = nil,
+              env: [String: String] = [:]) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: python3)
         p.arguments = ["-I", coworkScript]
-        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"]
+        p.environment = ["HOME": cwd.path, "PATH": "/usr/bin:/bin", "CLOUDING_BAR_TEST": "1"].merging(env) { $1 }
         let input = Pipe(), output = Pipe()
         p.standardInput = input; p.standardOutput = output
         try? p.run()
@@ -321,6 +322,14 @@ do { // the hook writes into the connected folder itself: working, then done
         check(output.fileHandleForReading.readDataToEndOfFile().isEmpty, "cowork hook: quiet in Claude Code on the Mac")
     }
     check(hook("Stop", cwd: lonely, session: UUID().uuidString).contains("\"decision\": \"block\""), "cowork hook: no folder in reach, Claude is asked")
+    // Cowork in the cloud: no mnt/ here at all, the folders stay on the user's computer.
+    let cloud = pluginDir.appendingPathComponent("cowork-cloud")
+    try? FileManager.default.createDirectory(at: cloud, withIntermediateDirectories: true)
+    let asked = hook("Stop", cwd: cloud, session: "rc1", env: ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork"])
+    check(asked.contains("\"decision\": \"block\"") && asked.contains("device_bash") && asked.contains("cowork-rc1.json"),
+          "cowork hook: in the cloud, Claude is asked to write it on the user's computer")
+    check(hook("Stop", cwd: cloud, session: "rc2", env: ["CLAUDE_CODE_ENTRYPOINT": "remote"]).isEmpty,
+          "cowork hook: quiet in Claude Code on the web")
 }
 
 // MARK: The plugin and Claude Code's settings

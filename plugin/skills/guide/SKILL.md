@@ -34,7 +34,12 @@ or in the notch — and lets you answer from there.
 
 The plugin already does its part here. What's left happens on the Mac.
 
-First check `mnt/`: if no folder from the user's Mac is connected to this task, say that first —
+Where the folders are: in Cowork on the Mac, under `mnt/` here. In Cowork in the cloud
+(`CLAUDE_CODE_ENTRYPOINT` is `remote_cowork`), not here at all — they stay on the user's
+computer, under `~/mnt/` for the tool that runs commands there (`device_bash`); do anything with
+them through that tool.
+
+First check them: if no folder from the user's Mac is connected to this task, say that first —
 connect one (any folder they work in, there's no special Clouding Bar folder; in Cowork's
 folder picker). Without one, Clouding Bar has nowhere to read the task from, and there's nowhere
 to put the installer.
@@ -52,6 +57,7 @@ Claude Code a few minutes later, but a plugin installed in Claude Code doesn't r
      | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].startswith('Clouding-Bar-') and a['name'].endswith('.dmg')][0])")
    curl -fL "$url" -o "<the connected folder>/${url##*/}"
    ```
+   (In the cloud, run it with `device_bash`, into the folder under `~/mnt/` there.)
    Then tell them: open that `Clouding-Bar-….dmg` in Finder and drag Clouding Bar into
    Applications. If the download is blocked here, give the link instead — it's the official one
    and always has the newest release: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>
@@ -68,8 +74,8 @@ Claude Code a few minutes later, but a plugin installed in Claude Code doesn't r
    answered there (Claude Desktop's window has to be on the current desktop).
 
 If a hook asks you to write a line to `.clouding-bar/cowork-….json` in a connected folder, that's
-this plugin with Cowork in the cloud (its folders are copies): write exactly that line and
-nothing else.
+this plugin: Clouding Bar can't reach this task any other way. Write exactly that line and nothing
+else — in the cloud with `device_bash`, into the folder under `~/mnt/` there.
 
 ## In Claude Code
 
