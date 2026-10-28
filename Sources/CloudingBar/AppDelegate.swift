@@ -2240,7 +2240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Never while you write in one of our fields: typing would take
             // the keyboard from it mid-word (review, 27.10).
             guard chatInFront(id), Date().timeIntervalSince(frontSince.at) > 1.2,
-                  !typing.isActive, NSApp.keyWindow == nil else { continue }
+                  Delivery.keysFree(barTyping: typing.isActive, ourKeyWindow: NSApp.keyWindow != nil) else { continue }
             queue.remove(at: i)
             saveQueue()
             queueSentAt = Date()

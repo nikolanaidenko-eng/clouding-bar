@@ -138,4 +138,9 @@ shasum -a 256 "$DMG"
 # no GitHub API on the way (Cowork's sandbox, a browser click). The updater
 # and install-app.sh look only at Clouding-Bar-<version>.dmg.
 cp "$DMG" "$OUT/Clouding-Bar.dmg"
+# The app only went into the image. Left here, macOS knows it, and a hook's
+# `open -b dev.cloudingbar.app` started this copy once the one in
+# Applications was gone (owner, 28.10: "deleted, and it came right back").
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
+rm -rf "$APP"
 echo "Done: $DMG (and $OUT/Clouding-Bar.dmg, for the release too)"

@@ -136,6 +136,17 @@ enum Delivery: Equatable {
             && now.timeIntervalSince(handedAt ?? .distantPast) > 10 && !sending
     }
 
+    /// The keyboard may be taken to type a queued message: no window of ours
+    /// has it (`ourKeyWindow`: the widget's panel, a dictation being checked,
+    /// the Chats tab's composer, Settings) and the Touch Bar's line isn't
+    /// being written in. Nothing in a field is no proof: the cursor stays in
+    /// an empty composer after Send, and the next words for that chat would
+    /// land in another (review, 28.10). Nor is giving it back at Send: the
+    /// next words typed go to the app in front (review, 29.10).
+    static func keysFree(barTyping: Bool, ourKeyWindow: Bool) -> Bool {
+        !barTyping && !ourKeyWindow
+    }
+
     /// The chat a message goes to: the one it was written for (the Chats
     /// tab, the bar's line opened from its list) while it's alive — never
     /// the chat followed in its place once it has ended; written for none,
