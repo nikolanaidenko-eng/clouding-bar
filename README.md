@@ -141,10 +141,6 @@ A first version for **Windows** is in [windows/](windows/README.md).
   hooks only after you trust them — start Codex and choose *Trust all* (or
   `/hooks`). A hook added in a later version asks again, for itself only.
   Codex can't remember an "always allow", so there is none for it.
-- **The plugin** (Install → From Codex) brings the same hooks, on the same
-  events, through the same hook program (`--codex`), so Connect isn't needed
-  with it; if both are there, the hooks in `hooks.json` answer and the plugin
-  stays quiet. It must be trusted in Codex like any hooks.
 - **Live limits and sending** (Settings → General → Codex, on by default):
   Codex 0.164 runs one server of its own that every `codex` in a terminal
   uses, and while it runs Clouding Bar talks to it through
@@ -206,7 +202,7 @@ you get it. What else each place needs:
 |---|---|
 | Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
 | Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings. The plugin isn't needed |
-| Codex | the app, then **Connect** in it. The Codex plugin is optional |
+| Codex | the app, then **Connect** for Codex in it |
 
 - A plugin installed in **Claude Desktop** comes to Claude Code by itself, with
   your claude.ai account, a few minutes later.
@@ -250,27 +246,16 @@ through Clouding Bar": it puts the newest .dmg in your Downloads (it asks for
 access to the folder) and tells you what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
 still ask Cowork to save its status to a folder, which nothing reads now.
 
-### From Codex: the plugin
+### For Codex
 
-In a terminal (not inside Codex):
+1. Get the Mac app: the [.dmg](#download) below. Open it and allow
+   Accessibility (the first question, about Claude Code, you can skip).
+2. **Settings → General → Codex → Connect**: it adds its hooks to
+   `~/.codex/hooks.json`, for permission requests on the bar.
+3. Start Codex and choose *Trust all* (or `/hooks`): Codex runs hooks only
+   after you trust them.
 
-```
-codex plugin marketplace add nikolanaidenko-eng/clouding-bar
-codex plugin add clouding-bar@clouding-bar
-```
-
-Or in Codex: `/plugins` → add the marketplace `nikolanaidenko-eng/clouding-bar`
-→ install **Clouding Bar**. Then ask Codex to *install the Clouding Bar app*
-(the plugin's **install-app** skill): it takes the newest release from GitHub,
-checks it — signed with Clouding Bar's Developer ID, notarized by Apple — and
-puts it in Applications. Start Codex and choose *Trust all* (or `/hooks`):
-Codex runs a plugin's hooks only after you trust them. It does the same as
-**Connect** (Settings → General → Codex), so there is no need to press that
-too; Settings then says *Plugin*. Hooks Connect wrote earlier into
-`~/.codex/hooks.json` win: the plugin steps aside, one answer per event.
-Without the app the plugin does nothing and says nothing, except a one-line
-hint in a new session. The plugin updates with
-`codex plugin marketplace upgrade clouding-bar`.
+Codex chats show up even before step 2, read from Codex's own files.
 
 ### Download
 
