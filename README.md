@@ -194,6 +194,20 @@ A first version for **Windows** is in [windows/](windows/README.md).
 
 ## Install
 
+There's one Clouding Bar app for your Mac; you install it once, whichever way
+you get it. What else each place needs:
+
+| Where you work with Claude | What it needs |
+|---|---|
+| Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
+| Cowork in Claude Desktop | the plugin, installed in Claude Desktop, and the app |
+| Codex | the app, then **Connect** in it. The Codex plugin is optional |
+
+- A plugin installed in **Claude Desktop** comes to Claude Code by itself, with
+  your claude.ai account, a few minutes later.
+- A plugin installed in **Claude Code** doesn't reach Cowork: there, install
+  it in Claude Desktop too.
+
 ### From Claude Code: the plugin
 
 In Claude Code — the terminal, VS Code or Claude Desktop's Code tab:
@@ -232,14 +246,6 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 Clouding Bar turns its Cowork status on by itself (Settings → Cowork: off,
 thresholds, every reply). Ask Cowork "walk me through Clouding Bar" and it
 explains the rest.
-
-**One app, three ways in.** You install the Mac app once, however you get it.
-Claude Code needs no plugin then: **Connect** in the app sets it up (or use
-the plugin above). Codex too: Connect adds its hooks when Codex is on the Mac
-(or use the Codex plugin below). Cowork is the one that needs the plugin, in
-Claude Desktop — a plugin in Claude Code doesn't reach Cowork. The other way
-it does: a plugin installed in Claude Desktop comes to Claude Code with your
-claude.ai account a few minutes later.
 
 ### From Codex: the plugin
 

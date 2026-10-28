@@ -40,7 +40,9 @@ folder picker). Without one, Clouding Bar has nowhere to read the task from, and
 to put the installer.
 
 One Clouding Bar app serves Claude Code, Cowork and Codex. If it's already on this Mac (from
-Claude Code or a .dmg), skip step 1.
+Claude Code or a .dmg), skip step 1. Claude Code and Codex need no plugin: **Connect** in the
+app sets them up. Cowork needs this plugin in Claude Desktop; from there it also comes to
+Claude Code a few minutes later, but a plugin installed in Claude Code doesn't reach Cowork.
 
 1. **Get the Mac app.** It can't be installed from Cowork — there's no macOS here, so
    `/clouding-bar:install` won't work in this chat. Offer to put the installer in a folder
