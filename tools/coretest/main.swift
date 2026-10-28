@@ -326,10 +326,20 @@ do { // the hook writes into the connected folder itself: working, then done
     let cloud = pluginDir.appendingPathComponent("cowork-cloud")
     try? FileManager.default.createDirectory(at: cloud, withIntermediateDirectories: true)
     let rc = "rc-" + UUID().uuidString
-    let asked = hook("Stop", cwd: cloud, session: rc, env: ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork"])
+    let remote = ["CLAUDE_CODE_ENTRYPOINT": "remote_cowork", "XDG_RUNTIME_DIR": cloud.path]
+    let asked = hook("Stop", cwd: cloud, session: rc, env: remote)
+    let modeFile = cloud.appendingPathComponent("clouding-bar-\(getuid())/\(rc).mode")
     check(asked.contains("\"decision\": \"block\"") && asked.contains("device_bash") && asked.contains("cowork-\(rc).json")
-          && asked.contains(".clouding-bar/mode") && asked.contains("<<'EOF'"),
-          "cowork hook: in the cloud, Claude is asked to write it on the user's computer — if Clouding Bar tracks Cowork there")
+          && asked.contains("says off") && asked.contains("<<'EOF'") && asked.contains(modeFile.path),
+          "cowork hook: in the cloud, Claude is asked to write it on the user's computer, and to leave the mode it found")
+    check(hook("Stop", cwd: cloud, session: rc, env: remote).isEmpty,
+          "cowork hook: in the cloud, mode not known yet: not again at once")
+    try? "every".write(to: modeFile, atomically: true, encoding: .utf8)
+    check(hook("Stop", cwd: cloud, session: rc, env: remote).contains("\"decision\": \"block\"")
+          && hook("Stop", cwd: cloud, session: rc, env: remote).contains("\"decision\": \"block\""),
+          "cowork hook: in the cloud, \"every reply\" as Claude found it in the folder")
+    try? "off".write(to: modeFile, atomically: true, encoding: .utf8)
+    check(hook("Stop", cwd: cloud, session: rc, env: remote).isEmpty, "cowork hook: in the cloud, quiet when Clouding Bar is off there")
     check(hook("Stop", cwd: cloud, session: UUID().uuidString, env: ["CLAUDE_CODE_ENTRYPOINT": "remote"]).isEmpty,
           "cowork hook: quiet in Claude Code on the web")
 }
