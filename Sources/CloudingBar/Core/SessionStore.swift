@@ -116,20 +116,54 @@ final class SessionStore {
         pollTranscripts()
     }
 
-    /// A status line from the Cowork plugin: a session of its own, with the
-    /// context numbers the plugin worked out.
-    func apply(cowork s: Cowork.Status) {
-        let id = "cowork-" + s.session
-        let session = sessions[id] ?? newSession(id, now: s.time)
-        sessions[id] = session
-        session.cwd = "/" + (s.project ?? "Cowork")
-        session.entrypoint = "cowork"
-        session.contextTokens = s.contextTokens
-        session.contextWindowSize = Cowork.window(model: s.model)
-        session.model = s.model
-        if let title = s.title { session.title = title }
-        session.lastEvent = s.time
-        session.activity = s.working ? .work : .sleep
+    /// Cowork tasks and claude.ai chats as claude.ai lists them: each one
+    /// that runs, waits for you or was active in the last 3 hours is a
+    /// session of its own, known by its chat in Claude Desktop.
+    func apply(claudeAI chats: [ClaudeAIChats.Chat], now: Date = Date()) {
+        var changed = false
+        for chat in chats {
+            let id = ClaudeAIChats.sessionId(chat)
+            let active = min(chat.lastActive ?? .distantPast, now)
+            guard chat.running || chat.needsInput != nil || now.timeIntervalSince(active) < 3 * 3600 else { continue }
+            let session = sessions[id] ?? newSession(id, now: active)
+            sessions[id] = session
+            session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
+            session.cwd = chat.isCowork ? "/Cowork" : "/claude.ai"
+            session.title = chat.name ?? session.title
+            if let model = chat.model { session.model = model }
+            if session.desktopChat != chat.page { link(session, desktopChat: chat.page, title: nil) }
+            session.lastEvent = max(session.lastEvent, active)
+            // Waiting for you, as with a hook's Notification: the turn isn't over.
+            let activity: Activity = chat.running || chat.needsInput != nil ? .work : .sleep
+            if session.activity != activity {
+                session.activity = activity
+                if activity == .work, let since = chat.runningSince { session.activitySince = min(since, now) }
+                changed = true
+            }
+            if session.waitingNotice != (chat.needsInput != nil) {
+                session.waitingNotice = chat.needsInput != nil
+                changed = true
+            }
+        }
+        if changed { scheduleSave() }
+        onChange?()
+    }
+
+    /// Signed out of claude.ai: its chats aren't followed any more.
+    func forgetClaudeAI() {
+        let ids = sessions.values.filter(\.fromClaudeAI).map(\.id)
+        guard !ids.isEmpty else { return }
+        for id in ids { sessions[id] = nil }
+        scheduleSave()
+        onChange?()
+    }
+
+    /// A Cowork task's context, from its events.
+    func apply(claudeAIContext c: ClaudeAIChats.Context, chat uuid: String) {
+        guard let session = sessions["cowork-" + uuid] else { return }
+        session.contextTokens = c.tokens
+        if let model = c.model { session.model = model }
+        session.contextWindowSize = Cowork.window(model: session.model)
         scheduleSave()
         onChange?()
     }

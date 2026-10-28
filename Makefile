@@ -44,8 +44,6 @@ bundle: build $(KEY) $(TAP) $(HOOK)
 	@# What the app puts in ~/.cloudingbar itself (Setup.swift), for a download.
 	cp -p $(TAP) $(HOOK) $(BUNDLE)/Contents/MacOS/
 	cp hooks/cloudingbar-statusline.sh hooks/cloudingbar-wrapper.sh $(BUNDLE)/Contents/Resources/hooks/
-	@# The plugin, for the zip Settings → Cowork saves (the marketplace serves the same folder).
-	cp -R plugin $(BUNDLE)/Contents/Resources/plugin
 	@packaging/sign.sh $(BUNDLE)
 	@echo "Built $(BUNDLE)"
 

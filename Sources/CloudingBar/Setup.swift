@@ -109,10 +109,6 @@ enum Setup {
     /// in Cowork too, then.
     static var pluginSynced: Bool { syncedPlugins.contains("clouding-bar") }
 
-    /// The Cowork-only plugin of version 1.0 is still installed in Claude
-    /// Desktop: two plugins would report each Cowork reply twice.
-    static var oldCoworkPlugin: Bool { syncedPlugins.contains("clouding-bar-cowork") }
-
     /// The plugins your account brings to Claude Code: what each
     /// ~/.claude/plugins/synced/<account>/manifest.json lists.
     private static var syncedPlugins: Set<String> {

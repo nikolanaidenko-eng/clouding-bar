@@ -21,10 +21,9 @@ struct SettingsView: View {
     static let width: CGFloat = 600
 
     /// A tab asked for by name. Cowork lives in General → Connections now
-    /// (owner, 27.10): asked for, it opens General with that group and its More… open.
+    /// (owner, 27.10), in its claude.ai row: asked for, it opens General with that group.
     static func resolve(_ request: String) -> String {
         guard request == "cowork" else { return request }
-        UserDefaults.standard.set(true, forKey: "settings.more.connections")
         SettingsFolds.shared.show("Connections")
         return "general"
     }
@@ -840,18 +839,10 @@ struct GeneralTab: View {
     @ObservedObject var model: AppModel
     @Environment(\.grayButtons) private var gray
     var mood: CloudMood? = nil
-    @State private var keyOpen = false
-    @State private var key = ""
 
     private func binding(_ key: String, _ get: @escaping (Config) -> Bool) -> Binding<Bool> {
         settingBinding(model, key, get)
     }
-
-    private let coworkNotes = [
-        "off": "Cowork chats are not tracked. The plugin saves context to a connected folder.",
-        "thresholds": "On every message, free. If the plugin can't reach the folder, Claude saves it: first reply, 50, 80, 90%.",
-        "every": "On every message, free. If the plugin can't reach the folder, Claude saves it after every reply: +5–15% usage.",
-    ]
 
     /// A note under a group's rows, closed off with the line the rows have.
     private func note(_ text: String) -> some View {
@@ -978,74 +969,28 @@ struct GeneralTab: View {
                     }
                 }
                 if let message = model.setupMessage { note(message) }
-                MoreRows("connections", count: 2 + (model.hasCodex ? 1 : 0) + (model.config.coworkMode != "off" ? 3 : 0)) {
+                SettingsRow(title: "claude.ai: Cowork, chats and limit",
+                            hint: model.hasLiveKey
+                                ? "Cowork tasks and your chats from the last 3 hours — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
+                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai") {
+                    if model.hasLiveKey {
+                        Button("Sign Out") { model.removeLiveKey() }
+                    } else {
+                        Button("Sign In…") { model.signInClaudeAI() }
+                    }
+                }
+                if !model.accessibilityTrusted {
+                    SettingsRow(title: "Accessibility",
+                                hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility") {
+                        Button("Open Settings") { model.openAccessibility() }
+                    }
+                }
+                MoreRows("connections", count: model.hasCodex ? 1 : 0) {
                     if model.hasCodex {
                         SettingsRow(title: "Codex: live limits and sending",
                                     hint: "Through Codex's own server, while one runs (codex in Terminal): its limits asked every few minutes, and the widget's words straight into its chat, by the chat's id · \(model.codexServerState)") {
                             CBSwitch(title: "Codex: live limits and sending", on: binding("codexServer") { $0.codexServer })
                         }
-                    }
-                    SettingsRow(title: "Cowork", hint: coworkNotes[model.config.coworkMode] ?? "") {
-                        SettingsSegments(options: [("off", "Off"), ("thresholds", "Thresholds"), ("every", "Every reply")],
-                                         selected: model.config.coworkMode, tint: 0xFF375F) { model.setConfig("coworkMode", $0) }
-                    }
-                    if model.config.coworkMode != "off" {
-                        SettingsRow(title: "Cowork plugin",
-                                    hint: model.oldCoworkPlugin
-                                        ? "Remove the older “clouding-bar-cowork” plugin in Claude Desktop → Customize → Plugins: both would report."
-                                        : model.pluginSynced
-                                            ? "Clouding Bar's plugin is installed in Claude Desktop"
-                                            : "Claude Desktop → Customize → Plugins: add the marketplace nikolanaidenko-eng/clouding-bar, or upload this zip") {
-                            Button("Save zip") { model.makeCoworkPlugin() }
-                        }
-                        SettingsRow(title: "Cowork folders",
-                                    hint: (model.coworkFolders.isEmpty
-                                        ? "Connect a folder to a Cowork task; it's found by itself."
-                                        : "Watching " + model.coworkFolders.joined(separator: ", ") + ".")
-                                        + " Only tasks with a connected folder can report their context.") {
-                            Button("Add…") { model.chooseCoworkFolder() }
-                        }
-                        SettingsRow(title: "Cowork last status", hint: model.coworkLast ?? "None yet") {
-                            EmptyView()
-                        }
-                        if let message = model.coworkMessage { note(message) }
-                    }
-                    SettingsRow(title: "Live limit via claude.ai",
-                                hint: "Desktop and Cowork chats · \(model.liveLimitState)") {
-                        if model.hasLiveKey {
-                            Button("Remove key") { model.removeLiveKey(); keyOpen = false }
-                        } else {
-                            Button(keyOpen ? "Hide" : "Set up…") { withAnimation(.easeOut(duration: 0.2)) { keyOpen.toggle() } }
-                        }
-                    }
-                    if keyOpen && !model.hasLiveKey {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle").foregroundColor(.cbWarning)
-                                Text("Your session key gives full access to your Claude account. Unofficial address, can stop working any time. Kept in Keychain, sent only to claude.ai.")
-                                    .font(.system(size: 11)).foregroundColor(Color.sText).lineSpacing(3)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            HStack(spacing: 8) {
-                                SecureField("sessionKey", text: $key)
-                                    .textFieldStyle(.plain).font(.system(size: 12))
-                                    .padding(.horizontal, 8).frame(height: 30)
-                                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.sField))
-                                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.sFieldLine, lineWidth: 0.5))
-                                Button("I understand, turn on") {
-                                    model.saveLiveKey(key)
-                                    key = ""
-                                    keyOpen = false
-                                }
-                                .buttonStyle(.plain).font(.system(size: 12)).foregroundColor(.white)
-                                .padding(.horizontal, 12).frame(height: 30)
-                                .background(RoundedRectangle(cornerRadius: 7).fill(Color.tint(0x0071E3, gray: gray)))
-                                .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-                            }
-                        }
-                        .padding(12)
-                        .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
-                        .transition(.opacity.combined(with: .offset(y: 6)))
                     }
                 }
             }
@@ -1074,9 +1019,6 @@ struct GeneralTab: View {
             }
             .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.contextWarning)
         }
-        // Cloud doesn't peek while the key is being typed.
-        .onChange(of: keyOpen && !model.hasLiveKey) { open in mood?.shy = open }
-        .onDisappear { mood?.shy = false }
     }
 }
 

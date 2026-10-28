@@ -157,13 +157,12 @@ final class AppModel: ObservableObject {
     /// That session's chat is the window in front (Insert types into it).
     @Published var chatInFront = false
 
-    // Cowork tab
-    @Published var coworkLast: String?
-    /// Folder names being watched for Cowork's status.
-    @Published var coworkFolders: [String] = []
-    @Published var coworkMessage: String?
+    // Settings → General → Connections → claude.ai: the limit, Cowork tasks
+    // and chats, read with the key its sign-in window takes.
     @Published var hasLiveKey = false
     @Published var liveLimitState = "Off"
+    /// macOS lets Clouding Bar press keys and read windows (Accessibility).
+    @Published var accessibilityTrusted = true
 
     @Published var listening = false
     @Published var heard = ""
@@ -218,10 +217,9 @@ final class AppModel: ObservableObject {
     /// typed into its chat as /model or /effort.
     var setModel: (String) -> Void = { _ in }
     var setEffort: (String) -> Void = { _ in }
-    var chooseCoworkFolder: () -> Void = {}
-    var makeCoworkPlugin: () -> Void = {}
-    var saveLiveKey: (String) -> Void = { _ in }
+    var signInClaudeAI: () -> Void = {}
     var removeLiveKey: () -> Void = {}
+    var openAccessibility: () -> Void = {}
     var resetWidgetPosition: () -> Void = {}
     var showTour: () -> Void = {}
     /// Settings, at one of its tabs.
@@ -248,11 +246,9 @@ final class AppModel: ObservableObject {
     @Published var codexServerState = "Off"
     var connectCodex: () -> Void = {}
     var wrapVSCode: () -> Void = {}
-    /// Clouding Bar's plugin: on in Claude Code; with your account (Claude
-    /// Desktop, so in Cowork too); the Cowork-only one of 1.0 still there.
+    /// Clouding Bar's plugin: on in Claude Code; with your account (Claude Desktop).
     @Published var pluginActive = false
     @Published var pluginSynced = false
-    @Published var oldCoworkPlugin = false
 
     // Settings → General → Updates (Updater.swift)
     @Published var updatesPossible = false

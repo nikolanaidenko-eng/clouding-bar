@@ -93,15 +93,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var barPendingModel: String?
     private var barPendingEffort: String?
     private var branchCache: [String: (branch: String?, at: Date)] = [:]
-    private let liveLimit = ClaudeAILimit()
+    /// Your claude.ai account, once signed in: the limit, Cowork tasks and chats.
+    private let claudeAI = ClaudeAI()
+    private let claudeAISignIn = ClaudeAISignIn()
     /// Codex's own server, while one runs: its limits now, and words
     /// straight into a chat it has loaded (owner, 27.10).
     private let codexServer = CodexServer()
-    private var coworkSeen: [String: String] = [:]
     private let desktopChat = DesktopChat()
     /// The chat Claude Desktop shows, and since when.
     private var desktopShown: (chat: String, since: Date)?
-    private var coworkFolders: (list: [String], at: Date) = ([], .distantPast)
 
     // MARK: - Launch
 
@@ -154,7 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpModel()
         setUpVoice()
         loadQueue()
-        setUpCowork()
+        setUpClaudeAI()
         setUpCodexServer()
         model.showTour = { [weak self] in self?.showTour() }
 
@@ -284,7 +284,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 store.pollCodexRollouts()
                 if config.codexServer && Setup.hasCodex { codexServer.poll() }
             }
-            readCowork()
         } else {
             readDesktopPrompt()
         }
@@ -341,19 +340,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.note("desktop chat: \(shown.title ?? "…") \(shown.chat) → \(self.store.session(inDesktop: shown.title, chat: shown.chat)?.displayName ?? "not known")")
             self.setNeedsRefresh()
         }
-    }
-
-    /// A Cowork chat reported (its reply just ended) while Claude Desktop
-    /// has shown one chat for a while, and only that one reported: that's
-    /// the chat, unless it's known already.
-    private func learnDesktopChat(from reported: [Cowork.Status]) {
-        guard frontApp?.bundleIdentifier == Self.desktopBundle, reported.count == 1, let status = reported.first,
-              let shown = desktopShown, Date().timeIntervalSince(shown.since) > 8,
-              status.time > shown.since, Date().timeIntervalSince(status.time) < 300,
-              store.session(inDesktop: nil, chat: shown.chat) == nil,
-              let session = store.sessions["cowork-" + status.session], session.desktopChat == nil else { return }
-        store.link(session, desktopChat: shown.chat, title: frontTitle)
-        DebugLog.note("desktop chat learned: \(frontTitle ?? shown.chat) is \(status.session.prefix(8))")
     }
 
     /// Terminal or iTerm in front, with a terminal chat alive: which tab.
@@ -1284,9 +1270,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // 5-hour limit through the wrapper, set up with the rest
                 // (owner, 25.10: on a fresh install VS Code showed nothing).
                 let vscode = Setup.describe(Setup.wrapVSCodeIfFree())
+                // A fresh install hadn't it (28.10): the prompt at launch goes
+                // by unseen. Asked again now, with the reason.
+                let trusted = KeySender.ensureTrusted()
                 self?.model.setupMessage = (["Connected: new chats show up here."]
                     + (Setup.pluginActive ? ["A chat that was already open: type /reload-plugins in it, or start a new one."] : [])
-                    + [vscode].compactMap { $0 }).joined(separator: " ")
+                    + [vscode].compactMap { $0 }
+                    + (trusted ? [] : ["One more: allow Clouding Bar in System Settings → Privacy & Security → Accessibility, for the bar's buttons and Claude Desktop's chats."]))
+                    .joined(separator: " ")
             } catch {
                 self?.model.setupFailed = true
                 self?.model.setupMessage = error.localizedDescription
@@ -1304,6 +1295,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.model.setupMessage = "Codex's hooks.json couldn't be changed: \(error.localizedDescription)"
             }
             self?.refreshSetupStatus()
+        }
+        model.openAccessibility = {
+            DebugLog.tap("open Accessibility settings")
+            KeySender.ensureTrusted() // puts Clouding Bar in the list, to be switched on
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                NSWorkspace.shared.open(url)
+            }
         }
         model.wrapVSCode = { [weak self] in
             DebugLog.tap("VS Code wrapper")
@@ -1324,21 +1322,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         func set(_ key: ReferenceWritableKeyPath<AppModel, Bool>, _ value: Bool) {
             if m[keyPath: key] != value { m[keyPath: key] = value }
         }
-        let synced = Setup.pluginSynced
         set(\.pluginActive, Setup.pluginActive)
-        set(\.pluginSynced, synced)
-        set(\.oldCoworkPlugin, Setup.oldCoworkPlugin)
+        set(\.pluginSynced, Setup.pluginSynced)
         set(\.claudeConnected, Setup.isConnected)
         set(\.hasCodex, Setup.hasCodex)
         set(\.codexConnected, Setup.codexConnected)
         set(\.codexViaPlugin, Setup.codexPluginActive && !Setup.codexHooksInFile)
         set(\.hasVSCode, Setup.hasVSCode)
         set(\.vscodeWrapped, Setup.vscodeWrapped)
-        // The plugin installed in Claude Desktop is there for Cowork: Cowork
-        // on, unless you set it yourself.
-        if synced && config.coworkMode == "off" && !config.coworkModeSet {
-            setConfig("coworkMode", "thresholds")
-        }
+        set(\.accessibilityTrusted, AXIsProcessTrusted())
     }
 
     /// The first launch of a download: ask before touching Claude Code's settings.
@@ -1480,9 +1472,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Config.save(key, value)
         config = Config.load()
-        if key == "coworkMode", let mode = value as? String {
-            Cowork.setMode(mode, folders: watchedCoworkFolders)
-        }
         if key == "codexServer" {
             if config.codexServer { codexServer.poll() } else { codexServer.stop() }
             model.codexServerState = config.codexServer ? codexServer.state : "Off"
@@ -1781,10 +1770,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let session = store.sessions[id] else { NSSound.beep(); return }
         DebugLog.tap("open session \(session.displayName)")
         if session.inDesktopApp {
-            // The Claude desktop app has no link to one chat: brought up,
-            // then the chat's row in its sidebar pressed.
-            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first {
-                app.activate(options: [])
+            // A chat known by its id: Claude Desktop's own link to it, which
+            // also brings the app up — started, if it isn't (28.10: from the
+            // background, activate() was ignored and nothing came up).
+            if let chat = session.desktopChat, chat.hasPrefix("/chat/"),
+               ClaudeAIChats.isId(String(chat.dropFirst("/chat/".count))),
+               let url = URL(string: "claude://claude.ai" + chat),
+               NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                NSWorkspace.shared.open(url)
+                DebugLog.note("desktop chat open by its link: \(chat)")
+                return
+            }
+            // Not known yet: brought up, then the chat's row in its sidebar pressed.
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first,
+               let url = app.bundleURL {
+                let open = NSWorkspace.OpenConfiguration()
+                open.activates = true
+                NSWorkspace.shared.openApplication(at: url, configuration: open)
                 if let title = session.desktopTitle ?? session.title {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                         self?.desktopChat.open(title: title, in: app) { pressed in
@@ -2614,7 +2616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: - Cowork and the claude.ai limit
+    // MARK: - Codex's server and claude.ai
 
     /// Codex's own server (CodexServer): its limits into Codex's account,
     /// its state into Settings.
@@ -2628,112 +2630,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.codexServerState = config.codexServer ? codexServer.state : "Off"
     }
 
-    private func setUpCowork() {
-        model.chooseCoworkFolder = { [weak self] in
-            let panel = NSOpenPanel()
-            panel.canChooseDirectories = true
-            panel.canChooseFiles = false
-            panel.allowsMultipleSelection = false
-            panel.prompt = "Use This Folder"
-            panel.message = "Pick the folder you connected in Cowork"
-            NSApp.activate(ignoringOtherApps: true)
-            if panel.runModal() == .OK, let url = panel.url {
-                self?.setConfig("coworkFolder", url.path)
-            }
-        }
-        model.makeCoworkPlugin = { [weak self] in
-            guard let self else { return }
-            do {
-                let zip = try Cowork.makePlugin()
-                NSWorkspace.shared.activateFileViewerSelecting([zip])
-                self.model.coworkMessage = "Saved to Downloads. Upload clouding-bar-plugin.zip in Claude Desktop → Customize → Plugins."
-                DebugLog.note("plugin zip made")
-            } catch {
-                self.model.coworkMessage = "Couldn't make it: \(error.localizedDescription)"
-            }
-        }
-        liveLimit.onUpdate = { [weak self] percent, resets in
+    private func setUpClaudeAI() {
+        claudeAI.onUpdate = { [weak self] percent, resets in
             self?.store.account.apply(used: percent, resetsAt: resets)
             self?.setNeedsRefresh()
         }
-        liveLimit.onWeek = { [weak self] percent, resets in
+        claudeAI.onWeek = { [weak self] percent, resets in
             self?.store.account.applyWeek(used: percent, resetsAt: resets)
             self?.setNeedsRefresh()
         }
-        liveLimit.onState = { [weak self] state in
+        claudeAI.onState = { [weak self] state in
             self?.model.liveLimitState = state
-            DebugLog.note("claude.ai limit: \(state)")
+            DebugLog.note("claude.ai: \(state)")
         }
-        model.saveLiveKey = { [weak self] key in
-            let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, ClaudeAILimit.saveKey(trimmed) else { return }
-            DebugLog.tap("claude.ai limit on")
-            self?.model.hasLiveKey = true
-            self?.model.liveLimitState = "Checking…"
-            self?.liveLimit.start()
-        }
-        model.removeLiveKey = { [weak self] in
-            ClaudeAILimit.deleteKey()
-            self?.liveLimit.stop()
-            self?.model.hasLiveKey = false
-            self?.model.liveLimitState = "Off"
-            DebugLog.tap("claude.ai limit off, key removed")
-        }
-        model.hasLiveKey = ClaudeAILimit.hasKey
-        if model.hasLiveKey {
-            model.liveLimitState = "Checking…"
-            liveLimit.start()
-        }
-    }
-
-    /// Every folder that may hold Cowork's status: the ones connected in
-    /// Claude Desktop (looked up every minute) plus one picked by hand.
-    private var watchedCoworkFolders: [String] {
-        if Date().timeIntervalSince(coworkFolders.at) > 60 {
-            coworkFolders = (Cowork.connectedFolders(), Date())
-        }
-        var list = coworkFolders.list
-        if let extra = config.coworkFolder, !list.contains(extra) { list.append(extra) }
-        return list
-    }
-
-    /// Picks up new status lines from the Cowork plugin.
-    private func readCowork() {
-        guard config.coworkMode != "off" else { return }
-        let folders = watchedCoworkFolders
-        if ticks % 30 == 0 { Cowork.setMode(config.coworkMode, folders: folders) }
-        model.coworkFolders = folders.map { URL(fileURLWithPath: $0).lastPathComponent }
-        var newest: Cowork.Status?
-        var reported: [Cowork.Status] = []
-        for folder in folders {
-            for url in Cowork.statusFiles(folder: folder) {
-                guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                      let status = Cowork.read(url) else { continue }
-                // Inside Cowork's machine the folder name means nothing; the
-                // Mac folder the status landed in is the project. A turn
-                // that never ended (Cowork quit) isn't work any more.
-                let named = Cowork.Status(session: status.session, project: URL(fileURLWithPath: folder).lastPathComponent,
-                                          contextTokens: status.contextTokens, contextWindow: status.contextWindow,
-                                          model: status.model, time: status.time,
-                                          working: status.working && Date().timeIntervalSince(status.time) < 30 * 60,
-                                          title: status.title)
-                let seen = "\(mtime.timeIntervalSince1970) \(named.working)"
-                if seen != coworkSeen[url.path] {
-                    if coworkSeen[url.path] != nil || Date().timeIntervalSince(status.time) < 300 { reported.append(named) }
-                    coworkSeen[url.path] = seen
-                    store.apply(cowork: named)
-                    var spent = named
-                    spent.usage = status.usage
-                    Cowork.keep(spent)
-                    DebugLog.note("cowork status: \(status.project ?? "?") \(status.contextTokens) tokens\(status.working ? ", working" : "")")
+        claudeAI.onChats = { [weak self] chats in self?.store.apply(claudeAI: chats) }
+        claudeAI.onContext = { [weak self] uuid, context in self?.store.apply(claudeAIContext: context, chat: uuid) }
+        model.signInClaudeAI = { [weak self] in
+            self?.claudeAISignIn.show { key in
+                guard let self, let key else { return }
+                guard ClaudeAI.saveKey(key) else {
+                    self.model.liveLimitState = "Couldn't keep the key in the Keychain"
+                    return
                 }
-                if newest == nil || named.time > newest!.time { newest = named }
+                DebugLog.tap("claude.ai signed in")
+                self.model.hasLiveKey = true
+                self.model.liveLimitState = "Checking…"
+                self.claudeAI.start()
             }
         }
-        learnDesktopChat(from: reported)
-        if let s = newest {
-            let pct = Int((Double(s.contextTokens) / Double(max(1, s.contextWindow)) * 100).rounded())
-            model.coworkLast = "\(AppModel.ago(s.time)) · \(s.project ?? "Cowork") \(pct)%"
+        model.removeLiveKey = { [weak self] in
+            ClaudeAI.deleteKey()
+            self?.claudeAI.stop()
+            self?.store.forgetClaudeAI()
+            self?.model.hasLiveKey = false
+            self?.model.liveLimitState = "Off"
+            DebugLog.tap("claude.ai signed out, key removed")
+        }
+        model.hasLiveKey = ClaudeAI.hasKey
+        if model.hasLiveKey {
+            model.liveLimitState = "Checking…"
+            claudeAI.start()
         }
     }
 }

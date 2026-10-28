@@ -665,9 +665,8 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
     m.knownProjects = ["DiaRoute", "bots"]
     if tab == "general" { m.voiceOffline = false; m.config.voiceLanguage = "uk-UA" }
     if tab == "stats" { m.weekPercent = 23; m.weekReset = "Thu 14:00" }
-    if tab == "general" { // Cowork's rows are in Connections now
-        m.config.coworkMode = "thresholds"; m.config.coworkFolder = NSHomeDirectory() + "/Documents/Cowork"
-        m.coworkLast = "4 min ago · DiaRoute 31%"
+    if tab == "general" { // claude.ai signed in: Cowork's row in Connections
+        m.hasLiveKey = true; m.liveLimitState = "On"
     }
     m.hasNotch = tab == "widget"
     let host = NSHostingView(rootView: SettingsView(model: m, tab: tab))
@@ -689,8 +688,10 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
         .frame(width: SettingsView.width, alignment: .top).background(Color.sBackground)
         let height = NSHostingView(rootView: tabOnly).fittingSize.height
         renderView(NSHostingView(rootView: tabOnly), size: NSSize(width: SettingsView.width, height: ceil(height)), name: "s-\(tab)-more")
-        if tab == "general" { // the key set-up, the one thing More… hides that opens further
-            renderView(NSHostingView(rootView: SettingsView(model: m, tab: "cowork")), size: NSSize(width: SettingsView.width, height: 560),
+        if tab == "general" { // asked for by name: Connections, not signed in, Accessibility off
+            let mc = sampleModel()
+            mc.accessibilityTrusted = false
+            renderView(NSHostingView(rootView: SettingsView(model: mc, tab: "cowork")), size: NSSize(width: SettingsView.width, height: 560),
                        name: "s-cowork-request")
         }
         for k in moreKeys { UserDefaults.standard.removeObject(forKey: "settings.more." + k) }
