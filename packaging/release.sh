@@ -2,7 +2,7 @@
 # A release of Clouding Bar: built for Apple silicon and Intel (most Touch
 # Bar Macs are Intel), signed with your Developer ID under the hardened
 # runtime, notarized by Apple and stapled — the app, then the .dmg it
-# comes in. Out: build/release/Clouding-Bar-<version>.dmg
+# comes in. Out: build/release/Clouding-Bar-<version>.dmg, and Clouding-Bar.dmg
 #
 # Once, beforehand:
 #   - a "Developer ID Application" certificate in your keychain
@@ -133,4 +133,9 @@ if [ "${DRY:-}" != 1 ]; then
   spctl --assess --type execute --verbose=2 "$APP"
 fi
 shasum -a 256 "$DMG"
-echo "Done: $DMG"
+# The same file under a name that never changes, attached to the release too:
+# …/releases/latest/download/Clouding-Bar.dmg is then always the newest, with
+# no GitHub API on the way (Cowork's sandbox, a browser click). The updater
+# and install-app.sh look only at Clouding-Bar-<version>.dmg.
+cp "$DMG" "$OUT/Clouding-Bar.dmg"
+echo "Done: $DMG (and $OUT/Clouding-Bar.dmg, for the release too)"

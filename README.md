@@ -236,19 +236,18 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 
 ### In Cowork (Claude Desktop)
 
-1. Get the Mac app, if you haven't: the [.dmg](#download) below, or
-   `/clouding-bar:install` in Claude Code. (Not from Cowork: it runs in a
-   Linux sandbox, not on your Mac.) Open it, say **Connect**, allow
-   Accessibility.
+1. Get the Mac app, if you haven't: the [.dmg](#download) below,
+   `/clouding-bar:install` in Claude Code, or the plugin in Cowork (below).
+   Open it, say **Connect**, allow Accessibility.
 2. Open **Settings → General → Claude → claude.ai → Sign In…** and sign
    in to claude.ai in the window that opens. It closes by itself.
 
 Cowork tasks then show up in the chats list. No plugin and no connected
 folder are needed. If you'd like Cowork to fetch the app for you, add the
 plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
-marketplace** → `nikolanaidenko-eng/clouding-bar`), connect a folder to the
-task and ask "walk me through Clouding Bar": it puts the newest .dmg in that
-folder. Had the plugin before 1.2.8? Update it there (or remove it): older ones
+marketplace** → `nikolanaidenko-eng/clouding-bar`) and ask a task "walk me
+through Clouding Bar": it puts the newest .dmg in your Downloads (it asks for
+access to the folder) and tells you what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
 still ask Cowork to save its status to a folder, which nothing reads now.
 
 ### From Codex: the plugin
@@ -275,9 +274,10 @@ hint in a new session. The plugin updates with
 
 ### Download
 
-Get the latest `Clouding-Bar-<version>.dmg` from
-[Releases](../../releases), open it and drag **Clouding Bar** into
-Applications. Releases are signed and notarized by Apple.
+[Download the latest .dmg](https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
+(or `Clouding-Bar-<version>.dmg` from [Releases](../../releases)), open it
+and drag **Clouding Bar** into Applications. Releases are signed and
+notarized by Apple.
 
 Test builds (marked *beta*) aren't notarized yet, so on first launch macOS
 says it can't check the app for malware. Click **Done**, then open

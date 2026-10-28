@@ -40,25 +40,33 @@ computer, under `~/mnt/` for the tool that runs commands there (`device_bash`); 
 them through that tool.
 
 **Getting the app.** If Clouding Bar is already on this Mac (from Claude Code or a .dmg), skip to
-"See Cowork tasks". Otherwise a folder is needed, for the installer only: check whether a folder
-from the user's Mac is connected to this task. If none is, say: connect one (any folder they work
-in; **+ → Add folder** in Claude Desktop), because the installer will go into it. Then:
+"See Cowork tasks". Otherwise put the installer on the user's Mac yourself — don't wait to be
+asked, don't send them to GitHub, and don't ask them to type anything to you. It can't be
+installed from Cowork itself (there's no macOS here, so `/clouding-bar:install` won't work in this chat).
 
-1. **Put the installer in it** — don't wait to be asked; it can't be installed from Cowork
-   itself (there's no macOS here, so `/clouding-bar:install` won't work in this chat):
+1. **A folder on the Mac to put it in.** Downloads is the one to use. In Cowork in the cloud, ask
+   for access to it with your device tools (or use a folder already connected); in Cowork on the
+   Mac, a folder connected to the task. If you can't get one, ask them to connect Downloads
+   (**+ → Add folder** in Claude Desktop) and go on once they have.
+2. **Download it into that folder — on the Mac, never in your own sandbox.** In Cowork in the cloud,
+   run it with `device_bash` (the Mac's folders are under `~/mnt/` there): your own sandbox can't
+   reach GitHub (it gets HTTP 403), and a file there never reaches the Mac. In Cowork on the Mac,
+   your own shell, into the folder under `mnt/`.
    ```
-   url=$(curl -fsSL https://api.github.com/repos/nikolanaidenko-eng/clouding-bar/releases/latest \
-     | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].startswith('Clouding-Bar-') and a['name'].endswith('.dmg')][0])")
-   curl -fL "$url" -o "<the connected folder>/${url##*/}"
+   curl -fL https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg -o "<the folder>/Clouding-Bar.dmg"
    ```
-   (In the cloud, run it with `device_bash`, into the folder under `~/mnt/` there.)
-   Then tell them: open that `Clouding-Bar-….dmg` in Finder and drag Clouding Bar into
-   Applications. Only if the download fails, give the link — the official one, always the newest
-   release: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest> (the
-   `Clouding-Bar-….dmg` under Assets). Don't try to install it yourself by controlling the
-   screen: opening the .dmg is quicker.
-2. **Open Clouding Bar.** It asks to connect to Claude Code (say **Connect**) and for
-   Accessibility, the one permission it needs.
+   HTTP 403, or "Could not resolve host"? It ran in the sandbox: run it again with `device_bash`.
+   Only if it fails on the Mac as well, give them that same link, and say that a click on it
+   downloads the file into Downloads.
+3. **Tell them exactly what to click**, numbered, in their language — they may never have installed
+   a Mac app:
+   1. Finder → Downloads (or the folder you used) → double-click **Clouding-Bar.dmg**.
+   2. In the window that opens, drag **Clouding Bar** onto **Applications**.
+   3. Open Clouding Bar from Applications (or ⌘ Space, type "Clouding Bar", Return).
+   4. It asks to connect to Claude Code: **Connect**. macOS then asks for Accessibility:
+      **Open System Settings** and switch Clouding Bar on.
+   5. For Cowork: in Clouding Bar, **Settings → General → Claude → claude.ai → Sign In…**, and sign
+      in to claude.ai in the window that opens; it closes by itself.
 
 **See Cowork tasks.** In the app: Settings → General → Claude → claude.ai → **Sign In…**.
 Sign in to claude.ai in the window that opens; it closes by itself. Cowork tasks (and claude.ai
