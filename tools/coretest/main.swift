@@ -72,7 +72,8 @@ check(focus("Sources — Visual Studio Code") == "b", "an ended session is gone;
 
 // Where it works: the branch of the file it touched last.
 do {
-    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("repo")
+    // In the temporary folder: a checkout in Documents isn't read (see below).
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("cloudingbar-coretest-repo")
     try? FileManager.default.createDirectory(at: dir.appendingPathComponent(".git"), withIntermediateDirectories: true)
     try? "ref: refs/heads/feature-x\n".write(to: dir.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
     store.apply(Inbound(raw: ["hook_event_name": "PreToolUse", "session_id": "a", "cwd": "/Users/me/Documents/GitHub",
