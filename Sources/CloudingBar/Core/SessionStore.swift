@@ -18,8 +18,6 @@ final class SessionStore {
 
     /// Fires after anything changed.
     var onChange: (() -> Void)?
-    /// Claude put ☁️ in a reply (MascotView's note): Cloud waves back.
-    var onCloudWave: (() -> Void)?
 
     private static var fileURL: URL {
         Config.directory.appendingPathComponent("sessions.json")
@@ -357,7 +355,6 @@ final class SessionStore {
             if s.cwd == nil { s.cwd = meta.cwd }
         }
         s.transcriptChanged = u.modified
-        if u.waved { onCloudWave?() }
         // Interrupted: Claude's permission menu, if any, is gone.
         if u.interrupted == true { s.waitingNotice = false }
         if u.interrupted == true && s.activity == .work {

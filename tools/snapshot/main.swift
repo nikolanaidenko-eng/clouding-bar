@@ -284,26 +284,12 @@ func widget(_ name: String, _ mode: WidgetMode, size: NSSize = NSSize(width: 400
     renderView(host, size: size, name: name)
 }
 
-for (name, kind, title, detail, color) in [
-    ("w-achievement", DoneBubbleController.Alert.Kind.achievement, "Achievement: A wave from Claude",
-     "Thanks for using Clouding Bar! Cloud's colours are unlocked — click to pick one.", UInt32(0xFFD60A)),
-    ("w-wave", .wave, "Claude waved ☁️", "Cloud waves back", 0x64A8FF),
-] {
-    let anim = DoneBubbleAnimation()
-    anim.alert = DoneBubbleController.Alert(kind: kind, id: name, name: title, detail: detail, color: color)
-    anim.out = 1
-    anim.bubble = 1
-    renderView(NSHostingView(rootView: DoneBubbleView(anim: anim, open: {}, hover: { _ in })),
-               size: DoneBubbleController.size(for: kind), name: name)
-}
-for c in CloudColor.allCases { // Cloud in each colour the wave unlocks (one colour at a time, as in the app)
-    MascotView.color = c
+do { // Cloud, the classic one (no chat's variant)
     let v = MascotView(size: 44)
     v.activity = .sleep
     v.awake = true
-    renderView(v, size: NSSize(width: 60, height: 60), name: "w-cloud-\(c.rawValue)")
+    renderView(v, size: NSSize(width: 60, height: 60), name: "w-cloud-classic")
 }
-MascotView.color = .classic
 do { // Cloud tells another chat is done
     let anim = DoneBubbleAnimation()
     anim.alert = DoneBubbleController.Alert(id: "c", name: "Ролик для презентации", detail: "Notes · Cowork", color: Session.colors[4])
@@ -696,7 +682,6 @@ for tab in ["general", "widget", "touchbar", "buttons", "stats"] {
     if ["general", "widget", "touchbar"].contains(tab) { // every More… open, the tab alone at its full height
         for k in moreKeys { UserDefaults.standard.set(true, forKey: "settings.more." + k) }
         for g in generalGroups { SettingsFolds.shared.show(g) } // General's groups are folded by default
-        if !m.config.achievements.contains("claude-wave") { m.config.achievements.append("claude-wave") } // Cloud's colour waits in the widget's More…
         let tabOnly = Group {
             if tab == "general" { GeneralTab(model: m) } else if tab == "widget" { WidgetTab(model: m) } else { TouchBarTab(model: m) }
         }
