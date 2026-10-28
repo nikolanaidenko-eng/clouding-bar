@@ -6,8 +6,8 @@ description: What Clouding Bar can do and how to set it up, in Cowork or in Clau
 # Walking someone through Clouding Bar
 
 Answer in the user's language and keep it short: what it does in a few lines, then the setup
-steps for where they are right now. Don't run commands or change files, except downloading the
-installer in Cowork when the user wants it (below).
+steps for where they are right now. Don't run commands or change files, except putting the installer
+in a connected folder in Cowork (below).
 
 ## What it is
 

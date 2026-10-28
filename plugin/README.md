@@ -28,7 +28,7 @@ or in the notch — and lets you answer permissions and questions from there.
 - **In Cowork**, on every message and reply it writes one line of JSON — the task's context
   use, working or done — to `.clouding-bar/` in a folder connected to the task, where the app
   reads it. With Cowork in the cloud it asks Claude to write it (how often: Clouding Bar →
-  Settings → Cowork). Nothing at all when Cowork is off there.
+  Settings → Cowork). Nothing at all when Cowork is off there (in the cloud, where the plugin can't see the folder, it asks Claude to check at most every 30 minutes).
 - Anywhere else (Windows, a Linux server, Claude Code on the web) it does nothing.
 
 The 5-hour limit and the context reach the app through its status line, which a plugin can't

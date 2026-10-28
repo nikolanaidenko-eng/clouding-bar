@@ -5,7 +5,7 @@ allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/install-app.sh")
 
 Install the Clouding Bar Mac app.
 
-First: if this chat isn't running on the Mac itself — Cowork (in the cloud or in its Linux sandbox), or any Linux — don't run anything. In Cowork the way in is a connected folder: if none is connected, ask for one first (any folder; + → Add folder in Claude Desktop) — Clouding Bar sees this task only through it, and you'll put the installer there. Once one is, put the installer in it. Follow the plugin's `guide` skill (In Cowork); don't lead with a download link or Claude Code.
+First: if this chat isn't running on the Mac itself — Cowork (in the cloud or in its Linux sandbox), or any Linux — don't run the install script. In Cowork the way in is a connected folder: if none is connected, ask for one first (any folder; + → Add folder in Claude Desktop) — Clouding Bar sees this task only through it, and you'll put the installer there. Once one is, put the installer in it. Follow the plugin's `guide` skill (In Cowork); don't lead with a download link or Claude Code.
 
 On a Mac, run exactly this with the Bash tool, nothing else:
 
