@@ -13,4 +13,9 @@ sh "<plugin root>/scripts/install-app.sh"
 
 The script needs the network (it downloads the release from GitHub) and write access to /Applications. Codex's sandbox has no network, so run it outside the sandbox: ask for that escalation (the user approves it). If the command fails with "no internet", a download error or a permission error, do not give up and do not report that as the final answer: ask to run it again outside the sandbox.
 
+If Codex refuses the escalation itself, without asking the user ("you cannot ask for escalated permissions", "automatically rejected" — Codex's default permissions do that), don't stop there and don't just report it. Tell the user, in their language, the two ways on, with the script's full path filled in:
+
+1. Type `/permissions`, choose **Ask for approval**, then ask again to install the Clouding Bar app, and approve when Codex asks.
+2. Or open a new Terminal tab (⌘T) and paste `sh "<full path>/scripts/install-app.sh"` there — not into Codex.
+
 Then tell the user, in one or two short sentences and in their language, what it printed. If it installed the app, add that Clouding Bar opens with a question to connect (for Codex nothing more is needed: this plugin already brings its hooks), that Codex runs hooks only after they are trusted (start Codex and choose Trust all, or `/hooks`), and that macOS asks for Accessibility, the one permission it needs. If it failed, say why in plain words. Don't run anything else.

@@ -1,6 +1,6 @@
 {
   "name": "clouding-bar",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "The Clouding Bar app's link to Codex: sessions, permission requests and subagents on your Touch Bar, in a floating pill or in the notch. The install-app skill gets the app.",
   "author": {
     "name": "Clouding Bar",
