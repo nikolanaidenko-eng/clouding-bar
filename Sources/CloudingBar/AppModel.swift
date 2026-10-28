@@ -160,6 +160,8 @@ final class AppModel: ObservableObject {
     // Settings → General → Connections → claude.ai: the limit, Cowork tasks
     // and chats, read with the key its sign-in window takes.
     @Published var hasLiveKey = false
+    /// claude.ai turned the key down: Sign In again.
+    @Published var liveKeyRejected = false
     @Published var liveLimitState = "Off"
     /// macOS lets Clouding Bar press keys and read windows (Accessibility).
     @Published var accessibilityTrusted = true

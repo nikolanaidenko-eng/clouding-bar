@@ -37,4 +37,4 @@ set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, 
 
 Source: <https://github.com/nikolanaidenko-eng/clouding-bar>. License: PolyForm Shield 1.0.0.
 
-No network, except `/clouding-bar:install` downloading the app from GitHub.
+No network, except `/clouding-bar:install` downloading the app from GitHub. (The Mac app's own network use is in the main README.)
