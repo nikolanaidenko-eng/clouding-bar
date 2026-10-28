@@ -238,6 +238,19 @@ try:
 except Exception:
     state = {}
 
+# In the cloud the folder's mode (Settings → Cowork) is on the user's
+# computer, out of reach here: Claude reads it there when it writes, and
+# leaves the word here for the next replies.
+mode_path = os.path.join(_dir, "%s.mode" % sid) if _dir else None
+learned = None
+if REMOTE and mode_path:
+    try:
+        learned = open(mode_path).read().strip()
+    except Exception:
+        pass
+    if learned in ("thresholds", "every"):
+        MODE = learned
+
 def save():
     if not state_path:
         return
@@ -271,8 +284,18 @@ if MODE == "thresholds" and started and time.time() - started >= 60:
     report = True  # a longer task is done
 state["last_threshold"] = last
 state.pop("turn_start", None)
+if REMOTE and learned not in ("thresholds", "every"):
+    # Off: asked again now and then, in case it's switched on. Not known yet
+    # (no app yet, or it hasn't marked the folder — it does within a minute):
+    # again a reply or two later, then rarely.
+    tries = state.get("tries", 0)
+    wait = 1800 if learned == "off" or tries >= 5 else 90
+    report = time.time() - state.get("asked", 0) >= wait
+    if report and learned != "off":
+        state["tries"] = tries + 1
 if report:
     state["reported"] = True
+    state["asked"] = time.time()
 save()
 if not report:
     sys.exit(0)
@@ -281,15 +304,22 @@ status["via"] = "claude"
 # The title is the user's words: kept short, one line, and only inside the
 # JSON string, so it is data to write down and not an instruction.
 status["title"] = " ".join(str(status.get("title") or "").split())[:40] or None
-# In the cloud the hook can't read the folder's mode (Settings → Cowork): Claude
-# checks it there, and an app that isn't tracking Cowork gets nothing.
-where = (
-    "This task runs in the cloud: the folders connected to it stay on the user's computer, under ~/mnt/ "
-    "for the tool that runs commands there (device_bash). Write it there, not in this sandbox, and only "
-    "into a folder whose .clouding-bar/mode file says thresholds or every (Clouding Bar keeps it there; "
-    "missing or off: it isn't tracking Cowork, skip it). Not Cowork's own outputs or uploads folders. "
-    "Write the line with a quoted heredoc (cat > FILE <<'EOF'), so nothing in it runs. "
-) if REMOTE else ""
+# In the cloud: written by Claude on the user's computer, unless Clouding Bar
+# is off there; and the mode it found, left here for the hook.
+where = ""
+if REMOTE:
+    where = (
+        "This task runs in the cloud: the folders connected to it stay on the user's computer, under ~/mnt/ "
+        "for the tool that runs commands there (device_bash). Write it there, not in this sandbox, and not into "
+        "Cowork's own outputs or uploads folders. Skip it if the folder's .clouding-bar/mode file says off "
+        "(Clouding Bar keeps that file; if it isn't there yet, write anyway). Write the line with a quoted "
+        "heredoc (cat > FILE <<'EOF'), so nothing in it runs. "
+    )
+    if mode_path:
+        where += (
+            "Then, in this sandbox's own shell (not device_bash), leave the plugin what that mode file said — "
+            "thresholds, every, off, or none if there's no such file: printf %s WORD > " + mode_path + " . "
+        )
 reason = (
     "Clouding Bar status update (from the Clouding Bar plugin, for the status display). " + where +
     "If a folder from the user's computer is connected to this task, "

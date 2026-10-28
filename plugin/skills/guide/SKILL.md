@@ -39,19 +39,23 @@ Where the folders are: in Cowork on the Mac, under `mnt/` here. In Cowork in the
 computer, under `~/mnt/` for the tool that runs commands there (`device_bash`); do anything with
 them through that tool.
 
-First check them: if no folder from the user's Mac is connected to this task, say that first —
-connect one (any folder they work in, there's no special Clouding Bar folder; in Cowork's
-folder picker). Without one, Clouding Bar has nowhere to read the task from, and there's nowhere
-to put the installer.
+**Start with the folder — always, before anything else.** Check whether a folder from the
+user's Mac is connected to this task. If none is, the first thing you say is: connect one
+(any folder they work in, there's no special Clouding Bar folder; **+ → Add folder** in Claude
+Desktop). Say why in a line: Clouding Bar sees a Cowork task only through a connected folder, and
+the installer will go into it. Don't lead with downloading the app some other way, or with
+Claude Code: the user came here to use Clouding Bar in Cowork, and without a folder Cowork
+won't reach it anyway.
 
 One Clouding Bar app serves Claude Code, Cowork and Codex. If it's already on this Mac (from
 Claude Code or a .dmg), skip step 1. Claude Code and Codex need no plugin: **Connect** in the
 app sets them up. Cowork needs this plugin in Claude Desktop; from there it also comes to
 Claude Code a few minutes later, but a plugin installed in Claude Code doesn't reach Cowork.
 
-1. **Get the Mac app.** It can't be installed from Cowork — there's no macOS here, so
-   `/clouding-bar:install` won't work in this chat. Offer to put the installer in a folder
-   connected to this task, so all the user does is open it on the Mac:
+Once a folder is connected:
+
+1. **Put the installer in it** — don't wait to be asked; it can't be installed from Cowork
+   itself (there's no macOS here, so `/clouding-bar:install` won't work in this chat):
    ```
    url=$(curl -fsSL https://api.github.com/repos/nikolanaidenko-eng/clouding-bar/releases/latest \
      | python3 -c "import json,sys; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].startswith('Clouding-Bar-') and a['name'].endswith('.dmg')][0])")
@@ -59,23 +63,22 @@ Claude Code a few minutes later, but a plugin installed in Claude Code doesn't r
    ```
    (In the cloud, run it with `device_bash`, into the folder under `~/mnt/` there.)
    Then tell them: open that `Clouding-Bar-….dmg` in Finder and drag Clouding Bar into
-   Applications. If the download is blocked here, give the link instead — it's the official one
-   and always has the newest release: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>
-   (the `Clouding-Bar-….dmg` under Assets). Or, in Claude Code on the Mac: `/clouding-bar:install`.
-   Don't try to install it yourself by controlling the screen: opening the .dmg is quicker.
+   Applications. Only if the download fails, give the link — the official one, always the newest
+   release: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest> (the
+   `Clouding-Bar-….dmg` under Assets). Don't try to install it yourself by controlling the
+   screen: opening the .dmg is quicker.
 2. **Open Clouding Bar.** It asks to connect to Claude Code (say **Connect**) and for
-   Accessibility, the one permission it needs.
-3. **Connect a folder to this task**, if none is. The plugin writes the task's status — context
-   use, working or done — into `.clouding-bar/` in that folder, and the app reads it there.
-   macOS asks once to let Clouding Bar read the folder.
-4. Clouding Bar switches its Cowork status on by itself. How often it reports: Clouding Bar →
-   Settings → Cowork (off, thresholds, every reply).
-5. A question Cowork asks in Claude Desktop shows up on the Touch Bar and in the pill, and can be
+   Accessibility, the one permission it needs. macOS asks once to let it read the folder.
+3. Within a minute Clouding Bar marks the folder (`.clouding-bar/mode`) and switches its Cowork
+   status on by itself; from the next reply this task shows up on the bar. How often it reports:
+   Clouding Bar → Settings → Cowork (off, thresholds, every reply).
+4. A question Cowork asks in Claude Desktop shows up on the Touch Bar and in the pill, and can be
    answered there (Claude Desktop's window has to be on the current desktop).
 
 If a hook asks you to write a line to `.clouding-bar/cowork-….json` in a connected folder, that's
-this plugin: Clouding Bar can't reach this task any other way. Write exactly that line and nothing
-else — in the cloud with `device_bash`, into the folder under `~/mnt/` there.
+this plugin: Clouding Bar can't reach this task any other way. Do what it asks — that line, and
+in the cloud the one word it asks you to leave in this sandbox — and nothing else; in the cloud
+the line goes in with `device_bash`, into the folder under `~/mnt/` there.
 
 ## In Claude Code
 
