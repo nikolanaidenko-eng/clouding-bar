@@ -36,6 +36,9 @@ final class TranscriptWatcher {
         var codexOther: [String: CodexRollout.Limits] = [:]
         /// The latest turn event, and when: working, done, or stopped by you.
         var codexTurn: (state: CodexRollout.Turn, at: Date)?
+        /// The text of the latest finished turn's answer (task_complete's
+        /// last_agent_message), for AnswerPreview; never logged.
+        var codexAnswer: String?
         /// Fresh input and output of the whole chat, from total_token_usage.
         var codexTokens: (input: Int, output: Int)?
         /// The file's first line, read when it is first looked at.
@@ -201,9 +204,13 @@ final class TranscriptWatcher {
         switch payload["type"] as? String {
         case "task_started":
             update.codexTurn = (.started, at)
+            update.codexAnswer = nil
             if let window = (payload["model_context_window"] as? NSNumber)?.intValue { update.contextWindow = window }
         case "task_complete":
             update.codexTurn = (.done, at)
+            if let text = payload["last_agent_message"] as? String, !text.isEmpty {
+                update.codexAnswer = String(text.prefix(AnswerPreview.kept))
+            }
         case "turn_aborted":
             update.codexTurn = (.aborted, at)
         case "token_count":

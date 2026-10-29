@@ -5,8 +5,9 @@ import SwiftUI
 /// just finished its work. Cloud peeks out from behind the pill (drops down
 /// from the notch, or climbs out of the screen's bottom-left corner while
 /// the widget is hidden), hops, and says which chat it was. Click it to go
-/// there. A few seconds later — longer while the pointer is on it — Cloud
-/// ducks back.
+/// there. With the chat's answer known, the bubble says how it begins (its
+/// first lines, or ✦ and Apple's short form of it). A few seconds later —
+/// longer while the pointer is on it — Cloud ducks back.
 final class DoneBubbleController {
     struct Alert: Equatable {
         let id: String
@@ -16,6 +17,8 @@ final class DoneBubbleController {
         let color: UInt32
         /// The chat's Cloud (its colorIndex), for a done chat; nil: the classic one.
         var variant: Int?
+        /// The start of its answer (AnswerPreview); nil: not known (yet).
+        var answer: String?
     }
 
     /// Cloud's bubble was clicked: go to that chat.
@@ -31,6 +34,10 @@ final class DoneBubbleController {
     private var steps: [DispatchWorkItem] = []
 
     static let size = NSSize(width: 360, height: 66)
+    /// Wider and taller for two lines of the answer.
+    static func size(for alert: Alert?) -> NSSize {
+        alert?.answer == nil ? size : NSSize(width: 400, height: 100)
+    }
 
     init() {
         let view = DoneBubbleView(anim: anim,
@@ -51,14 +58,14 @@ final class DoneBubbleController {
     }
 
     /// `anchor`: the widget's frame on screen and whether it's in the notch;
-    /// nil when it's hidden (then the screen's corner).
-    func show(_ alert: Alert, anchor: (frame: NSRect, notch: Bool)?) {
+    /// nil when it's hidden (then the screen's corner). Out for `stay` seconds.
+    func show(_ alert: Alert, anchor: (frame: NSRect, notch: Bool)?, stay: TimeInterval = 4.5) {
         cancelSteps()
         shown = alert
         hovering = false
         let screen = NSScreen.screens.first(where: { s in anchor.map { s.frame.intersects($0.frame) } ?? false })?.visibleFrame
             ?? NSScreen.screens.first?.visibleFrame ?? .zero
-        let size = Self.size
+        let size = Self.size(for: alert)
         var origin: NSPoint
         var fromAbove: Bool
         if let anchor, !anchor.notch, anchor.frame.maxY + size.height <= screen.maxY {
@@ -92,7 +99,27 @@ final class DoneBubbleController {
             withAnimation(reduce ? nil : .cb(0.3)) { self.anim.bubble = 1 }
         }
         if !reduce { step(0.9) { self.anim.pokes += 1 } }
-        scheduleHide(after: 4.5)
+        scheduleHide(after: stay)
+    }
+
+    /// The answer's start came, or changed (Apple's short form), while Cloud
+    /// is out: in place, the bubble grown for it.
+    func setAnswer(_ answer: String?) {
+        guard var alert = shown, alert.answer != answer else { return }
+        alert.answer = answer
+        shown = alert
+        let size = Self.size(for: alert)
+        if size != panel.frame.size {
+            var frame = panel.frame
+            // Down from the notch its top stays where it is; else its bottom does.
+            if anim.fromAbove { frame.origin.y = frame.maxY - size.height }
+            frame.size = size
+            if let screen = panel.screen?.visibleFrame {
+                frame.origin.x = min(max(frame.origin.x, screen.minX + 4), screen.maxX - size.width - 4)
+            }
+            panel.setFrame(frame, display: true)
+        }
+        anim.alert = alert
     }
 
     /// Cloud ducks back (now, or once the pointer has left it).
@@ -146,7 +173,7 @@ final class DoneBubbleAnimation: ObservableObject {
     @Published var pokes = 0
 }
 
-/// Cloud and its bubble: "✓ Mail drafts — done, your turn".
+/// Cloud and its bubble: "✓ Mail drafts", how its answer begins, "Done · your turn".
 struct DoneBubbleView: View {
     @ObservedObject var anim: DoneBubbleAnimation
     let open: () -> Void
@@ -159,7 +186,7 @@ struct DoneBubbleView: View {
     }
 
     var body: some View {
-        let size = DoneBubbleController.size
+        let size = DoneBubbleController.size(for: anim.alert)
         let color = Color(NSColor(hex: anim.alert?.color ?? 0x0A84FF))
         HStack(spacing: 8) {
             MascotIcon(activity: .sleep, size: 40, awake: true, pokes: anim.pokes, variant: anim.alert?.variant)
@@ -174,6 +201,14 @@ struct DoneBubbleView: View {
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                    if let answer = anim.alert?.answer {
+                        Text(answer)
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.88))
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(detail)
                         .font(.system(size: 11))
                         .foregroundColor(Color(NSColor(hex: 0xA1A1A6)))

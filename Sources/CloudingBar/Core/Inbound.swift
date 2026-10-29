@@ -28,6 +28,11 @@ struct Inbound {
     var agentId: String? { raw["agent_id"] as? String }
     var agentType: String? { raw["agent_type"] as? String }
     var permissionSuggestions: [Any]? { raw["permission_suggestions"] as? [Any] }
+    /// Stop's: the text of Claude's final answer in the turn (cut to
+    /// AnswerPreview.kept). On StopFailure it's the error, not an answer.
+    var lastAssistantMessage: String? {
+        (raw["last_assistant_message"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(AnswerPreview.kept)) }
+    }
 
     /// Added by cloudingbar-hook.
     var claudePid: Int32? { (raw["claude_pid"] as? NSNumber).map { Int32(truncatingIfNeeded: $0.intValue) } }

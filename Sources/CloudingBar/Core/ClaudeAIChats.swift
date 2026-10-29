@@ -61,6 +61,8 @@ enum ClaudeAIChats {
     struct Context: Equatable {
         let tokens: Int
         let model: String?
+        /// The text of its latest answer (AnswerPreview), in memory only.
+        var answer: String?
     }
 
     /// A Cowork task's context: what its latest reply was given (input +
@@ -76,9 +78,35 @@ enum ClaudeAIChats {
             let tokens = ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]
                 .map { clamp(usage[$0] as? NSNumber) }.reduce(0, +)
             guard tokens > 0 else { continue }
-            return Context(tokens: min(tokens, 10_000_000), model: (message["model"] as? String).map { String($0.prefix(80)) })
+            return Context(tokens: min(tokens, 10_000_000), model: (message["model"] as? String).map { String($0.prefix(80)) },
+                           answer: answer(events: json))
         }
         return nil
+    }
+
+    /// The text of a Cowork task's latest answer: its newest reply of its own
+    /// (not a subagent's), every text block of that reply in order. A reply
+    /// without words (a tool call) has no answer yet.
+    static func answer(events json: Any?) -> String? {
+        var reply: String?? // the newest reply's id, once met
+        var texts: [String] = []
+        for e in items(json) {
+            let payload = e["payload"] as? [String: Any] ?? e
+            guard (e["type"] as? String ?? payload["type"] as? String) == "assistant",
+                  !(payload["parent_tool_use_id"] is String),
+                  let message = payload["message"] as? [String: Any] else { continue }
+            let id = message["id"] as? String
+            // An older reply (or one that can't be told apart): the newest is whole.
+            if let r = reply, r == nil || r != id { break }
+            reply = .some(id)
+            let blocks = (message["content"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }
+            let words = message["content"] as? String
+                ?? blocks.filter { $0["type"] as? String == "text" }.compactMap { $0["text"] as? String }.joined(separator: "\n\n")
+            // Newest first: this block came before the ones read already.
+            if !words.isEmpty { texts.insert(words, at: 0) }
+        }
+        let text = texts.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : String(text.prefix(AnswerPreview.kept))
     }
 
     /// A session's card on claude.ai (`/v1/code/sessions/<cse>`), as Claude
