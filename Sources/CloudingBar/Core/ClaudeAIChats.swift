@@ -74,8 +74,11 @@ enum ClaudeAIChats {
     /// The Cowork session of a chat, from claude.ai's list of sessions asked
     /// by the chat's tag (`bard-conversation:<uuid>`): a new task's chat
     /// comes in the chat list without it for minutes (29.10).
-    static func session(found json: Any?) -> String? {
-        guard let id = items(json).first?["id"] as? String, isId(id) else { return nil }
+    static func session(found json: Any?, chat: String) -> String? {
+        // Its tag on it too: were the filter ever left out, the account's
+        // newest session (a terminal's) isn't taken for this chat (review, 29.10).
+        guard let s = items(json).first, let id = s["id"] as? String, isId(id),
+              (s["tags"] as? [Any])?.contains(where: { $0 as? String == "bard-conversation:" + chat }) == true else { return nil }
         let cse = cse(id)
         return cse.hasPrefix("cse_") ? cse : nil
     }

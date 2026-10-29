@@ -256,6 +256,9 @@ final class Session {
         var ambient: Bool?
         var codexHost: String?
         var activitySince: Date?
+        /// A Cowork task's session: known after a restart while the list
+        /// still shows its chat as a plain one (review, 29.10).
+        var coworkSession: String?
     }
 
     var record: Record {
@@ -264,7 +267,8 @@ final class Session {
                contextTokens: contextTokens, contextWindowSize: contextWindowSize,
                statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath,
                desktopChat: desktopChat, desktopTitle: desktopTitle,
-               ambient: ambient ? true : nil, codexHost: codexHost, activitySince: activitySince)
+               ambient: ambient ? true : nil, codexHost: codexHost, activitySince: activitySince,
+               coworkSession: entrypoint == "cowork" ? remoteSession : nil)
     }
 
     convenience init(record r: Record) {
@@ -288,6 +292,7 @@ final class Session {
         desktopTitle = r.desktopTitle
         ambient = r.ambient ?? false
         codexHost = r.codexHost
+        if r.entrypoint == "cowork" { remoteSession = r.coworkSession }
         // Kept, not the restart's time: a Codex turn that ended while the
         // app was away (its task_complete) still counts.
         activitySince = r.activitySince ?? r.lastEvent
