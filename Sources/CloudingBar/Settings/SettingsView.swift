@@ -1069,7 +1069,7 @@ struct WidgetTab: View {
                             .disabled(model.config.widgetPosition == nil)
                     }
                 }
-                MoreRows("widget", count: model.config.widget ? 5 : 0) {
+                MoreRows("widget", count: model.config.widget ? 4 : 0) {
                     if model.config.widget {
                         SettingsRow(title: "Follow the chat at work", hint: "When the one shown is done, it says so, then shows the one still working") {
                             CBSwitch(title: "Follow the chat at work", on: binding("followWorking") { $0.followWorking })
@@ -1085,9 +1085,6 @@ struct WidgetTab: View {
                         }
                         SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
                             CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })
-                        }
-                        SettingsRow(title: "Open on hover", hint: "Off: click the pill to open it") {
-                            CBSwitch(title: "Open on hover", on: binding("hoverOpens") { $0.hoverOpens })
                         }
                     }
                 }
@@ -1476,9 +1473,11 @@ struct LiveBar: NSViewRepresentable {
 }
 
 /// The widget itself, live, as it shows now — what's switched on below
-/// appears in it at once — scaled to fit, to arrange right here as in the
-/// widget: drag an item onto another to swap them, an item's right edge to
-/// size it (owner, 24.10). Clicks do nothing here: nothing is sent from it.
+/// appears in it at once — scaled to fit, and arranged here only (owner,
+/// 29.10; the widget on screen just moves): drag an item onto another to
+/// swap them, an item's right edge to size it (24.10), the outline for the
+/// whole pill, wider or narrower, taller or lower. Clicks do nothing here:
+/// nothing is sent from it.
 struct WidgetPreview: View {
     @ObservedObject var model: AppModel
     @StateObject private var state = WidgetState()
@@ -1486,18 +1485,34 @@ struct WidgetPreview: View {
     @StateObject private var example = AppModel()
     @State private var panel = false
     @State private var panelSize = CGSize(width: 480, height: 280)
+    @State private var pull: Pull?
+
+    /// The outline being pulled: `h` −1/1 for the left/right end, `v` 1/−1
+    /// for the top/bottom; in the pill's own points (the copy is scaled).
+    private struct Pull {
+        let start: CGPoint
+        let size: CGSize
+        let h: Int, v: Int
+        let scale: CGFloat
+        var raw: CGSize
+    }
 
     private var shown: AppModel { model.hasSession ? model : example }
 
-    /// The pill's size as the widget works it out; the panel's, measured.
+    /// The pill's size as the widget works it out (as pulled, while it is);
+    /// the panel's, measured.
     private var natural: CGSize {
-        panel ? panelSize : PillLayout(model: shown).arrange(width: shown.pillBudget, height: shown.pillHeightBudget).frame
+        if panel { return panelSize }
+        return state.pillEditSize ?? PillLayout(model: shown).arrange(width: shown.pillBudget, height: shown.pillHeightBudget).frame
+    }
+
+    private func scale(for size: CGSize) -> CGFloat {
+        min(1, (SettingsView.width - 64 - 24) / max(size.width, 1), panel ? 300 / max(size.height, 1) : 1)
     }
 
     var body: some View {
         let size = natural
-        let room = SettingsView.width - 64 - 24
-        let scale = min(1, room / max(size.width, 1), panel ? 300 / max(size.height, 1) : 1)
+        let scale = scale(for: size)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1523,11 +1538,17 @@ struct WidgetPreview: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
-            Text("Drag an item onto another to swap them, an item's right edge to make it wider or narrower — here or in the widget itself. Pull the widget's outline for its whole size.")
+            Text(panel ? "Drag a block up or down by the bar over it, a button onto another to swap them. The widget itself only moves."
+                 : "Drag an item onto another to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget. The widget itself only moves.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .onAppear { sync(); state.mode = panel ? .panel : .pill; measure() }
+        .onAppear {
+            sync(); state.mode = panel ? .panel : .pill; measure()
+            state.pillMouseDown = { _ in beginPull() }
+            state.pillMouseDragged = { _ in movePull() }
+            state.pillMouseUp = { _ in endPull() }
+        }
         .onChange(of: model.config) { _ in sync(); measure() }
         .onChange(of: model.buttons) { _ in sync(); measure() }
         .onChange(of: model.menuButtons) { _ in sync(); measure() }
@@ -1535,6 +1556,43 @@ struct WidgetPreview: View {
     }
 
     private func sync() { example.fillExample(from: model) }
+
+    private var most: CGFloat { PillLayout(model: shown).maxWidth }
+    private var mostHeight: CGFloat { NSScreen.main?.visibleFrame.height ?? 800 }
+
+    private func beginPull() {
+        guard !panel, let press = state.pillPress, let rim = WidgetState.pillRim(press.point, in: press.size) else { return }
+        let size = natural
+        pull = Pull(start: NSEvent.mouseLocation, size: size, h: rim.h, v: rim.v, scale: scale(for: size), raw: size)
+        withAnimation(.cb(0.15)) { state.pillEditSize = size }
+    }
+
+    private func movePull() {
+        guard var r = pull else { return }
+        let p = NSEvent.mouseLocation
+        r.raw = CGSize(width: r.size.width + CGFloat(r.h) * (p.x - r.start.x) / r.scale,
+                       height: r.size.height + CGFloat(r.v) * (p.y - r.start.y) / r.scale)
+        pull = r
+        state.pillEditSize = CGSize(width: min(max(r.raw.width, PillLayout.minWidth), most),
+                                    height: min(max(r.raw.height, PillLayout.height(rows: 1)), mostHeight))
+    }
+
+    /// Let go: the widget takes that size. Taller than wide, it stands up
+    /// as a column with no spare width; pulled all the way, it shows
+    /// everything, now and whatever's added later.
+    private func endPull() {
+        guard let r = pull else { return }
+        pull = nil
+        let height = min(mostHeight, max(PillLayout.height(rows: 1), r.raw.height))
+        if PillLayout.isVertical(width: r.raw.width, height: height) {
+            let fits = PillLayout(model: shown).arrange(width: max(PillLayout.minWidth, r.raw.width), height: height).natural
+            model.setConfig("pillWidth", Double(min(max(PillLayout.minWidth, r.raw.width), fits)))
+        } else {
+            model.setConfig("pillWidth", r.raw.width >= most ? 10_000 : Double(max(0, r.raw.width)))
+        }
+        model.setConfig("pillHeight", Double(height))
+        withAnimation(.cb(0.2)) { state.pillEditSize = nil }
+    }
 
     private func measure() {
         guard panel else { return }

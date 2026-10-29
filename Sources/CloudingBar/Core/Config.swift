@@ -154,8 +154,6 @@ struct Config: Equatable {
     /// "metric:model", "button:<label>", "chat", "mic", …), set by dragging
     /// one onto another. Items not listed keep their place after these.
     var itemOrder: [String] = []
-    /// Hovering the pill for 2 s opens the full panel; off: only a click does.
-    var hoverOpens = true
     /// The chat in front finished while another is at work: "done" for a
     /// moment, then the widget and the bar show the one at work.
     var followWorking = true
@@ -308,7 +306,6 @@ struct Config: Equatable {
         if let v = obj["itemOrder"] as? [String] { config.itemOrder = v }
         if let v = obj["pillShows"] as? [String] { config.pillShows = v }
         if let v = obj["widgetHides"] as? [String] { config.widgetHides = v }
-        if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
         if let v = obj["followWorking"] as? Bool { config.followWorking = v }
         if let v = obj["doneAlerts"] as? Bool { config.doneAlerts = v }
         if let v = obj["answerPreview"] as? Bool { config.answerPreview = v }

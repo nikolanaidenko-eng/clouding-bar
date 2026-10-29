@@ -138,9 +138,10 @@ struct RearrangeBoard<Item: View>: View {
                         // Nearly 0, not 0: it must keep the drag going.
                         .opacity(rearrange.dragging == id ? 0.001 : 1)
                         .offset(x: r.minX, y: r.minY)
+                        // Arranged in Settings' copy only (owner, 29.10).
                         .simultaneousGesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(rearrange.space))
                             .onChanged { rearrange.changed(id, $0) }
-                            .onEnded { _ in rearrange.ended(commit) })
+                            .onEnded { _ in rearrange.ended(commit) }, including: preview ? .all : .subviews)
                         .transition(.opacity.combined(with: .scale(scale: 0.85)))
                 }
             }
@@ -212,13 +213,6 @@ extension EnvironmentValues {
     }
 }
 
-extension View {
-    /// Tells the widget the pointer is over a control, so hovering it
-    /// doesn't open the panel underneath.
-    func hoverReport(_ state: WidgetState) -> some View {
-        onHover { [weak state] inside in state?.controlHover?(inside) }
-    }
-}
 
 // MARK: - Layout
 
@@ -618,7 +612,7 @@ struct PillView: View {
         }
         .font(.system(size: 13).monospacedDigit())
         .foregroundColor(.cbText)
-        .background(PillDragHandle(state: state))
+        .background(PillDragHandle(state: state, resizable: preview))
         .modifier(Glass(radius: 22, border: model.request != nil ? Color.cbWarning.opacity(0.5) : .cbHairline))
         .overlay(outline)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -637,7 +631,7 @@ struct PillView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.cbAction, lineWidth: 3)
                 .allowsHitTesting(false)
-        } else if state.pillHover && model.request == nil && !model.listening && !state.pillTyping {
+        } else if preview && state.pillHover && model.request == nil && !model.listening && !state.pillTyping {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.3), lineWidth: 1.5)
                 .allowsHitTesting(false)
@@ -697,6 +691,7 @@ struct PillBoard: View {
     @ObservedObject var state: WidgetState
     @ObservedObject var rearrange: Rearrange
     @Environment(\.cbScale) private var scale
+    @Environment(\.cbPreview) private var preview
     let budget: CGSize
     /// In a real notch: the camera's width, kept clear in the middle.
     var camera: CGFloat = 0
@@ -744,7 +739,7 @@ struct PillBoard: View {
                             item(part, shown: a.shown, vertical: a.vertical, slot: a.slots[id]?.size ?? .zero)
                         }
                     }
-                    if !a.vertical && !rearrange.isDragging {
+                    if preview && !a.vertical && !rearrange.isDragging {
                         ForEach(a.ids, id: \.self) { id in
                             // Not at the pill's own right edge: that pulls the whole pill
                             // (unless it's the one being pulled, which keeps its edge).
@@ -848,7 +843,7 @@ struct PillBoard: View {
                                    slot: CGSize) -> some View {
         switch part {
         case .focus:
-            PillFocus(model: model, dotOnly: slot.width < 40).hoverReport(state).transition(.opacity)
+            PillFocus(model: model, dotOnly: slot.width < 40).transition(.opacity)
         case .session where vertical && slot.width < PillLayout.meterWidth:
             slim(model.sessionPercent, "5-hour limit").opensPanel(state)
         case .context where vertical && slot.width < PillLayout.meterWidth:
@@ -895,20 +890,20 @@ struct PillBoard: View {
             if let m = Metric.list(model).first(where: { $0.id == id }) {
                 // "—" (no model known, no chat): nothing to pick.
                 MetricChip(metric: (id == "model" || id == "agents") && m.action != nil ? opensPanel(m) : m, plain: true)
-                    .hoverReport(state).transition(.opacity)
+                    .transition(.opacity)
             }
         case let .button(i):
             if model.buttons.indices.contains(i) {
                 Button(model.buttons[i].label) { if rearrange.clickAllowed { model.perform(.button(i)) } }
                     .buttonStyle(PillButtonStyle(fill: vertical))
                     .frame(width: vertical ? slot.width : nil)
-                    .hoverReport(state)
+                    
                     .transition(.opacity)
             }
         case .chat: PillChat(model: model, state: state, rearrange: rearrange).transition(.opacity)
-        case .templates: TemplatesButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
-        case .shot: ShotButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
-        case .mic: MicButton(model: model, size: 26, plain: true, width: slot.width).hoverReport(state).transition(.opacity)
+        case .templates: TemplatesButton(model: model, size: 26, plain: true, width: slot.width).transition(.opacity)
+        case .shot: ShotButton(model: model, size: 26, plain: true, width: slot.width).transition(.opacity)
+        case .mic: MicButton(model: model, size: 26, plain: true, width: slot.width).transition(.opacity)
         case .sessionBar, .contextBar: EmptyView()
         }
     }
@@ -943,7 +938,7 @@ struct PillChat: View {
         let buttons = ForEach(order, id: \.self) { i in
             Button(model.buttons[i].label) { if rearrange.clickAllowed { model.perform(.button(i)) } }
                 .buttonStyle(PillButtonStyle(height: 22, fill: column))
-                .hoverReport(state)
+                
         }
         Group {
             if column {
@@ -980,7 +975,7 @@ struct PillChat: View {
                 if model?.hasSession ?? false, rearrange?.clickAllowed ?? true { state?.startTyping?() }
             }
             .onHover { inside in if inside { NSCursor.iBeam.push() } else { NSCursor.pop() } }
-            .hoverReport(state)
+            
             .help("Write to Claude: sent now if it's free, after this reply if not")
             .accessibilityLabel("Write to Claude")
             .accessibilityAddTraits(.isButton)
@@ -1149,17 +1144,24 @@ struct PillButtonStyle: ButtonStyle {
     }
 }
 
-/// Lets the pill be dragged (and clicked); its outline resizes it. It lies
-/// under the pill's content, so the items get their own clicks and drags.
+/// Lets the pill be dragged (and clicked); in Settings' copy its outline
+/// resizes it. It lies under the pill's content, so the items get their own
+/// clicks and drags.
 struct PillDragHandle: NSViewRepresentable {
     let state: WidgetState
     /// Off in the notch: it hangs from the top, so only its ends and bottom pull.
     var fromTop = true
+    /// Settings' copy: the outline pulls (owner, 29.10: sized there, not on screen).
+    var resizable = false
 
     final class HandleView: NSView {
         weak var state: WidgetState?
         var fromTop = true
-        override func mouseDown(with event: NSEvent) { state?.pillMouseDown?(event) }
+        var resizable = false
+        override func mouseDown(with event: NSEvent) {
+            if resizable { state?.pillPress = (convert(event.locationInWindow, from: nil), bounds.size) }
+            state?.pillMouseDown?(event)
+        }
         override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
         override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -1167,6 +1169,7 @@ struct PillDragHandle: NSViewRepresentable {
         /// it goes: the nearer end and the bottom (the top from the band
         /// along the top) — one drag sizes it both ways.
         override func resetCursorRects() {
+            guard resizable else { return }
             let edge = WidgetState.pillEdge, rim = WidgetState.pillRim
             let w = bounds.width, h = bounds.height, mid = w / 2
             // y up here: bottom-left and top-right share a diagonal.
@@ -1201,11 +1204,13 @@ struct PillDragHandle: NSViewRepresentable {
         let v = HandleView()
         v.state = state
         v.fromTop = fromTop
+        v.resizable = resizable
         return v
     }
     func updateNSView(_ nsView: HandleView, context: Context) {
-        if nsView.fromTop != fromTop {
+        if nsView.fromTop != fromTop || nsView.resizable != resizable {
             nsView.fromTop = fromTop
+            nsView.resizable = resizable
             nsView.window?.invalidateCursorRects(for: nsView)
         }
     }

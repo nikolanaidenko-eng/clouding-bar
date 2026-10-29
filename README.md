@@ -56,21 +56,22 @@ A first version for **Windows** is in [windows/](windows/README.md).
   until the model is done — its first lines, without markdown or code.
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, how long the chat has been at
-  it, lines changed, the git branch, subagents. Pull its outline to resize
-  it — wider shows more, taller stands it up as a column, pulled thinnest it
-  keeps just the bars — drag items onto each other to swap them, and an
-  item's right edge to make it wider or narrower.
+  it, lines changed, the git branch, subagents. In Settings → Widget, pull
+  its outline to resize it — wider shows more, taller stands it up as a
+  column, pulled thinnest it keeps just the bars — drag items onto each
+  other to swap them, and an item's right edge to make it wider or
+  narrower. On screen it only moves, so a stray drag rearranges nothing.
 - **The notch.** Drag the pill to the top of the screen and it docks in the
   notch, the numbers on either side of the camera. Macs without a notch get
   a drawn one. When Claude asks something, the notch grows so you can
   answer right there; drag it out to put it anywhere again.
-- **The panel** opens from the pill (hover for 2 seconds, or click): your
+- **The panel** opens from the pill with a click: your
   chats as tabs; the 5-hour limit and the context as two lines (the context
   as "312k of 1M"); the model, the time, lines, branch and subagents; and a
   message box that says which chat it writes to, Commands, the screenshot,
-  the mic and Send on its line and your buttons under it. Its blocks move up
-  or down by the bar that shows over each; the buttons swap places like the
-  pill's items.
+  the mic and Send on its line and your buttons under it; the gear opens
+  Settings. There, its blocks move up or down by the bar over each, and the
+  buttons swap places like the pill's items.
 - **The Touch Bar** turns into Claude's bar while your terminal or VS Code
   is in front — or in every app, if you like (there the short bar, beside
   Apple's brightness and volume: a bar of its own, by default the chat's
@@ -460,7 +461,7 @@ as you move the pointer, and walks along the tabs.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
   tell when another chat is done and the start of its answer, keep the pill
-  visible, open on hover, its position; what it shows (a chip
+  visible, its position; what it shows (a chip
   for each thing).
 - **Touch Bar** — the bar itself on top, the whole one and the short one,
   each with what it shows (everything the widget can, and Write and
