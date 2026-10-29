@@ -89,8 +89,10 @@ final class Session {
     /// Session totals from the transcript (input includes cache writes).
     var tokensIn: Int?
     var tokensOut: Int?
-    /// API cost so far, from the status line (terminal sessions only).
+    /// API cost so far, from the status line (a Cowork task's from its card).
     var costUSD: Double?
+    /// A Cowork task's window as its card says it: not guessed from the model.
+    var cardWindow: Int?
     /// Reasoning effort (CLAUDE_EFFORT), e.g. "xhigh".
     var effort: String?
     /// Lines added and removed by Claude's edits in this session.

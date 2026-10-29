@@ -195,12 +195,32 @@ final class SessionStore {
         onChange?()
     }
 
+    /// A Cowork task's context and cost, from its card (by its "cse_…"):
+    /// what Claude counts, of the window it has — over the guess by model.
+    func apply(coworkCard card: ClaudeAIChats.Remote, session cse: String) {
+        guard let session = sessions.values.first(where: { $0.entrypoint == "cowork" && $0.remoteSession == cse }) else { return }
+        var changed = false
+        if let max = card.contextMax, let used = card.contextUsed {
+            changed = session.cardWindow != max || session.contextTokens != used
+            session.cardWindow = max
+            session.contextWindowSize = max
+            session.contextTokens = used
+        }
+        if let cost = card.costUSD, session.costUSD != cost {
+            session.costUSD = cost
+            changed = true
+        }
+        guard changed else { return }
+        scheduleSave()
+        onChange?()
+    }
+
     /// A Cowork task's context, from its events.
     func apply(claudeAIContext c: ClaudeAIChats.Context, chat uuid: String) {
         guard let session = sessions["cowork-" + uuid] else { return }
-        session.contextTokens = c.tokens
+        if session.cardWindow == nil { session.contextTokens = c.tokens }
         if let model = c.model { session.model = model }
-        session.contextWindowSize = Cowork.window(model: session.model)
+        session.contextWindowSize = session.cardWindow ?? Cowork.window(model: session.model)
         // Its answer, once the turn is over: read while it works, it's a step on the way.
         if let a = c.answer, session.activity == .sleep { session.answer = a }
         scheduleSave()
