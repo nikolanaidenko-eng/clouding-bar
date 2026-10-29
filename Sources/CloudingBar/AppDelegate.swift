@@ -131,6 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let files = self.attachments.removeValue(forKey: from) { self.attachments[to, default: []] += files }
             if self.pickedSessionId == from { self.pickedSessionId = to }
             if self.lastActiveId == from { self.lastActiveId = to }
+            // What you're writing or saying to it right now (review, 29.10).
+            if let draft = self.model.chatDrafts.removeValue(forKey: from) { self.model.chatDrafts[to] = draft }
+            for state in [self.widget.state, self.drawer.state] where state.composerChat == from { state.composerChat = to }
+            if self.voiceFor == from { self.voiceFor = to }
+            if self.model.listeningFor == from { self.model.listeningFor = to }
             guard self.queue.contains(where: { $0.sessionId == from }) else { return }
             self.queue = self.queue.map { $0.sessionId == from ? AppModel.QueueItem(id: $0.id, text: $0.text, sessionId: to, project: $0.project) : $0 }
             self.saveQueue()
@@ -2878,6 +2883,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         claudeAI.onRemote = { [weak self] id, card in self?.remoteCard(card, for: id) }
+        claudeAI.known = { [weak self] in
+            var known: [String: String] = [:]
+            for s in self?.store.sessions.values ?? [:].values where s.entrypoint == "cowork" && s.id.hasPrefix("cowork-") {
+                if let cse = s.remoteSession { known[String(s.id.dropFirst("cowork-".count))] = cse }
+            }
+            return known
+        }
         claudeAI.onContext = { [weak self] uuid, context in self?.store.apply(claudeAIContext: context, chat: uuid) }
         claudeAI.onRejected = { [weak self] in
             // Its chats would stay "working" for hours.

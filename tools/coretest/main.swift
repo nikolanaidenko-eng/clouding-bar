@@ -311,12 +311,15 @@ do {
     store.forgetClaudeAI()
     // A task Claude Desktop just started: in the list as a plain chat for
     // minutes, its Cowork session found by its chat (owner, 29.10).
-    check(ClaudeAIChats.session(found: ["data": [["id": "cse_01TZ8", "tags": ["cowork-remote"]]]]) == "cse_01TZ8"
-          && ClaudeAIChats.session(found: ["data": [["id": "session_01TZ8"]]]) == "cse_01TZ8"
-          && ClaudeAIChats.session(found: ["data": []]) == nil
-          && ClaudeAIChats.session(found: ["data": [["id": "../x"]]]) == nil
-          && ClaudeAIChats.session(found: ["data": [["id": "env_01"]]]) == nil,
-          "a chat's Cowork session from the sessions asked by its tag; none, or not a session's id: none")
+    let tagged = { (sid: String) -> [String: Any] in ["data": [["id": sid, "tags": ["cowork-remote", "bard-conversation:" + id(3)]]]] }
+    check(ClaudeAIChats.session(found: tagged("cse_01TZ8"), chat: id(3)) == "cse_01TZ8"
+          && ClaudeAIChats.session(found: tagged("session_01TZ8"), chat: id(3)) == "cse_01TZ8"
+          && ClaudeAIChats.session(found: tagged("cse_01TZ8"), chat: id(4)) == nil
+          && ClaudeAIChats.session(found: ["data": [["id": "cse_9", "tags": ["cowork-remote"]]]], chat: id(3)) == nil
+          && ClaudeAIChats.session(found: ["data": []], chat: id(3)) == nil
+          && ClaudeAIChats.session(found: tagged("../x"), chat: id(3)) == nil
+          && ClaudeAIChats.session(found: tagged("env_01"), chat: id(3)) == nil,
+          "a chat's Cowork session from the sessions asked by its tag, the tag on it too (another's, the newest of all: not taken); none, or not a session's id: none")
     let newTask = ClaudeAIChats.chats(["data": [["uuid": id(3), "name": "New task", "updated_at": at(5)]]])
     let foundTask = ClaudeAIChats.merged(newTask, previous: [], found: [id(3): "cse_05"])
     check(foundTask.first?.workspace == "cse_05" && foundTask.first?.isCowork == true
@@ -336,6 +339,9 @@ do {
           "a chat found to be a Cowork task: the same chat (colour, page), what waits for it told to follow")
     store.apply(claudeAI: foundTask, now: now)
     check(renamed.count == 1, "…once")
+    let restored = Session(record: store.sessions["cowork-" + id(3)]!.record)
+    check(restored.remoteSession == "cse_05" && Session(record: plain!.record).remoteSession == nil,
+          "a Cowork task's session kept over a restart (review, 29.10: else back to a plain chat, its words lost)")
     store.onRenamed = nil
     store.forgetClaudeAI()
 

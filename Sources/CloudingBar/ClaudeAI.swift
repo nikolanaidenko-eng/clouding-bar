@@ -31,6 +31,9 @@ final class ClaudeAI {
     /// The chats too, not the limit alone: a key pasted before 1.2.8 was
     /// given for the limit, and reads the chats only once you say so.
     var readChats = true
+    /// Cowork tasks the app already knows (chat uuid → "cse_…"): after a
+    /// restart a task the list still shows as a plain chat stays one (review, 29.10).
+    var known: (() -> [String: String])?
 
     private var timer: Timer?
     private var orgId: String?
@@ -220,6 +223,7 @@ final class ClaudeAI {
                 self.note("chats: HTTP \(status)")
                 return
             }
+            self.found.merge(self.known?() ?? [:]) { mine, _ in mine }
             let chats = ClaudeAIChats.merged(ClaudeAIChats.chats(json), previous: self.chats, found: self.found)
             // Which fields claude.ai gives, once: names only, never values.
             let first = ClaudeAIChats.items(json).first
@@ -229,7 +233,9 @@ final class ClaudeAI {
             self.lookUpSessions(org: org, key: key)
             self.fetchContexts(org: org, key: key)
             // What a Cowork task waiting on you asks: only its card has it.
+            // Each at most every 10 s, the list read every 5 now.
             let waiting = chats.filter { $0.needsInput != nil && !$0.archived }.compactMap(\.workspace)
+                .filter { Date().timeIntervalSince(self.cardRead[$0] ?? .distantPast) >= 10 }
             if !waiting.isEmpty { self.fetchCards(Array(waiting.prefix(5)), org: org, key: key) }
         }
     }
@@ -258,19 +264,21 @@ final class ClaudeAI {
     /// claude.ai's sessions by its tag — a task Claude Desktop just started
     /// comes in the list as a plain chat for minutes, and its words then
     /// waited for its window (owner, 29.10). A plain chat has none: asked
-    /// again a minute later, at most three at a time.
+    /// again a minute later (5 once quiet), at most three at a time.
     private func lookUpSessions(org: String, key: String) {
         let now = Date()
         let due = chats.filter { chat in
-            chat.workspace == nil && !chat.archived
-                && (chat.running || chat.needsInput != nil || now.timeIntervalSince(chat.lastActive ?? .distantPast) < 120)
-                && now.timeIntervalSince(lookedUp[chat.uuid] ?? .distantPast) >= 60
+            let idle = now.timeIntervalSince(chat.lastActive ?? .distantPast)
+            let active = chat.running || chat.needsInput != nil || idle < 120
+            // One quiet a while is shown too (half an hour): asked every 5 minutes (review, 29.10).
+            return chat.workspace == nil && !chat.archived && (active || idle < ClaudeAIChats.recent)
+                && now.timeIntervalSince(lookedUp[chat.uuid] ?? .distantPast) >= (active ? 60 : 300)
         }
         for chat in due.prefix(3) {
             lookedUp[chat.uuid] = now
             let tag = "bard-conversation:" + chat.uuid
             get("/v1/code/sessions?limit=1&tags=" + tag, key: key, headers: ccr(org)) { [weak self] status, json in
-                guard let self, status == 200, let cse = ClaudeAIChats.session(found: json) else { return }
+                guard let self, status == 200, let cse = ClaudeAIChats.session(found: json, chat: chat.uuid) else { return }
                 self.found[chat.uuid] = cse
                 self.note("cowork: a task found by its chat")
                 self.chats = ClaudeAIChats.merged(self.chats, previous: [], found: self.found)
