@@ -90,6 +90,8 @@ final class SessionStore {
                 // StopFailure: a turn that ended on an API error.
                 session.activity = .sleep
                 session.waitingNotice = false
+                // What it answered, for the start of it on the bar (AnswerPreview).
+                if event == "Stop", m.agentId == nil, let text = m.lastAssistantMessage { session.answer = text }
             case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure":
                 session.activity = .work
                 // Codex has no Notification: its PermissionRequest says it's asking
@@ -190,6 +192,8 @@ final class SessionStore {
         session.contextTokens = c.tokens
         if let model = c.model { session.model = model }
         session.contextWindowSize = Cowork.window(model: session.model)
+        // Its answer, once the turn is over: read while it works, it's a step on the way.
+        if let a = c.answer, session.activity == .sleep { session.answer = a }
         scheduleSave()
         onChange?()
     }
@@ -463,6 +467,8 @@ final class SessionStore {
                 }
             }
         }
+        // Its answer, once the turn is over (a Stop may have said it already).
+        if let a = u.codexAnswer, s.activity == .sleep { s.answer = a }
     }
 
     /// Codex's limits are the account's, whichever chat's file they were read

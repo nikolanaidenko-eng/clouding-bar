@@ -135,6 +135,11 @@ add("chats-crowd") { $0.chats = crowd; $0.mode = .chats }
 add("chats-crowd-short", width: 628) { $0.short = true; $0.chats = crowd; $0.mode = .chats }
 add("done") { $0.chats = chats; $0.mode = .done(BarModel.Chat(id: "4", name: "Cowork · Ролик для презентации", color: Session.colors[4], current: false, waiting: false)) }
 add("done-short", width: 628) { $0.short = true; $0.chats = chats; $0.mode = .done(chats[1]) }
+// With the start of its answer (owner, 29.10): its first lines, or ✦ Apple's short form.
+let firstLines = AnswerPreview.firstLines("## Итог\n**Сделал** начало ответа в `DoneBubble.swift` и на Touch Bar.\n\n- тесты: 417 проверок прошли\n- снимки в build/snapshots") ?? ""
+add("done-answer") { $0.chats = chats; $0.doneAnswer = firstLines
+    $0.mode = .done(BarModel.Chat(id: "4", name: "Cowork · Ролик для презентации", color: Session.colors[4], current: false, waiting: false)) }
+add("done-answer-short", width: 628) { $0.short = true; $0.chats = chats; $0.mode = .done(chats[1]); $0.doneAnswer = "✦ Сделал начало ответа, тесты прошли" }
 add("permission-chat") { $0.chats = chats; $0.requestChat = chats[1]; $0.activity = .wait
     $0.mode = .permission(verb: "Run", detail: "npm run deploy") }
 add("normal-write-templates") { $0.shows = ["session", "reset", "context", "lines", "branch", "chat", "templates", "buttons", "mic"]
@@ -297,6 +302,16 @@ do { // Cloud tells another chat is done
     anim.bubble = 1
     renderView(NSHostingView(rootView: DoneBubbleView(anim: anim, open: {}, hover: { _ in })),
                size: DoneBubbleController.size, name: "w-done-bubble")
+    // And how its answer begins: two lines of its first lines, or one of Apple's short form.
+    for (name, answer) in [("w-done-bubble-answer", AnswerPreview.firstLines("Готово: облачко теперь говорит, с чего начинается ответ, а Touch Bar — то же одной строкой. Проверь снимки в build/snapshots и скажи, если текст не помещается.")),
+                           ("w-done-bubble-short", "✦ Облачко показывает начало ответа, проверь снимки")] {
+        let a = DoneBubbleAnimation()
+        a.alert = DoneBubbleController.Alert(id: "c", name: "Ролик для презентации", detail: "Notes · Cowork", color: Session.colors[4], answer: answer)
+        a.out = 1
+        a.bubble = 1
+        renderView(NSHostingView(rootView: DoneBubbleView(anim: a, open: {}, hover: { _ in })),
+                   size: DoneBubbleController.size(for: a.alert), name: name)
+    }
 }
 
 widget("w-strip", .strip, size: NSSize(width: 200, height: 60))

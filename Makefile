@@ -103,7 +103,7 @@ test: $(TAP) $(HOOK)
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.
 snapshots:
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift tools/snapshot/main.swift -o build/tb-snapshot
+	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift Sources/CloudingBar/TouchBar/*.swift Sources/CloudingBar/Widget/*.swift Sources/CloudingBar/Settings/*.swift) Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Voice.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/Setup.swift tools/snapshot/main.swift -o build/tb-snapshot
 	./build/tb-snapshot build/snapshots
 
 signing-identity:

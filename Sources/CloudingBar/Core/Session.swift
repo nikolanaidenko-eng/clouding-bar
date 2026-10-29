@@ -36,8 +36,14 @@ final class Session {
         didSet {
             if activity != oldValue { activitySince = Date() }
             if oldValue == .work && activity == .sleep { finishedAt = Date() }
+            // A new turn: the last one's answer is over.
+            if activity == .work && oldValue != .work { answer = nil }
         }
     }
+    /// The text of the latest turn's answer (Stop's last_assistant_message,
+    /// Codex's task_complete, a Cowork task's events), for AnswerPreview. In
+    /// memory only: never saved, never logged.
+    var answer: String?
     /// When the current activity began ("Working · 2 min").
     var activitySince = Date()
     /// When Claude last finished a turn here (work → idle).

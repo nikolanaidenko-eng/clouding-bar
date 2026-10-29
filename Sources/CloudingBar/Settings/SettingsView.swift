@@ -1069,7 +1069,7 @@ struct WidgetTab: View {
                             .disabled(model.config.widgetPosition == nil)
                     }
                 }
-                MoreRows("widget", count: model.config.widget ? 4 : 0) {
+                MoreRows("widget", count: model.config.widget ? 5 : 0) {
                     if model.config.widget {
                         SettingsRow(title: "Follow the chat at work", hint: "When the one shown is done, it says so, then shows the one still working") {
                             CBSwitch(title: "Follow the chat at work", on: binding("followWorking") { $0.followWorking })
@@ -1077,6 +1077,11 @@ struct WidgetTab: View {
                         SettingsRow(title: "Tell when another chat is done",
                                     hint: "Cloud pops out and says which; click it to go there. On the Touch Bar too") {
                             CBSwitch(title: "Tell when another chat is done", on: binding("doneAlerts") { $0.doneAlerts })
+                        }
+                        // Owner, 29.10: what Claude answered, at a glance.
+                        SettingsRow(title: "Start of the answer",
+                                    hint: "Cloud says how the answer begins: ✦ retold by Apple's model on this Mac (macOS 26), else its first lines") {
+                            CBSwitch(title: "Start of the answer", on: binding("answerPreview") { $0.answerPreview })
                         }
                         SettingsRow(title: "Keep the pill visible", hint: "Off: a thin line until you hover it") {
                             CBSwitch(title: "Keep the pill visible", on: binding("pillAlwaysVisible") { $0.pillAlwaysVisible })

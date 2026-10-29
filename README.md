@@ -51,6 +51,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   Cloud pops out from behind the pill (or down from the notch) and says
   which — click it to go there — then ducks back; the Touch Bar says it
   too, with Open and OK. Quiet in do not disturb (Settings → Widget → More).
+  It says how the answer begins, too: on macOS 26 with Apple Intelligence
+  retold in a sentence by Apple's model on your Mac (marked ✦), else — and
+  until the model is done — its first lines, without markdown or code.
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, how long the chat has been at
   it, lines changed, the git branch, subagents. Pull its outline to resize
@@ -382,6 +385,17 @@ handing names back. Only Claude chats are named — a Codex chat's words never
 go to Anthropic through this. A name already handed to a Claude Code tab stays
 in that chat after you switch the setting off.
 
+**The start of an answer.** When a chat is done, Cloud and the Touch Bar say
+how its answer begins. The answer's text comes from where the app already
+listens — Claude Code's Stop hook (`last_assistant_message`), Codex's session
+file, a Cowork task's events — and is kept in memory only, never written to
+disk or to the log. On macOS 26 with Apple Intelligence, Apple's own model
+retells it in a sentence (marked ✦) on this Mac: nothing leaves it, no account,
+no network. Elsewhere you see its first lines. To switch it off, Settings →
+Widget → More… → Start of the answer (or `"answerPreview": false` in
+`~/.cloudingbar/config.json`). A long question on the Touch Bar is put shorter
+(✦) by the same model, the same way.
+
 Three exceptions. **Dictation** is recognised on your Mac; only for a
 language your Mac can't do offline, and only if you tick *Allow sending audio
 to Apple* (off by default, Settings → General → App), your voice goes to
@@ -402,8 +416,9 @@ key as a cookie, never following redirects:
   chat runs or waits, else every minute (names and states);
 - `/v1/code/sessions/{id}/events` — for a Cowork task that is running or just
   finished (context and model). This answer holds the task's messages too: the
-  app keeps only the latest reply's model and token counts, in memory, and
-  writes none of the messages to disk or to its log;
+  app keeps only the latest reply's model, token counts and text (for the
+  start of the answer), in memory, and writes none of the messages to disk or
+  to its log;
 - `/v1/code/sessions/{id}` — for a Cowork task waiting for you (what it asks:
   the question or permission, shown on the bar), and every 30 s for the
   Remote Control of a Claude Code chat in Claude Desktop or Terminal (whether
@@ -444,7 +459,8 @@ as you move the pointer, and walks along the tabs.
   its own (its hooks, live limits and sending); the context warning.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
-  keep the pill visible, open on hover, its position; what it shows (a chip
+  tell when another chat is done and the start of its answer, keep the pill
+  visible, open on hover, its position; what it shows (a chip
   for each thing).
 - **Touch Bar** — the bar itself on top, the whole one and the short one,
   each with what it shows (everything the widget can, and Write and

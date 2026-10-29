@@ -162,6 +162,9 @@ struct Config: Equatable {
     /// Another chat than the one shown is done: Cloud pops out and says
     /// which (the widget and the Touch Bar).
     var doneAlerts = true
+    /// A chat done: the start of its answer with it (owner, 29.10) — put
+    /// shorter by Apple's model on this Mac (macOS 26), else its first lines.
+    var answerPreview = true
     /// What the Touch Bar shows next to its character button (requests
     /// always show): "session", "reset", "context", "buttons", "mic", "shot".
     var touchBarShows: [String] = ["session", "reset", "context", "buttons"]
@@ -308,6 +311,7 @@ struct Config: Equatable {
         if let v = obj["hoverOpens"] as? Bool { config.hoverOpens = v }
         if let v = obj["followWorking"] as? Bool { config.followWorking = v }
         if let v = obj["doneAlerts"] as? Bool { config.doneAlerts = v }
+        if let v = obj["answerPreview"] as? Bool { config.answerPreview = v }
         if let v = obj["touchBarShows"] as? [String] { config.touchBarShows = v }
         if let v = obj["touchBarShortShows"] as? [String] { config.touchBarShortShows = v }
         if let v = obj["touchBarOrder"] as? [String: [String]] { config.touchBarOrder = v }

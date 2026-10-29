@@ -60,7 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var widget = WidgetController(model: model)
     private lazy var settings = SettingsWindow(model: model)
     /// Long questions put shorter for the Touch Bar (macOS 26, on this Mac).
-    private let shortener = QuestionShortener()
+    private let shortener = ModelShortener(.question)
+    /// A finished chat's answer retold in a sentence, the same way (AnswerPreview).
+    private let answerShortener = ModelShortener(.answer)
     /// Short names for chats (owner, 27.10).
     private let namer = ShortNamer()
     private lazy var drawer = DrawerController(model: model)
@@ -558,6 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             bar.mode = .done(BarModel.Chat(id: s.id, name: Self.barName(s.displayName, id: s.id),
                                            color: Session.colors[s.colorIndex % Session.colors.count],
                                            current: false, waiting: false))
+            bar.doneAnswer = answerStart(of: s)
         }
         touchBar.show(bar, fullWidth: barFullWidth)
     }
@@ -1405,6 +1408,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.openSession = { [weak self] in self?.openSession($0) }
         model.barChanged = { [weak self] in self?.setNeedsRefresh() }
         shortener.changed = { [weak self] in self?.setNeedsRefresh() }
+        answerShortener.changed = { [weak self] in self?.setNeedsRefresh() }
         namer.changed = { [weak self] in self?.setNeedsRefresh() }
         namer.enabled = { [weak self] in self?.config.shortNames ?? false }
         namer.chats = { [weak self] in self?.store.alive ?? [] }
@@ -1675,6 +1679,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.note("done elsewhere: \(s.displayName)")
         }
         if let now = doneNow, Date() >= now.until, !doneBubble.hovering { endDone() }
+        // Its answer may come after the word that it's done (Codex's file,
+        // Cowork's events), and Apple's short form of it later still.
+        if let now = doneNow, let s = store.sessions[now.id] { doneBubble.setAnswer(answerStart(of: s)) }
         guard doneNow == nil, requests.isEmpty, !composing, config.doneAlerts, !config.doNotDisturb else { return }
         while let id = doneQueue.first {
             doneQueue.removeFirst()
@@ -1687,15 +1694,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func beginDone(_ s: Session) {
-        doneNow = (s.id, Date().addingTimeInterval(5))
+        // Longer with the answer's start to read.
+        let stay: TimeInterval = config.answerPreview ? 7 : 5
+        doneNow = (s.id, Date().addingTimeInterval(stay))
         let alert = DoneBubbleController.Alert(id: s.id, name: s.displayName, detail: place(of: s),
                                                color: Session.colors[s.colorIndex % Session.colors.count],
-                                               variant: s.colorIndex % Session.colors.count)
+                                               variant: s.colorIndex % Session.colors.count, answer: answerStart(of: s))
         // On the widget (or, with neither widget nor Touch Bar, the screen's corner).
         if config.widget || !barShouldShow {
-            doneBubble.show(alert, anchor: config.widget ? widget.place : nil)
+            doneBubble.show(alert, anchor: config.widget ? widget.place : nil, stay: stay - 0.5)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.05) { [weak self] in self?.setNeedsRefresh() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + stay + 0.05) { [weak self] in self?.setNeedsRefresh() }
+    }
+
+    /// How a done chat's answer begins, for the bubble and the bar: ✦ and
+    /// Apple's short form once there is one (asked for here), else its first lines.
+    private func answerStart(of s: Session) -> String? {
+        guard config.answerPreview, let answer = s.answer else { return nil }
+        return answerShortener.short(for: answer).map { "✦ " + $0 } ?? AnswerPreview.firstLines(answer)
     }
 
     private func endDone() {

@@ -80,6 +80,9 @@ struct BarModel: Equatable {
     var project: String?
     /// The question as asked, when the bar shows it shorter.
     var questionKey = ""
+    /// Done: the start of that chat's answer (✦: put shorter by Apple's
+    /// model); swapped in place when the short form comes.
+    var doneAnswer: String?
     /// Beside Apple's buttons: everything smaller, the rest left out — and a
     /// button that opens the whole bar (`expand`).
     var short = false
@@ -247,7 +250,7 @@ final class BarView: NSView {
         case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
         case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
         case .contextWarning: return "context"
-        case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)"
+        case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)|\(m.doneAnswer != nil)"
         case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)|\(m.offersAlways)"
         case let .question(text, options, multi, picked):
             // The question as asked, not its short form: that swaps in place.
@@ -264,6 +267,7 @@ final class BarView: NSView {
         meters = nil
         resetBlock = nil
         questionMessage = nil
+        doneMessage = nil
         mini = nil
         field = nil
         pendingAnimations = []
@@ -427,11 +431,23 @@ final class BarView: NSView {
             }
 
         case let .done(chat):
-            // Cloud jumps twice and says which chat finished.
+            // Cloud jumps twice and says which chat finished — and, with its
+            // answer known, how that begins (a tap opens the chat too).
             let short = model.short
-            let name = BarButton("✓ " + chat.name + " — done", style: .outline, fontSize: short ? 12 : 13,
-                                 dot: chat.color, marquee: true, slide: false) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
-            add(name, .flex(weight: 1, min: short ? 140 : 200))
+            let name = BarButton("✓ " + chat.name + (model.doneAnswer == nil ? " — done" : ""), style: .outline,
+                                 fontSize: short ? 12 : 13, dot: chat.color, marquee: true, slide: false) {
+                [weak self] in self?.onAction?(.pickChat(chat.id))
+            }
+            if let answer = model.doneAnswer {
+                add(name, .shrinkable(min(short ? 150 : 260, name.fittingWidth(padding: 10))))
+                let words = MessageView(verb: nil, detail: answer, monospaced: false, quiet: true, dotted: false)
+                words.onTap = { [weak self] in self?.onAction?(.pickChat(chat.id)) }
+                doneMessage = words
+                add(words, .flex(weight: 1, min: short ? 120 : 200))
+                animate(words) { $0.slideIn() }
+            } else {
+                add(name, .flex(weight: 1, min: short ? 140 : 200))
+            }
             let open = BarButton("Open", style: .primary) { [weak self] in self?.onAction?(.pickChat(chat.id)) }
             let ok = BarButton("OK") { [weak self] in self?.onAction?(.dismissDone) }
             add(open, .fixed(short ? 64 : 84))
@@ -818,6 +834,8 @@ final class BarView: NSView {
     private weak var resetBlock: BarButton?
     /// The question's words, swapped for their short form in place.
     private weak var questionMessage: MessageView?
+    /// Done: the answer's start, its words swapped in place.
+    private weak var doneMessage: MessageView?
 
     /// The short bar: Cloud and "Whole bar" at its ends, the chat line at
     /// the least room to tap and write.
@@ -897,6 +915,7 @@ final class BarView: NSView {
         mascot.activity = model.activity
         mascot.awake = model.awake
         if case let .question(text, _, _, _) = model.mode { questionMessage?.setDetail(text) }
+        if case .done = model.mode, let answer = model.doneAnswer { doneMessage?.setDetail(answer) }
         if let b = resetBlock {
             b.setTitle(model.resetCountdown ?? "—")
             b.setAccessibilityLabel("Resets in " + (model.resetCountdown ?? "—"))
@@ -1131,7 +1150,12 @@ private final class MessageView: NSView {
     private let verbLabel: NSTextField?
     private let detailLabel: NSTextField
 
-    init(verb: String?, detail: String, monospaced: Bool, quiet: Bool) {
+    /// The warning's dot before the words: `dotted` false for words that
+    /// don't wait on you (a done chat's answer).
+    private let dotted: Bool
+
+    init(verb: String?, detail: String, monospaced: Bool, quiet: Bool, dotted: Bool = true) {
+        self.dotted = dotted
         verbLabel = verb.map { v in
             let l = NSTextField(labelWithString: v)
             l.font = .systemFont(ofSize: Palette.buttonFont)
@@ -1149,8 +1173,10 @@ private final class MessageView: NSView {
         wantsLayer = true
         dot.backgroundColor = Palette.warning.cgColor
         dot.cornerRadius = 3
-        layer?.addSublayer(dot)
-        if !quiet { dot.pulse(low: 0.35, period: 1.4) }
+        if dotted {
+            layer?.addSublayer(dot)
+            if !quiet { dot.pulse(low: 0.35, period: 1.4) }
+        }
         if let verbLabel { addSubview(verbLabel) }
         addSubview(detailLabel)
         setAccessibilityElement(true)
@@ -1185,7 +1211,7 @@ private final class MessageView: NSView {
         CATransaction.setDisableActions(true)
         dot.frame = CGRect(x: pad, y: (bounds.height - 6) / 2, width: 6, height: 6)
         CATransaction.commit()
-        var x = pad + 6 + spacing
+        var x = dotted ? pad + 6 + spacing : pad
         let h = ceil(detailLabel.intrinsicContentSize.height)
         let y = (bounds.height - h) / 2
         if let verbLabel {

@@ -1626,6 +1626,105 @@ do { // a question put shorter for the Touch Bar: only if it keeps what the aski
     check(ShortQuestion.accept("Should we make the repository public?", for: repo) == nil, "short form: another language than the question's, not used")
 }
 
+do { // the start of a done chat's answer (owner, 29.10): its first lines without markdown, or a short form that holds to it
+    let md = """
+        ## Итог
+        **Сделал** виджет: `DoneBubble.swift` и [README](https://example.com/readme).
+
+        - первый пункт
+        * [x] второй пункт
+
+        ```swift
+        let secret = 1
+        ```
+        | Файл | Что |
+        |---|:---:|
+        | a.swift | правка |
+        ---
+        > цитата _важная_ и snake_case_name, 2 * 3 * 4, *курсив*
+        """
+    let lines = AnswerPreview.plainLines(md)
+    check(lines == ["Итог", "Сделал виджет: DoneBubble.swift и README.", "первый пункт", "второй пункт", "Файл · Что", "a.swift · правка",
+                    "цитата важная и snake_case_name, 2 * 3 * 4, курсив"],
+          "answer: headings, bold, code, links, bullets, tables, rules and quotes taken out; code blocks left out, snake_case and 2 * 3 kept")
+    let first = AnswerPreview.firstLines(md) ?? ""
+    check(first.hasPrefix("Итог · Сделал виджет: DoneBubble.swift и README. первый пункт · второй пункт") && first.count <= AnswerPreview.limit,
+          "answer: first lines as one, a list's items with ·, within the limit")
+    let long = String(repeating: "Проверил сборку и тесты, всё зелёное. ", count: 10)
+    let cut = AnswerPreview.firstLines(long) ?? ""
+    check(cut.count <= AnswerPreview.limit && cut.hasSuffix("…") && !cut.hasSuffix(" …") && AnswerPreview.worth(long) && !AnswerPreview.worth("Готово."),
+          "answer: a long one cut at a word with …, worth a short form; a short one isn't")
+    check(AnswerPreview.firstLines("```\nnpm test\n```") == "npm test" && AnswerPreview.firstLines(" \n\n ") == nil,
+          "answer: only code: its lines; no words: nothing")
+    check(!AnswerPreview.input(md).contains("secret") && AnswerPreview.input(long + long + long + long + long + long).count == AnswerPreview.modelInput,
+          "answer: the model gets plain lines, no code, the start only")
+    let report = "Сделал начало ответа в виджете: правка в DoneBubble.swift и BarView.swift, тесты прошли (412 проверок), сборка зелёная. Проверь на Touch Bar, что текст помещается, и посмотри снимки в build/snapshots."
+    check(AnswerPreview.accept("Сделал начало ответа в DoneBubble.swift и BarView.swift, тесты прошли.", for: report) != nil,
+          "answer short form: shorter, same language, names from the answer — used")
+    check(AnswerPreview.accept("«Кратко: сделал начало ответа, тесты прошли.»", for: report) == "Сделал начало ответа, тесты прошли.",
+          "answer short form: a label and quotes tidied away")
+    check(AnswerPreview.accept("**Сделал** начало ответа, тесты прошли.", for: report) == "Сделал начало ответа, тесты прошли.",
+          "answer short form: markdown taken out")
+    check(AnswerPreview.accept("Исправил 5 файлов, тесты прошли.", for: report) == nil, "answer short form: a number not in the answer — not used")
+    check(AnswerPreview.accept("Правка в Widget.swift, тесты прошли.", for: report) == nil, "answer short form: a file not in the answer — not used")
+    check(AnswerPreview.accept("Added the answer preview, tests pass.", for: report) == nil, "answer short form: another language — not used")
+    check(AnswerPreview.accept("Извините, я не могу помочь с этим.", for: report) == nil
+          && AnswerPreview.accept("I'm sorry, but I can't help with that.", for: "Fixed the build and pushed the branch; the release notes are in docs/notes.md, please read them before you tag.") == nil,
+          "answer short form: a refusal — not used")
+    check(AnswerPreview.accept("- сделал\n- проверил\n- закоммитил", for: report) == nil, "answer short form: a list — not used")
+    check(AnswerPreview.accept(report + " И ещё.", for: report) == nil, "answer short form: not shorter — not used")
+}
+
+do { // where a chat's answer comes from: Stop's last_assistant_message, Codex's task_complete, Cowork's events
+    let s = SessionStore()
+    func hook(_ name: String, _ extra: [String: Any] = [:]) {
+        var raw: [String: Any] = ["hook_event_name": name, "session_id": "ans", "cwd": "/Users/me/proj"]
+        extra.forEach { raw[$0.key] = $0.value }
+        s.apply(Inbound(raw: raw))
+    }
+    hook("UserPromptSubmit")
+    hook("Stop", ["last_assistant_message": "Готово: тесты прошли."])
+    check(s.sessions["ans"]?.answer == "Готово: тесты прошли.", "answer: Stop's last_assistant_message is the chat's answer")
+    hook("UserPromptSubmit")
+    check(s.sessions["ans"]?.answer == nil, "answer: a new turn: the old answer is gone")
+    hook("StopFailure", ["last_assistant_message": "API Error: Rate limit reached"])
+    check(s.sessions["ans"]?.answer == nil, "answer: StopFailure's text is an error, not an answer")
+    hook("UserPromptSubmit")
+    hook("Stop", ["last_assistant_message": "Отчёт агента", "agent_id": "a1"])
+    check(s.sessions["ans"]?.answer == nil, "answer: a subagent's last message isn't the chat's")
+    hook("Stop", ["last_assistant_message": String(repeating: "я", count: AnswerPreview.kept + 50)])
+    check(s.sessions["ans"]?.answer?.count == AnswerPreview.kept, "answer: a very long one kept cut")
+
+    var u = TranscriptWatcher.Update(sessionId: "c", modified: Date())
+    let done = #"{"timestamp":"2026-10-29T10:00:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"t1","last_agent_message":"Fixed it."}}"#
+    TranscriptWatcher.scanCodex(Data(done.utf8)[...], into: &u)
+    check(u.codexAnswer == "Fixed it.", "answer: Codex's task_complete last_agent_message")
+    let again = #"{"timestamp":"2026-10-29T10:00:05.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t2"}}"#
+    TranscriptWatcher.scanCodex(Data(again.utf8)[...], into: &u)
+    check(u.codexAnswer == nil, "answer: Codex started again: the last turn's answer isn't this one's")
+
+    func ev(_ id: String?, _ content: Any, sub: Bool = false) -> [String: Any] {
+        var message: [String: Any] = ["content": content, "usage": ["input_tokens": 10]]
+        if let id { message["id"] = id }
+        var payload: [String: Any] = ["type": "assistant", "message": message]
+        if sub { payload["parent_tool_use_id"] = "toolu_9" }
+        return ["type": "assistant", "payload": payload]
+    }
+    let events: [String: Any] = ["data": [
+        ev("m9", [["type": "text", "text": "Отчёт субагента"]], sub: true),
+        ev("m3", [["type": "text", "text": "вторая часть."]]),
+        ev("m3", [["type": "text", "text": "Первая часть,"]]),
+        ev("m3", [["type": "thinking", "thinking": "…"]]),
+        ev("m2", [["type": "text", "text": "Сейчас посмотрю файл."], ["type": "tool_use", "name": "Read"]]),
+    ]]
+    check(ClaudeAIChats.answer(events: events) == "Первая часть,\n\nвторая часть.",
+          "answer: Cowork's newest reply of its own, its text blocks in order; a subagent's and an older reply's aside")
+    check(ClaudeAIChats.answer(events: ["data": [ev("m4", [["type": "tool_use", "name": "Bash"]]), ev("m3", [["type": "text", "text": "x"]])]]) == nil,
+          "answer: Cowork's newest reply is a tool call: no answer yet")
+    check(ClaudeAIChats.context(events: events)?.answer == "Первая часть,\n\nвторая часть.", "answer: comes with the Cowork task's context")
+    check(Config().answerPreview, "answer start: on by default")
+}
+
 do { // short names for chats (owner, 27.10)
     check(ShortName.accept("Login test") == "Login test" && ShortName.accept("«Сборка CI».\n") == "Сборка CI",
           "short name: tidied (quotes, full stop, line end) and kept")
