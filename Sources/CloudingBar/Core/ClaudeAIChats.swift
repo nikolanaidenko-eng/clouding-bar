@@ -145,6 +145,12 @@ enum ClaudeAIChats {
         var archived = false
         /// What it waits on you for (`worker_status` "requires_action").
         var pending: Pending?
+        /// Its context as Claude counts it, of its real window (a new
+        /// account's 1M showed as 200k, owner 29.10), and what it cost —
+        /// on an API-billed account what there is instead of a limit.
+        var contextUsed: Int?
+        var contextMax: Int?
+        var costUSD: Double?
     }
 
     /// A question or permission waiting there (`pending_action`).
@@ -167,8 +173,18 @@ enum ClaudeAIChats {
         r.bridge = o["environment_kind"] as? String == "bridge"
         r.connected = o["connection_status"] as? String != "disconnected"
         r.archived = o["status"] as? String == "archived"
+        let meta = o["external_metadata"] as? [String: Any]
+        if let usage = meta?["context_usage"] as? [String: Any] {
+            let used = clamp(usage["used_tokens"] as? NSNumber), max = clamp(usage["max_tokens"] as? NSNumber)
+            if max >= 1_000, max <= 10_000_000 {
+                r.contextMax = max
+                r.contextUsed = min(used, max)
+            }
+        }
+        if let cost = ((meta?["usage"] as? [String: Any])?["cost_usd"] as? NSNumber)?.doubleValue,
+           cost.isFinite, cost >= 0, cost < 1_000_000 { r.costUSD = cost }
         if o["worker_status"] as? String == "requires_action",
-           let p = (o["external_metadata"] as? [String: Any])?["pending_action"] as? [String: Any],
+           let p = meta?["pending_action"] as? [String: Any],
            let tool = p["tool_name"] as? String, !tool.isEmpty, tool.count <= 128,
            // A dialog (an MCP server's form…) isn't a permission: Claude Code
            // itself leaves those to the computer.

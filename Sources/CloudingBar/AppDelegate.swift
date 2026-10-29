@@ -2446,6 +2446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// window may show something else): on the bar, answered back there.
     private func remoteCard(_ card: ClaudeAIChats.Remote, for id: String) {
         remoteCards[id] = card
+        store.apply(coworkCard: card, session: id)
         guard let session = store.alive.first(where: { $0.remoteSession == id && $0.entrypoint == "cowork" }) else { return }
         let current = requests.first { $0.remoteKey != nil && $0.sessionId == session.id }
         if let current, current.remoteKey != card.pending?.requestId {

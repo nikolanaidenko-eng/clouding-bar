@@ -1470,6 +1470,29 @@ do { // writing to a chat picked by name (the Chats tab, the bar's line from its
     try? FileManager.default.removeItem(atPath: Inject.socketPath(pid: getpid()))
 }
 
+do { // A Cowork task's context of its real window, and its cost, from its card (owner, 29.10: 1M shown as 200k, no cost on an API account)
+    let card: [String: Any] = ["response_shape": ["id": "cse_07", "worker_status": "idle", "external_metadata": [
+        "context_usage": ["max_tokens": 1_000_000, "used_tokens": 197_148],
+        "usage": ["cost_usd": 0.358445, "input_tokens": 18]]]]
+    let remote = ClaudeAIChats.remote(session: card)
+    check(remote?.contextMax == 1_000_000 && remote?.contextUsed == 197_148 && remote?.costUSD == 0.358445 && remote?.pending == nil,
+          "a card's context_usage and cost read")
+    let odd = ClaudeAIChats.remote(session: ["id": "cse_07", "external_metadata": [
+        "context_usage": ["max_tokens": 3, "used_tokens": 9], "usage": ["cost_usd": -1]]])
+    check(odd?.contextMax == nil && odd?.costUSD == nil, "…a window or cost that can't be: left out")
+    let store = SessionStore()
+    let chat = ClaudeAIChats.chats(["data": [["uuid": "22222222-aaaa-4bbb-8ccc-000000000001", "name": "Task",
+                                              "workspace_session_id": "cse_07", "updated_at": ISO8601DateFormatter().string(from: Date())]]])
+    store.apply(claudeAI: chat)
+    let task = store.sessions["cowork-22222222-aaaa-4bbb-8ccc-000000000001"]
+    store.apply(coworkCard: remote!, session: "cse_07")
+    store.apply(claudeAIContext: ClaudeAIChats.Context(tokens: 5, model: "claude-sonnet-5-5"), chat: "22222222-aaaa-4bbb-8ccc-000000000001")
+    check(task?.contextWindow(override: nil) == 1_000_000 && task?.contextTokens == 197_148 && task?.costUSD == 0.358445
+          && task.map { abs(($0.contextPercent(windowOverride: nil) ?? 0) - 19.7148) < 0.01 } == true,
+          "a task's window and context from its card, not the model's guess; its cost on it")
+    store.forgetClaudeAI()
+}
+
 do { // Through claude.ai, without the window in front (owner, 29.10): a session's card, what goes, Desktop's Code chats
     let card: [String: Any] = ["id": "cse_02", "environment_kind": "anthropic_cloud", "worker_status": "requires_action",
                                "external_metadata": ["pending_action": [

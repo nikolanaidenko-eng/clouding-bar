@@ -329,6 +329,8 @@ final class ClaudeAI {
         for chat in due.prefix(3) {
             guard let workspace = chat.workspace else { continue }
             contextRead[chat.uuid] = (now, chat.settledAt)
+            // Its card too: the context of its real window, and its cost.
+            if now.timeIntervalSince(cardRead[workspace] ?? .distantPast) >= 10 { fetchCards([workspace], org: org, key: key) }
             // As claude.ai's own page asks (without the organization: 401), newest
             // first, without the kinds that carry no reply.
             let skip = ["stream_event", "tool_progress", "tool_use_summary", "keep_alive", "thinking_trace",
