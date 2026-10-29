@@ -25,7 +25,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Tells which Terminal or iTerm tab is in front, so the widget shows that chat, and brings a chat's tab forward when you pick it.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>© 2026 Nikola Naidenko · PolyForm Shield 1.0.0</string>
+	<string>© 2026 wvnikola · PolyForm Shield 1.0.0</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Hold the right Option key to dictate to Claude.</string>
 	<key>NSPrincipalClass</key>

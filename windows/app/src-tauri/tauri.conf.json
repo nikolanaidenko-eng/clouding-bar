@@ -43,7 +43,7 @@
     "externalBin": ["binaries/cloudingbar-hook"],
     "shortDescription": "Claude Code at a glance",
     "longDescription": "Clouding Bar shows Claude Code's limits and context in a floating pill and lets you answer its questions and permission requests.",
-    "copyright": "© 2026 Nikola Naidenko · PolyForm Shield 1.0.0",
+    "copyright": "© 2026 wvnikola · PolyForm Shield 1.0.0",
     "windows": {
       "nsis": {
         "installMode": "currentUser"

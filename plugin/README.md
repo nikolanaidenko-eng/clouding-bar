@@ -1,17 +1,17 @@
 # Clouding Bar plugin
 
-The link between Claude and [Clouding Bar](https://github.com/nikolanaidenko-eng/clouding-bar),
+The link between Claude and [Clouding Bar](https://github.com/wvnikola/clouding-bar),
 a Mac menu bar app that shows Claude Code at a glance — on the Touch Bar, in a floating pill
 or in the notch — and lets you answer permissions and questions from there.
 
 ## Install
 
-- Claude Code: `/plugin install clouding-bar --marketplace nikolanaidenko-eng/clouding-bar`, then `/reload-plugins`
-  and `/clouding-bar:install`. (Older Claude Code: `/plugin marketplace add nikolanaidenko-eng/clouding-bar`,
+- Claude Code: `/plugin install clouding-bar --marketplace wvnikola/clouding-bar`, then `/reload-plugins`
+  and `/clouding-bar:install`. (Older Claude Code: `/plugin marketplace add wvnikola/clouding-bar`,
   then `/plugin install clouding-bar@clouding-bar`.)
-- Claude Desktop: Customize → Plugins → Add → Add marketplace → `nikolanaidenko-eng/clouding-bar`, then
+- Claude Desktop: Customize → Plugins → Add → Add marketplace → `wvnikola/clouding-bar`, then
   install **clouding-bar** (the Chat tab ignores hooks). The Mac app comes separately —
-  the .dmg from <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest>, or `/clouding-bar:install`
+  the .dmg from <https://github.com/wvnikola/clouding-bar/releases/latest>, or `/clouding-bar:install`
   in Claude Code (not from Cowork, which runs in a Linux sandbox). Cowork itself doesn't need the
   plugin: to see Cowork tasks in Clouding Bar, open the app's Settings → General → Claude →
   claude.ai → **Sign In…** and sign in to claude.ai in the window that opens; it closes by itself.
@@ -35,6 +35,6 @@ or in the notch — and lets you answer permissions and questions from there.
 The 5-hour limit and the context reach the app through its status line, which a plugin can't
 set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, backed up).
 
-Source: <https://github.com/nikolanaidenko-eng/clouding-bar>. License: PolyForm Shield 1.0.0.
+Source: <https://github.com/wvnikola/clouding-bar>. License: PolyForm Shield 1.0.0.
 
 No network, except `/clouding-bar:install` downloading the app from GitHub. (The Mac app's own network use is in the main README.)
