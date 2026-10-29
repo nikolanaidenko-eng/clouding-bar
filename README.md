@@ -3,7 +3,7 @@
 **Claude Code at a glance — on your Touch Bar, in a floating pill, or in the notch.**
 
 <p>
-  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/nikolanaidenko-eng/clouding-bar?label=release&color=5E5CE6"></a>
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/wvnikola/clouding-bar?label=release&color=5E5CE6"></a>
   <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple">
   <img alt="Signed and notarized by Apple" src="https://img.shields.io/badge/notarized-Apple-0A84FF">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-D97757">
@@ -219,7 +219,7 @@ you get it. What else each place needs:
 In Claude Code — the terminal, VS Code or Claude Desktop's Code tab:
 
 ```
-/plugin marketplace add nikolanaidenko-eng/clouding-bar
+/plugin marketplace add wvnikola/clouding-bar
 /plugin install clouding-bar@clouding-bar
 /reload-plugins
 /clouding-bar:install
@@ -248,7 +248,7 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 Cowork tasks then show up in the chats list. No plugin and no connected
 folder are needed. If you'd like Cowork to fetch the app for you, add the
 plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
-marketplace** → `nikolanaidenko-eng/clouding-bar`) and ask a task "walk me
+marketplace** → `wvnikola/clouding-bar`) and ask a task "walk me
 through Clouding Bar": it gives you the link to the newest .dmg and tells you
 what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
 still ask Cowork to save its status to a folder, which nothing reads now.
@@ -266,7 +266,7 @@ Codex chats show up even before step 2, read from Codex's own files.
 
 ### Download
 
-[Download the latest .dmg](https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
+[Download the latest .dmg](https://github.com/wvnikola/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
 (or `Clouding-Bar-<version>.dmg` from [Releases](../../releases)), open it
 and drag **Clouding Bar** into Applications. Releases are signed and
 notarized by Apple. Opened straight from the disk image, it offers to move
@@ -306,7 +306,7 @@ auto-update.
 You need the Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
-git clone https://github.com/nikolanaidenko-eng/clouding-bar
+git clone https://github.com/wvnikola/clouding-bar
 cd clouding-bar
 make install
 ```
