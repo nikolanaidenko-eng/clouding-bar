@@ -135,7 +135,8 @@ enum ClaudeAIChats {
         // Wrapped as Claude Code unwraps it (2.1.312: `response_shape ?? session`):
         // claude.ai answers with `response_shape` now, so no question ever
         // reached the bar (29.10).
-        if o["id"] == nil, let inner = (o["response_shape"] ?? o["session"]) as? [String: Any] { o = inner }
+        // (A null `response_shape` beside `session`: JS's ?? skips it, so here too.)
+        if o["id"] == nil, let inner = (o["response_shape"] as? [String: Any]) ?? (o["session"] as? [String: Any]) { o = inner }
         guard o["id"] is String else { return nil }
         var r = Remote()
         r.bridge = o["environment_kind"] as? String == "bridge"

@@ -250,6 +250,25 @@ final class SessionStore {
         return candidates.max { $0.lastSeen < $1.lastSeen }
     }
 
+    /// The chats the window in front may be showing, for a word that one
+    /// finished — never for typing: what `focus` reads from the window itself
+    /// (its tab, its title, Codex's chats found in its files too, Claude
+    /// Desktop's page), never its guess from the one followed before. Two as
+    /// likely: both — a word about the chat you're looking at is worse than
+    /// none (review, 29.10).
+    func inFront(windowTitle: String?, tty: String? = nil, desktop: Bool = false, desktopChat: String? = nil) -> Set<String> {
+        if desktop {
+            if let s = session(inDesktop: windowTitle, chat: desktopChat) { return [s.id] }
+            // Its page not read (no Accessibility): any of its own.
+            return desktopChat == nil ? Set(alive.filter(\.inDesktopApp).map(\.id)) : []
+        }
+        let candidates = alive
+        if let tty, let s = candidates.first(where: { $0.tty == tty }) { return [s.id] }
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromClaudeAI }, halves: true) } ?? []
+        guard let top = ranked.first else { return [] }
+        return Set(ranked.filter { $0.score == top.score }.map(\.session.id))
+    }
+
     /// The Claude desktop app's chat its window shows: by the chat, else by
     /// its title — only among chats whose page isn't known: one known by its
     /// page is that page alone, so another chat of a like name shown there

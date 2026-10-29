@@ -26,12 +26,17 @@ enum Screenshot {
     static func paste(_ path: String) {
         guard let data = FileManager.default.contents(atPath: path) else { NSSound.beep(); return }
         let board = NSPasteboard.general
-        let saved = board.pasteboardItems?.map { item in
+        // A password (marked concealed, as 1Password does) isn't put back:
+        // its own clearing would no longer reach it (review, 29.10).
+        let concealed = board.types?.contains(NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")) == true
+        let saved = concealed ? [] : board.pasteboardItems?.map { item in
             item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
         } ?? []
         board.clearContents()
         board.setData(data, forType: .png)
         if let tiff = NSImage(data: data)?.tiffRepresentation { board.setData(tiff, forType: .tiff) }
+        // Clipboard managers keep it out of their history.
+        board.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         let ours = board.changeCount
         KeySender.press("cmd+v")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
