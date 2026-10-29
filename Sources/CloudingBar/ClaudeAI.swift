@@ -237,7 +237,9 @@ final class ClaudeAI {
                     self.onRemote?(id, card)
                     return
                 }
-                self.note("session card: HTTP \(status)")
+                // Read but not a card: which fields came, names only, never values.
+                let fields = status == 200 ? ", fields " + ((json as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "none") : ""
+                self.note("session card: HTTP \(status)\(fields)")
                 if self.bridges.contains(id) { self.onRemote?(id, ClaudeAIChats.Remote(bridge: true, connected: false)) }
             }
         }

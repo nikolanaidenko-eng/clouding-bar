@@ -1448,6 +1448,8 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
     let bridge = ClaudeAIChats.remote(session: ["session": ["id": "cse_9", "environment_kind": "bridge", "connection_status": "disconnected"]])
     check(bridge?.bridge == true && bridge?.connected == false && ClaudeAIChats.remote(session: ["x": 1]) == nil,
           "a Remote Control card off the line (wrapped or not); something else isn't a card")
+    check(ClaudeAIChats.remote(session: ["response_shape": card])?.pending?.requestId == "req-1",
+          "a card as claude.ai sends it now, under response_shape: its question read (29.10)")
     check(ClaudeAIChats.cse("session_01Xy") == "cse_01Xy" && ClaudeAIChats.cse("cse_01Xy") == "cse_01Xy",
           "session_X and cse_X are the same session")
 
