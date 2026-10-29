@@ -25,6 +25,20 @@ enum Inject {
     /// The message as Claude Code's stream-json input takes it — the shape
     /// the extension itself sends: your words, then the pictures.
     static func message(_ text: String, files: [String] = []) -> Data? {
+        guard let content = content(text, files: files) else { return nil }
+        let message: [String: Any] = [
+            "type": "user",
+            "uuid": UUID().uuidString.lowercased(),
+            "session_id": "",
+            "parent_tool_use_id": NSNull(),
+            "message": ["role": "user", "content": content],
+        ]
+        return try? JSONSerialization.data(withJSONObject: message)
+    }
+
+    /// The message's content: your words, then the pictures (claude.ai's
+    /// sessions take the same).
+    static func content(_ text: String, files: [String] = []) -> [[String: Any]]? {
         var words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var pictures: [[String: Any]] = []
         for path in files {
@@ -35,15 +49,7 @@ enum Inject {
             }
         }
         let content = (words.isEmpty ? [] : [["type": "text", "text": words]]) + pictures
-        guard !content.isEmpty else { return nil }
-        let message: [String: Any] = [
-            "type": "user",
-            "uuid": UUID().uuidString.lowercased(),
-            "session_id": "",
-            "parent_tool_use_id": NSNull(),
-            "message": ["role": "user", "content": content],
-        ]
-        return try? JSONSerialization.data(withJSONObject: message)
+        return content.isEmpty ? nil : content
     }
 
     private static func imageBlock(_ path: String) -> [String: Any]? {
@@ -120,11 +126,13 @@ enum Delivery: Equatable {
     }
 
     /// Its chat takes words straight in: Claude's input (VS Code, through the
-    /// wrapper), or Codex's own server for a chat it has loaded
-    /// (`codexLoaded`). Claude in Terminal, Claude Desktop and Cowork take
-    /// only keys: typed once their chat is surely the one in front.
-    static func direct(_ s: Session, codexLoaded: Bool) -> Bool {
-        Inject.available(pid: s.claudePid) || codexLoaded
+    /// wrapper), Codex's own server for a chat it has loaded
+    /// (`codexLoaded`), or claude.ai for a Cowork task or a desktop Code
+    /// chat whose Remote Control is on the line (`remote`). Claude in
+    /// Terminal, claude.ai's plain chats and the rest take only keys: typed
+    /// once their chat is surely the one in front.
+    static func direct(_ s: Session, codexLoaded: Bool, remote: Bool = false) -> Bool {
+        Inject.available(pid: s.claudePid) || codexLoaded || remote
     }
 
     /// The agent there has finished its reply and asks nothing (`asking`: a

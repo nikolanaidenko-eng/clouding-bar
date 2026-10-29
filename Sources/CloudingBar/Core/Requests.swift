@@ -35,6 +35,9 @@ final class PendingRequest {
     /// hook reaches: answered by pressing the choice there (DesktopChat).
     /// What it was, to know it again.
     let desktopKey: String?
+    /// Asked in a Cowork task, as claude.ai has it (its session's
+    /// pending_action): answered through claude.ai by this request id.
+    let remoteKey: String?
 
     /// When the app stops holding it and lets Claude's own UI take over.
     var holdUntil: Date?
@@ -46,6 +49,7 @@ final class PendingRequest {
     init?(_ m: Inbound, responder: Responder) {
         self.responder = responder
         desktopKey = nil
+        remoteKey = nil
         sessionId = m.sessionId
         entrypoint = m.entrypoint
         toolName = m.toolName ?? "tool"
@@ -57,16 +61,42 @@ final class PendingRequest {
             questions = []
         } else {
             kind = .question
-            let list = toolInput["questions"] as? [[String: Any]] ?? []
-            questions = list.compactMap { q in
-                guard let text = q["question"] as? String else { return nil }
-                let raw = (q["options"] as? [[String: Any]] ?? []).filter { $0["label"] is String }
-                return QuestionItem(text: text,
-                                    options: raw.map { $0["label"] as! String },
-                                    descriptions: raw.map { $0["description"] as? String ?? "" },
-                                    multiSelect: q["multiSelect"] as? Bool ?? false)
-            }
+            questions = Self.questions(in: toolInput)
             if questions.isEmpty { return nil }
+        }
+    }
+
+    /// What a Cowork task waits on, read from claude.ai: the answer goes
+    /// back there (`answered` gets what a PermissionRequest hook would print).
+    init?(remote pending: ClaudeAIChats.Pending, sessionId: String, answered: @escaping ([String: Any]) -> Void) {
+        responder = Responder(answered: answered)
+        desktopKey = nil
+        remoteKey = pending.requestId
+        self.sessionId = sessionId
+        entrypoint = "cowork"
+        toolName = pending.tool
+        toolInput = pending.input
+        suggestions = nil
+        viaPermission = true
+        if toolName != "AskUserQuestion" {
+            kind = .permission
+            questions = []
+        } else {
+            kind = .question
+            questions = Self.questions(in: toolInput)
+            if questions.isEmpty { return nil }
+        }
+    }
+
+    /// AskUserQuestion's questions, as its input has them.
+    static func questions(in input: [String: Any]) -> [QuestionItem] {
+        (input["questions"] as? [[String: Any]] ?? []).compactMap { q in
+            guard let text = q["question"] as? String else { return nil }
+            let raw = (q["options"] as? [[String: Any]] ?? []).filter { $0["label"] is String }
+            return QuestionItem(text: text,
+                                options: raw.map { $0["label"] as! String },
+                                descriptions: raw.map { $0["description"] as? String ?? "" },
+                                multiSelect: q["multiSelect"] as? Bool ?? false)
         }
     }
 
@@ -74,6 +104,7 @@ final class PendingRequest {
     init(desktopQuestion text: String, options: [String], multiSelect: Bool, sessionId: String?, key: String) {
         responder = Responder()
         desktopKey = key
+        remoteKey = nil
         kind = .question
         viaPermission = false
         self.sessionId = sessionId
@@ -88,6 +119,7 @@ final class PendingRequest {
     init(desktopPermission text: String, sessionId: String?, key: String) {
         responder = Responder()
         desktopKey = key
+        remoteKey = nil
         kind = .permission
         viaPermission = true
         self.sessionId = sessionId
@@ -100,15 +132,29 @@ final class PendingRequest {
 
     var current: QuestionItem? { index < questions.count ? questions[index] : nil }
 
-    /// "Always" is Claude's: Codex refuses what it would remember, so there
+    /// This one, read from Claude Desktop's window, is what `remote` (read
+    /// from claude.ai) asks: its chat's — or, read with the app in the back
+    /// and its chat unknown, the same kind, a question by its words or its
+    /// choices (the window's words may be its header). The bar shows it
+    /// once (review, 29.10).
+    func sameAsk(as remote: PendingRequest) -> Bool {
+        if let s = sessionId { return s == remote.sessionId }
+        guard kind == remote.kind else { return false }
+        guard kind == .question, let mine = questions.first else { return true }
+        return remote.questions.contains { $0.text == mine.text || !mine.options.isEmpty && Set($0.options) == Set(mine.options) }
+    }
+
+    /// "Always" is Claude's: Codex refuses what it would remember, and
+    /// claude.ai's card of a Cowork task carries no rule to remember — there
     /// it would only be a second Allow.
-    var canRemember: Bool { entrypoint != "codex" }
+    var canRemember: Bool { entrypoint != "codex" && remoteKey == nil }
 
     /// VS Code and the desktop app show their own dialog alongside the hook
     /// and take whichever answer comes first, so holding there costs
-    /// nothing. Elsewhere (terminal, scripts) Claude may wait on the hook.
+    /// nothing; a Cowork task waits on its own. Elsewhere (terminal,
+    /// scripts) Claude may wait on the hook.
     var hostAnswersInParallel: Bool {
-        entrypoint == "claude-vscode" || entrypoint == "claude-desktop" || desktopKey != nil
+        entrypoint == "claude-vscode" || entrypoint == "claude-desktop" || desktopKey != nil || remoteKey != nil
     }
 
     /// Records an answer to the current question. True when all are done.

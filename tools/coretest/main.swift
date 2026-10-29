@@ -231,6 +231,8 @@ do {
           && plain?.entrypoint == "claude-ai" && plain?.activity == .sleep && plain?.inDesktopApp == true
           && store.sessions["claudeai-" + id(4)] == nil,
           "claude.ai's chats as sessions: working, waiting for you, idle; one from 5 hours ago isn't")
+    check(task?.remoteSession == "cse_01AbC" && waiting?.remoteSession == "cse_02" && plain?.remoteSession == nil,
+          "a Cowork task's words go to its session on claude.ai; a plain chat has none")
     let events: [String: Any] = ["data": [
         ["type": "user", "payload": ["type": "user"]],
         ["type": "assistant", "payload": ["parent_tool_use_id": "toolu_1",
@@ -1381,9 +1383,11 @@ do { // writing to a chat picked by name (the Chats tab, the bar's line from its
     }
     let vs = store.sessions["vs"]!, term = store.sessions["term"]!, cw = store.sessions["cw"]!, cx = store.sessions["cx"]!
     check(Delivery.direct(vs, codexLoaded: false) && !Delivery.direct(term, codexLoaded: false) && !Delivery.direct(cw, codexLoaded: false),
-          "write to: VS Code's Claude through the wrapper takes words straight in; Terminal's and Cowork's only keys")
+          "write to: VS Code's Claude through the wrapper takes words straight in; Terminal's, and Cowork's without claude.ai, only keys")
     check(Delivery.direct(cx, codexLoaded: true) && !Delivery.direct(cx, codexLoaded: false),
           "write to: a Codex chat straight in only while its server has it loaded")
+    check(Delivery.direct(cw, codexLoaded: false, remote: true) && Delivery.direct(term, codexLoaded: false, remote: true),
+          "write to: through claude.ai (a Cowork task, a desktop Code chat's Remote Control): straight in, no window")
 
     let now = Date()
     check(Delivery.free(vs, asking: false, handedAt: nil, sending: false, now: now), "write to: done and asking nothing: free")
@@ -1406,7 +1410,7 @@ do { // writing to a chat picked by name (the Chats tab, the bar's line from its
     check(route(vs, queuedBefore: true) == .queue, "write to: …unless one of yours for it waits before")
     check(route(cx, loaded: true) == .now && route(cx) == .queue, "write to: Codex, free and loaded by its server: straight in; else its queue")
     check(route(term) == .queue && route(cw) == .queue,
-          "write to: Terminal's Claude, Cowork: its queue, typed only once that chat is surely in front — never into another window")
+          "write to: Terminal's Claude, Cowork without claude.ai: its queue, typed only once that chat is surely in front — never into another window")
     hook("vs", "UserPromptSubmit", "claude-vscode", pid: getpid())
     check(route(vs) == .queue, "write to: VS Code's Claude at work: its queue, out when it's free")
 
@@ -1415,6 +1419,135 @@ do { // writing to a chat picked by name (the Chats tab, the bar's line from its
           && Delivery.note(.queue, direct: false, to: "Lead bot") == "Queued for Lead bot — goes when you open it",
           "write to: the note says where the words are")
     try? FileManager.default.removeItem(atPath: Inject.socketPath(pid: getpid()))
+}
+
+do { // Through claude.ai, without the window in front (owner, 29.10): a session's card, what goes, Desktop's Code chats
+    let card: [String: Any] = ["id": "cse_02", "environment_kind": "anthropic_cloud", "worker_status": "requires_action",
+                               "external_metadata": ["pending_action": [
+                                   "tool_name": "AskUserQuestion", "request_id": "", "suppressed_request_id": "req-1",
+                                   "input": ["questions": [["question": "Which one?", "multiSelect": false,
+                                                            "options": [["label": "A"], ["label": "B", "description": "the other"]]]]]]]]
+    let remote = ClaudeAIChats.remote(session: card)
+    check(remote?.pending?.requestId == "req-1" && remote?.pending?.tool == "AskUserQuestion" && remote?.bridge == false
+          && remote?.connected == true,
+          "a Cowork task's card: what it waits on you for; a question's request id as Claude Code writes it (suppressed_request_id, review 29.10)")
+    func pendingOf(_ action: [String: Any]) -> ClaudeAIChats.Pending? {
+        ClaudeAIChats.remote(session: ["id": "cse_02", "worker_status": "requires_action",
+                                       "external_metadata": ["pending_action": action]])?.pending
+    }
+    check(pendingOf(["tool_name": "Bash", "request_id": "req-2", "input": ["command": "ls"]])?.requestId == "req-2"
+          && pendingOf(["tool_name": "Bash", "request_id": "", "suppressed_request_id": "req-3"]) == nil
+          && pendingOf(["tool_name": "dialog:mcp_elicitation", "request_id": "req-4"]) == nil,
+          "a permission by its request id; one kept for the computer (no request id) and a dialog: not answered from the bar")
+    check(!ClaudeAIChats.writes(signedIn: true, readChats: false) && ClaudeAIChats.writes(signedIn: true, readChats: true)
+          && !ClaudeAIChats.writes(signedIn: false, readChats: true),
+          "a key given for the limit alone (Only the Limit) sends nothing to claude.ai (review, 29.10)")
+    let idle = ClaudeAIChats.remote(session: ["id": "cse_02", "worker_status": "idle",
+                                              "external_metadata": ["pending_action": ["tool_name": "Bash", "request_id": "r"]]])
+    check(idle != nil && idle?.pending == nil, "…a pending action left on a card that isn't waiting: nothing asked")
+    let bridge = ClaudeAIChats.remote(session: ["session": ["id": "cse_9", "environment_kind": "bridge", "connection_status": "disconnected"]])
+    check(bridge?.bridge == true && bridge?.connected == false && ClaudeAIChats.remote(session: ["x": 1]) == nil,
+          "a Remote Control card off the line (wrapped or not); something else isn't a card")
+    check(ClaudeAIChats.cse("session_01Xy") == "cse_01Xy" && ClaudeAIChats.cse("cse_01Xy") == "cse_01Xy",
+          "session_X and cse_X are the same session")
+
+    let sent = ClaudeAIChats.message([["type": "text", "text": "hi"]], session: "cse_02", uuid: "u1")
+    let payload = ((sent["events"] as? [[String: Any]])?.first?["payload"]) as? [String: Any]
+    check(payload?["type"] as? String == "user" && payload?["session_id"] as? String == "cse_02" && payload?["uuid"] as? String == "u1"
+          && payload?["parent_tool_use_id"] is NSNull
+          && ((payload?["message"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String == "hi",
+          "your words to a session: one user event, as Claude Code sends them")
+    let reply = ClaudeAIChats.answer(["behavior": "deny", "message": "no"], request: "req-1", uuid: "u2")
+    let response = ((((reply["events"] as? [[String: Any]])?.first?["payload"]) as? [String: Any])?["response"]) as? [String: Any]
+    check(response?["subtype"] as? String == "success" && response?["request_id"] as? String == "req-1"
+          && (response?["response"] as? [String: Any])?["behavior"] as? String == "deny",
+          "your answer: Claude Code's control_response for that request")
+
+    var answered: [String: Any]?
+    let asked = PendingRequest(remote: remote!.pending!, sessionId: "cowork-x") { answered = $0 }
+    check(asked?.kind == .question && asked?.questions.first?.options == ["A", "B"] && asked?.remoteKey == "req-1"
+          && asked?.hostAnswersInParallel == true && asked?.canRemember == false,
+          "a Cowork question on the bar: its options; it waits on its own; no Always")
+    _ = asked?.answerCurrent("B")
+    if let asked { asked.responder.answer(asked.answerOutput()) }
+    let decision = (answered?["hookSpecificOutput"] as? [String: Any])?["decision"] as? [String: Any]
+    check(decision?["behavior"] as? String == "allow"
+          && ((decision?["updatedInput"] as? [String: Any])?["answers"] as? [String: String])?["Which one?"] == "B",
+          "…answered: the decision goes back with the answer in its input")
+    var twice = 0
+    let once = PendingRequest(remote: ClaudeAIChats.Pending(requestId: "r2", tool: "Bash", input: ["command": "ls"]), sessionId: "s") { _ in twice += 1 }
+    once?.responder.answer(PendingRequest.allow())
+    once?.responder.answer(PendingRequest.deny())
+    once?.responder.pass()
+    check(once?.kind == .permission && twice == 1, "…a permission's answer goes back once; passing leaves it waiting there")
+    check(PendingRequest(remote: ClaudeAIChats.Pending(requestId: "r3", tool: "AskUserQuestion", input: [:]), sessionId: "s") { _ in } == nil,
+          "a question with nothing to ask isn't put on the bar")
+    // The same ask read twice — from claude.ai and from Desktop's window in the back, its chat unknown (review, 29.10).
+    let fromWindow = PendingRequest(desktopPermission: "Run · ls", sessionId: nil, key: "k1")
+    let otherQuestion = PendingRequest(desktopQuestion: "Which day?", options: ["Mon"], multiSelect: false, sessionId: nil, key: "k2")
+    let sameQuestion = PendingRequest(desktopQuestion: "Which one?", options: ["A", "B"], multiSelect: false, sessionId: nil, key: "k3")
+    let otherChat = PendingRequest(desktopPermission: "Run · ls", sessionId: "claudeai-y", key: "k4")
+    check(fromWindow.sameAsk(as: once!) && !otherQuestion.sameAsk(as: asked!) && sameQuestion.sameAsk(as: asked!)
+          && !otherChat.sameAsk(as: once!) && !fromWindow.sameAsk(as: asked!),
+          "Desktop's window in the back: a permission is the one claude.ai has, a question only by its words; another chat's isn't")
+    let byHeader = PendingRequest(desktopQuestion: "1 of 1", options: ["B", "A"], multiSelect: false, sessionId: nil, key: "k5")
+    check(byHeader.sameAsk(as: asked!), "…a question whose words the window gives as its header: known by its choices")
+
+    // Claude Desktop's own files for its Code chats.
+    let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!)
+        .appendingPathComponent("desktop-sessions/acct/org")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    func write(_ name: String, _ o: [String: Any]) {
+        try? JSONSerialization.data(withJSONObject: o).write(to: dir.appendingPathComponent(name))
+    }
+    write("local_aa-1.json", ["sessionId": "local_aa-1", "cliSessionId": "cli-1", "bridgeSessionIds": ["session_01Old", "session_01New"]])
+    write("local_bb-2.json", ["sessionId": "local_bb-2", "cliSessionId": "cli-2"])
+    write("local_cc-3.json", ["sessionId": "local_cc-3", "cliSessionId": "cli-3", "isArchived": true])
+    write("local_dd-4.json", ["sessionId": "local_../x", "cliSessionId": "cli-4"])
+    write("scheduled-tasks.json", ["sessionId": "local_ee", "cliSessionId": "cli-5"])
+    let entries = DesktopSessions.read(in: dir.deletingLastPathComponent().deletingLastPathComponent())
+    check(entries["cli-1"] == DesktopSessions.Entry(local: "local_aa-1", bridge: "cse_01New")
+          && entries["cli-2"] == DesktopSessions.Entry(local: "local_bb-2", bridge: nil)
+          && entries["cli-3"] == nil && entries["cli-4"] == nil && entries["cli-5"] == nil,
+          "Desktop's Code chats: its id and the newest Remote Control; archived, odd ids and other files left out")
+    check(DesktopSessions.link("local_aa-1")?.absoluteString == "claude://code/continue?session=local_aa-1"
+          && DesktopSessions.link("local_a&b") == nil && DesktopSessions.link("cse_1") == nil,
+          "…its link opens it, only for an id the app takes")
+    let desk = SessionStore()
+    desk.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "cli-1", "claude_entrypoint": "claude-desktop", "cwd": "/tmp"]))
+    desk.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "cli-2", "claude_entrypoint": "cli", "cwd": "/tmp"]))
+    desk.apply(desktop: entries)
+    check(desk.sessions["cli-1"]?.desktopLocal == "local_aa-1" && desk.sessions["cli-1"]?.remoteSession == "cse_01New"
+          && desk.sessions["cli-2"]?.desktopLocal == nil,
+          "…a desktop Code chat learns them; a Terminal one by the same id doesn't")
+    // Read again only what changed (review, 29.10).
+    let cache = DesktopSessions.Cache()
+    let root = dir.deletingLastPathComponent().deletingLastPathComponent()
+    _ = DesktopSessions.read(in: root, cache: cache)
+    write("local_bb-2.json", ["sessionId": "local_bb-2", "cliSessionId": "cli-2", "bridgeSessionIds": ["session_01Now"]])
+    try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)],
+                                           ofItemAtPath: dir.appendingPathComponent("local_bb-2.json").path)
+    try? FileManager.default.removeItem(at: dir.appendingPathComponent("local_aa-1.json"))
+    let again = DesktopSessions.read(in: root, cache: cache)
+    check(again["cli-2"]?.bridge == "cse_01Now" && again["cli-1"] == nil,
+          "Desktop's files: a changed one read again, a removed one gone")
+
+    // Terminal: Claude Code's own record of the chat, with Remote Control on.
+    let records = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("claude-sessions")
+    try? FileManager.default.createDirectory(at: records, withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: ["pid": 4242, "sessionId": "cli-2", "bridgeSessionId": "session_01Term"])
+        .write(to: records.appendingPathComponent("4242.json"))
+    try? JSONSerialization.data(withJSONObject: ["pid": 4343, "sessionId": "cli-9"]).write(to: records.appendingPathComponent("4343.json"))
+    check(ClaudeSessions.bridge(pid: 4242, session: "cli-2", in: records) == "cse_01Term"
+          && ClaudeSessions.bridge(pid: 4242, session: "cli-other", in: records) == nil
+          && ClaudeSessions.bridge(pid: 4343, session: "cli-9", in: records) == nil
+          && ClaudeSessions.bridge(pid: 1, session: "cli-2", in: records) == nil,
+          "a Terminal chat's Remote Control from Claude Code's record: only its own chat's, none without it")
+    desk.apply(terminalBridges: ["cli-2": "cse_01Term"], checked: ["cli-2", "cli-1"])
+    check(desk.sessions["cli-2"]?.remoteSession == "cse_01Term" && desk.sessions["cli-1"]?.remoteSession == "cse_01New",
+          "…a Terminal chat learns it; a desktop one keeps the app's")
+    desk.apply(terminalBridges: [:], checked: ["cli-2"])
+    check(desk.sessions["cli-2"]?.remoteSession == nil, "…Remote Control off: none again")
 }
 
 // MARK: Safety
