@@ -35,7 +35,7 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 
 **The repository is fixed at submission:** "You can't change a submission's repository and folder after you submit. To list a plugin from a different repository or folder, create a new submission." So the repository moved to the `wvnikola` organization first (29.10).
 
-Checked 29.10 on 1.2.16: `claude plugin validate plugin` and the marketplace pass; no `.DS_Store`, no file over 256 KiB, no `!` lines in commands or skills.
+Checked 29.10 on 1.2.16 and 1.2.17: `claude plugin validate plugin` and the marketplace pass; no `.DS_Store`, no file over 256 KiB, no `!` lines in commands or skills.
 
 1. Needs a Pro/Max/Team/Enterprise claude.ai account; connect GitHub in claude.ai (account with push rights to wvnikola/clouding-bar).
 2. Push this branch to `main` first (the directory reads the repository; it must be public before going live).
