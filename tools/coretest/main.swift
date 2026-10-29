@@ -50,6 +50,8 @@ check(store.session(inWindow: "nikola — Fix tests | proj — codex ▸ codex �
       "typing: a Codex tab's folder half doesn't make a Claude chat of that folder the one in front")
 check(store.session(inWindow: "proj — -zsh — 80×24", tty: "/dev/ttys099") == nil,
       "typing: a terminal tab that's no chat's we know: none, whatever its title says")
+check(store.inFront(windowTitle: "proj — -zsh — 80×24", tty: "/dev/ttys099") == ["cl"],
+      "done word: a tab no chat's tty names (tmux, ssh) still by its title (review, 29.10)")
 event("cl", "/Users/me/proj", "SessionEnd")
 
 // Two chats in one project: told apart by their titles.
@@ -62,6 +64,12 @@ check(focus("README.md — GitHub — Visual Studio Code", ["a"]) == "a", "on a 
 check(focus("README.md — GitHub — Visual Studio Code") == "a2", "on a file, nothing followed: the latest of them")
 check(focus("⠂ Status bar") == "a", "a terminal's spinner before the title")
 check(store.session(inWindow: "README.md — GitHub — Visual Studio Code") == nil, "two chats, a file in front: can't tell")
+check(store.inFront(windowTitle: "README.md — GitHub — Visual Studio Code") == ["a", "a2"]
+      && store.inFront(windowTitle: "Status bar — GitHub") == ["a"],
+      "done word: two chats, a file in front — both count as in front; its own tab, that one (review, 29.10)")
+check(store.inFront(windowTitle: "notes.txt - Untitled (Workspace) - Visual Studio Code").isEmpty
+      && store.inFront(windowTitle: nil).isEmpty,
+      "done word: no chat's window in front — none, never the one followed before")
 check(store.session(inWindow: "Status bar — GitHub")?.id == "a", "…its chat in front: that one")
 check(store.session(inWindow: "Makefile — claudebar — Visual Studio Code")?.id == "b", "the only chat of a project")
 check(Set(["a", "a2", "b", "c"].compactMap { store.sessions[$0]?.colorIndex }).count == 4, "each chat its own colour")
@@ -255,6 +263,10 @@ do {
           "Claude Desktop in front: its chats, the picked one or the latest")
     check(store.focus(windowTitle: nil, sticky: [waiting?.id ?? ""], desktop: true, desktopChat: "/chat/" + id(3))?.id == plain?.id,
           "Claude Desktop shows a chat by its page: that one, over the picked one")
+    check(store.inFront(windowTitle: nil, desktop: true, desktopChat: "/chat/" + id(3)) == [plain?.id ?? ""]
+          && store.inFront(windowTitle: "Design", desktop: true, desktopChat: "/design/p/b1972402").isEmpty
+          && store.inFront(windowTitle: "Claude", desktop: true).isSuperset(of: [task?.id ?? "", waiting?.id ?? "", plain?.id ?? ""]),
+          "done word, Claude Desktop in front: the chat its page shows; Design shown — none; its page not read (no Accessibility) — all of its own (review, 29.10)")
     // Review, 28.10: Desktop shows an old chat of a like name, not in the list.
     check(store.session(inDesktop: "Recipe ideas for the week", chat: "/chat/99999999-aaaa-4bbb-8ccc-000000000009") == nil
           && store.session(inDesktop: "Recipe ideas", chat: nil) == nil,
@@ -929,6 +941,8 @@ do {
         spin { typing.sessions[ids[4]] != nil }
         check(typing.sessions[ids[4]]?.ambient == true && typing.session(inWindow: "proj — -zsh — 80×24") == nil
               && typing.session(inWindow: "main.swift — proj") == nil, "codex files: a chat found in them is never the window in front")
+        check(typing.inFront(windowTitle: "proj — -zsh — 80×24").contains(ids[4]),
+              "codex files: …but its tab in front counts for the done word: no word about the chat you look at (review, 29.10)")
         typing.apply(Inbound(raw: ["session_id": "claude-cli", "hook_event_name": "SessionStart", "cwd": "/Users/me/proj",
                                    "claude_entrypoint": "cli", "claude_pid": Int(getpid())]))
         check(typing.session(inWindow: "proj — -zsh — 80×24")?.id == "claude-cli", "codex files: nor does it hide a Claude chat of that folder")
@@ -1448,8 +1462,9 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
     let bridge = ClaudeAIChats.remote(session: ["session": ["id": "cse_9", "environment_kind": "bridge", "connection_status": "disconnected"]])
     check(bridge?.bridge == true && bridge?.connected == false && ClaudeAIChats.remote(session: ["x": 1]) == nil,
           "a Remote Control card off the line (wrapped or not); something else isn't a card")
-    check(ClaudeAIChats.remote(session: ["response_shape": card])?.pending?.requestId == "req-1",
-          "a card as claude.ai sends it now, under response_shape: its question read (29.10)")
+    check(ClaudeAIChats.remote(session: ["response_shape": card])?.pending?.requestId == "req-1"
+          && ClaudeAIChats.remote(session: ["response_shape": NSNull(), "session": card])?.pending?.requestId == "req-1",
+          "a card as claude.ai sends it now, under response_shape (a null one beside session skipped): its question read (29.10)")
     check(ClaudeAIChats.cse("session_01Xy") == "cse_01Xy" && ClaudeAIChats.cse("cse_01Xy") == "cse_01Xy",
           "session_X and cse_X are the same session")
 

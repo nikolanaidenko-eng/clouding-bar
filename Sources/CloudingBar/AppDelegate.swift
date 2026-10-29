@@ -419,13 +419,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A terminal, VS Code or Claude in front.
     private var inClaudeApp: Bool { frontApp.map(isTerminal) ?? false }
 
-    /// The chat whose own window or tab is in front, with a Claude app in
-    /// front — never a guess from the one followed before.
-    private var chatInFront: String? {
-        guard let app = frontApp, claudeAppInFront else { return nil }
-        return (app.bundleIdentifier == Self.desktopBundle
-            ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)
-            : store.session(inWindow: frontTitle, tty: frontTTY))?.id
+    /// The chats a Claude app's window in front may show (SessionStore.inFront):
+    /// no word that one of them finished — never a guess from the one followed before.
+    private var chatsInFront: Set<String> {
+        guard let app = frontApp, claudeAppInFront else { return [] }
+        return store.inFront(windowTitle: frontTitle, tty: frontTTY,
+                             desktop: app.bundleIdentifier == Self.desktopBundle, desktopChat: desktopShown?.chat)
     }
 
     /// Somewhere a request can be answered: the Touch Bar or the widget.
@@ -1682,13 +1681,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // one, often: owner, 29.10 — no answer ever showed): all but the one
         // whose own window is in front.
         let withAnswer = config.answerPreview
-        let front = withAnswer ? chatInFront : frontSession?.id
+        let front = withAnswer ? chatsInFront : Set([frontSession?.id].compactMap { $0 })
         let active = withAnswer ? nil : active
         for s in store.alive {
             guard let at = s.finishedAt, doneSeen[s.id] != at else { continue }
             doneSeen[s.id] = at
             guard config.doneAlerts, !config.doNotDisturb, Date().timeIntervalSince(at) < 60,
-                  s.id != active?.id, s.id != front, handoff?.doneId != s.id, !doneQueue.contains(s.id) else { continue }
+                  s.id != active?.id, !front.contains(s.id), handoff?.doneId != s.id, !doneQueue.contains(s.id) else { continue }
             doneQueue.append(s.id)
             DebugLog.note("done elsewhere: \(s.displayName)")
         }
@@ -1701,7 +1700,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             doneQueue.removeFirst()
             // Started again, gone, or in view by now: nothing to tell.
             guard let s = store.sessions[id], s.isAlive(), s.activity == .sleep,
-                  s.id != active?.id, s.id != front else { continue }
+                  s.id != active?.id, !front.contains(s.id) else { continue }
             beginDone(s)
             break
         }
