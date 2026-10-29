@@ -2737,9 +2737,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Where it goes is decided now: the app in front may change while
         // you pick the area.
         let intoChat = inClaudeApp
+        let intoDesktop = frontApp?.bundleIdentifier == Self.desktopBundle
         Screenshot.take { [weak self] path in
             guard let self, let path else { return } // cancelled
-            if intoChat {
+            if intoDesktop {
+                // Its Design, Cowork and chats can't read a path on this Mac;
+                // its Code chats take a pasted picture too.
+                self.widget.releaseKey()
+                Screenshot.paste(path)
+                DebugLog.note("screenshot → pasted into Claude Desktop")
+            } else if intoChat {
                 self.widget.releaseKey()
                 KeySender.type(path + " ")
                 DebugLog.note("screenshot → path typed")
