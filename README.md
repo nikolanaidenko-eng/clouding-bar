@@ -177,7 +177,11 @@ A first version for **Windows** is in [windows/](windows/README.md).
   **Sign In…**. The chats list shows each one's name and whether it's
   working, done or waiting for you (a permission or a question); for Cowork
   tasks also the context and the model. Click one to open it in Claude
-  Desktop. The account-wide 5-hour and weekly limit come with it (Desktop,
+  Desktop. A Cowork task's questions and permissions come to the bar, and
+  your messages go to it through claude.ai — whatever Claude Desktop shows
+  in front; the same for a Claude Code chat in Claude Desktop or Terminal
+  with Remote Control on (`/remote-control`, or `"remoteControlAtStartup": true`
+  for every new one). The account-wide 5-hour and weekly limit come with it (Desktop,
   Cowork and claude.ai chats count too). No plugin, no connected folder,
   nothing asked of Claude, no extra tokens.
 - **Keeps itself up to date**: once a day it looks on GitHub for a newer
@@ -384,9 +388,10 @@ GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, off until you sign in,
 **Settings → General → Claude → claude.ai → Sign In…**: the app then
-reads your account's limit, Cowork tasks and chats from claude.ai. Only
-read-only GET requests, only to claude.ai, with the session key as a cookie,
-never following redirects:
+reads your account's limit, Cowork tasks and chats from claude.ai, and sends
+what you send from the widget or the bar to a Cowork task or to a Claude
+Desktop or Terminal Claude Code chat with Remote Control on. Only to claude.ai, with the session
+key as a cookie, never following redirects:
 
 - `/api/organizations` — once;
 - `/api/organizations/{org}/usage` — every minute (the 5-hour and weekly limit);
@@ -396,14 +401,20 @@ never following redirects:
 - `/v1/code/sessions/{id}/events` — for a Cowork task that is running or just
   finished (context and model). This answer holds the task's messages too: the
   app keeps only the latest reply's model and token counts, in memory, and
-  writes none of the messages to disk or to its log.
+  writes none of the messages to disk or to its log;
+- `/v1/code/sessions/{id}` — for a Cowork task waiting for you (what it asks:
+  the question or permission, shown on the bar), and every 30 s for the
+  Remote Control of a Claude Code chat in Claude Desktop or Terminal (whether
+  it's on the line);
+- POST `/v1/code/sessions/{id}/events` — only when you send: your message to
+  that task or chat, or your answer to what it asks. Nothing else is written.
 
 Sign In opens a window with claude.ai's own sign-in pages (and Google's or
 Apple's, if you sign in with one), in a browser store that is thrown away
 when the window closes. Once you're signed in, the app takes the session key
 from that page's cookie, keeps it only in the macOS Keychain and closes the
 window. The key gives full access to your account; it never leaves your Mac
-except to claude.ai. Nothing is written to claude.ai. Signing in starts a new
+except to claude.ai. Signing in starts a new
 login session on your account, as signing in anywhere does (claude.ai may
 email you about it).
 

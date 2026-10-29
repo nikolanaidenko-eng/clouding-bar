@@ -37,7 +37,7 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
 
         let note = NSTextField(wrappingLabelWithString:
             "Sign in to claude.ai as you always do. Clouding Bar then keeps your session key in the Keychain and closes this window. "
-            + "The key opens your whole account: it's sent only to claude.ai, only to read your limit and your chats. "
+            + "The key opens your whole account: it's sent only to claude.ai, to read your limit and your chats, and to send what you send to a Cowork task or a Claude Code chat with Remote Control on. "
             + "Signing in starts a new login session; Sign Out deletes the key from this Mac. Unofficial — it can stop working any time.")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor

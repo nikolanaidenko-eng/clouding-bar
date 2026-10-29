@@ -138,6 +138,7 @@ final class SessionStore {
             session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
             session.cwd = chat.isCowork ? "/Cowork" : "/claude.ai"
             session.title = chat.name ?? session.title
+            session.remoteSession = chat.workspace
             if let model = chat.model { session.model = model }
             if session.desktopChat != chat.page { link(session, desktopChat: chat.page, title: nil) }
             // Working or waiting is now, however long ago it began.
@@ -156,6 +157,22 @@ final class SessionStore {
         }
         if changed { scheduleSave() }
         onChange?()
+    }
+
+    /// The desktop app's own ids for its Claude Code chats (DesktopSessions):
+    /// its link to each, and its Remote Control session.
+    func apply(desktop entries: [String: DesktopSessions.Entry]) {
+        for s in sessions.values where s.entrypoint == "claude-desktop" {
+            let entry = entries[s.id]
+            s.desktopLocal = entry?.local
+            s.remoteSession = entry?.bridge
+        }
+    }
+
+    /// Terminal chats' Remote Control, from Claude Code's record of each:
+    /// for the chats looked at (`checked`), none if it has none now.
+    func apply(terminalBridges bridges: [String: String], checked: [String]) {
+        for id in checked where sessions[id]?.entrypoint == "cli" { sessions[id]?.remoteSession = bridges[id] }
     }
 
     /// Signed out of claude.ai: its chats aren't followed any more.

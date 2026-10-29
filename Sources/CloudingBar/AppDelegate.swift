@@ -288,6 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             readDesktopPrompt()
         }
         if ticks % 10 == 0 { refreshSetupStatus() }
+        if ticks % 5 == 0 { followRemoteControl() }
         // A closed chat leaves the list within 2 s (was 10, owner 28.10).
         if ticks % 2 == 0 {
             let gone = Set(store.prune())
@@ -1002,6 +1003,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         requests.removeAll { $0 === request }
+        // Desktop's window may show it a while yet: not offered from there again.
+        if request.remoteKey != nil { remoteJustAnswered = remoteJustAnswered.filter { Date().timeIntervalSince($0.at) < 20 } + [(request, Date())] }
         request.responder.answer(output)
         // Codex's own prompt is not coming: it asked, you answered here.
         if request.entrypoint == "codex", let id = request.sessionId { store.sessions[id]?.waitingNotice = false }
@@ -1053,6 +1056,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ? PendingRequest(desktopQuestion: prompt.text, options: prompt.options, multiSelect: prompt.multiSelect,
                              sessionId: session, key: prompt.key)
             : PendingRequest(desktopPermission: prompt.text, sessionId: session, key: prompt.key)
+        // Read from claude.ai already, or just answered there: the bar has it once (review, 29.10).
+        let remote = requests.filter { $0.remoteKey != nil }
+            + remoteJustAnswered.filter { Date().timeIntervalSince($0.at) < 20 }.map(\.request)
+        if remote.contains(where: request.sameAsk) { return }
         requests.append(request)
         DebugLog.note("desktop prompt: \(prompt.kind == .question ? "question" : "permission") on the bar (\(prompt.options.count) options)")
         setNeedsRefresh()
@@ -1785,6 +1792,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 DebugLog.note("desktop chat open by its link: \(chat)")
                 return
             }
+            // A Claude Code chat of the app: its own link, whatever the app
+            // shows (29.10: with Design in front there was no row to press).
+            if let local = session.desktopLocal, let url = DesktopSessions.link(local),
+               NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                NSWorkspace.shared.open(url)
+                DebugLog.note("desktop code chat open by its link: \(local)")
+                return
+            }
             // Not known yet: brought up, then the chat's row in its sidebar pressed.
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first,
                let url = app.bundleURL {
@@ -2179,7 +2194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let name = Self.short(session.displayName, 28)
         let direct = straightIn(session)
         let route = queueOrSend(text, to: session) { [weak self] in
-            self?.showNote(Delivery.note(.queue, direct: direct, to: name), for: id)
+            // Not taken: where it goes now (claude.ai refused it — keys, review 29.10).
+            guard let self else { return }
+            self.showNote(Delivery.note(.queue, direct: self.straightIn(session), to: name), for: id)
         }
         if let route { showNote(Delivery.note(route, direct: direct, to: name), for: id) }
     }
@@ -2200,7 +2217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Claude has finished its reply there and asks nothing (Delivery.free).
     private func isFree(_ session: Session) -> Bool {
         Delivery.free(session, asking: requests.contains(where: { $0.sessionId == session.id }),
-                      handedAt: handedAt[session.id], sending: codexSending.contains(session.id))
+                      handedAt: handedAt[session.id], sending: codexSending.contains(session.id) || remoteSending.contains(session.id))
     }
 
     /// Codex chats a message is on its way to (its server answers within
@@ -2284,9 +2301,153 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Its words go straight in: Claude's input (VS Code, through the
-    /// wrapper), or Codex's own server for a chat it has loaded.
+    /// wrapper), Codex's own server for a chat it has loaded, or claude.ai.
     private func straightIn(_ session: Session) -> Bool {
-        Delivery.direct(session, codexLoaded: codexDirect(session))
+        Delivery.direct(session, codexLoaded: codexDirect(session), remote: remoteDirect(session) != nil)
+    }
+
+    private let remoteControlQueue = DispatchQueue(label: "cloudingbar.remote-control")
+    private let desktopCache = DesktopSessions.Cache()
+
+    /// Chats that may take words through Remote Control: the desktop app's
+    /// Claude Code chats (their link and Remote Control from its own files)
+    /// and Terminal's (from Claude Code's record of each) — their cards then
+    /// asked of claude.ai. Files read off the main thread (review, 29.10).
+    private func followRemoteControl() {
+        let alive = store.alive
+        let desktop = alive.contains { $0.entrypoint == "claude-desktop" }
+        let terminals = alive.filter { $0.entrypoint == "cli" }.compactMap { s in s.claudePid.map { (id: s.id, pid: $0) } }
+        guard desktop || !terminals.isEmpty else { followBridges(); return }
+        remoteControlQueue.async { [desktopCache] in
+            let entries = desktop ? DesktopSessions.read(cache: desktopCache) : nil
+            var bridges: [String: String] = [:]
+            for t in terminals { bridges[t.id] = ClaudeSessions.bridge(pid: t.pid, session: t.id) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if let entries { self.store.apply(desktop: entries) }
+                self.store.apply(terminalBridges: bridges, checked: terminals.map(\.id))
+                self.followBridges()
+            }
+        }
+    }
+
+    /// The Remote Control sessions whose cards claude.ai is asked for.
+    private func followBridges() {
+        let bridges = Set(store.alive.filter { $0.entrypoint == "claude-desktop" || $0.entrypoint == "cli" }.compactMap(\.remoteSession))
+        guard bridges != claudeAI.bridges else { return }
+        claudeAI.bridges = bridges
+        remoteCards = remoteCards.filter { !$0.value.bridge || bridges.contains($0.key) }
+    }
+
+    /// claude.ai's cards of the sessions it holds, by "cse_…" (ClaudeAI.onRemote).
+    private var remoteCards: [String: ClaudeAIChats.Remote] = [:]
+    /// claude.ai refused words for these: keys again for a while, not the
+    /// same refusal every 10 s.
+    private var remoteRefused: [String: Date] = [:]
+    /// Answers sent through claude.ai: its card may still show the request
+    /// a moment — not offered again.
+    private var remoteAnswered: [String: Date] = [:]
+    /// …nor read again from Desktop's window, which shows it till Claude moves on.
+    private var remoteJustAnswered: [(request: PendingRequest, at: Date)] = []
+    /// Words on their way to claude.ai, by chat: busy till it says it took
+    /// them, so the next in its queue doesn't overtake (review, 29.10).
+    private var remoteSending = Set<String>()
+
+    /// Where its words go through claude.ai ("cse_…"): a Cowork task, or a
+    /// desktop Code or Terminal chat whose Remote Control is on the line —
+    /// wherever its window is (owner, 29.10). Nil: keys, as before.
+    private func remoteDirect(_ session: Session) -> String? {
+        guard claudeAI.canSend, let id = session.remoteSession,
+              Date().timeIntervalSince(remoteRefused[id] ?? .distantPast) > 600 else { return nil }
+        if session.entrypoint == "cowork" { return id }
+        guard session.entrypoint == "claude-desktop" || session.entrypoint == "cli", let card = remoteCards[id],
+              card.bridge, card.connected, !card.archived else { return nil }
+        return id
+    }
+
+    /// Its words through claude.ai, as yours: refused, they're kept
+    /// (`fallback`); no telling, not sent again, lest Claude get them twice.
+    private func sendToClaudeAI(_ text: String, files: [String], into session: Session, remote: String,
+                                fallback: @escaping () -> Void) {
+        guard let content = Inject.content(text, files: files) else { fallback(); return }
+        handedAt[session.id] = Date()
+        let name = session.displayName, id = session.id
+        remoteSending.insert(id)
+        claudeAI.send(content, to: remote) { [weak self] result in
+            guard let self else { return }
+            self.remoteSending.remove(id)
+            switch result {
+            case .sent:
+                DebugLog.note("sent through claude.ai (\(name))")
+                self.queueSentAt = Date()
+                self.claudeAI.lookSoon()
+                self.setNeedsRefresh()
+            case .kept(let why):
+                self.remoteRefused[remote] = Date()
+                DebugLog.note("claude.ai didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
+                fallback()
+            case .unsure(let why):
+                NSSound.beep()
+                DebugLog.note("claude.ai: \(why) (\(name)) — maybe sent, not sent again")
+            }
+        }
+    }
+
+    /// A session's card from claude.ai. A Cowork task's question or
+    /// permission comes only this way (no hook reaches its cloud, and its
+    /// window may show something else): on the bar, answered back there.
+    private func remoteCard(_ card: ClaudeAIChats.Remote, for id: String) {
+        remoteCards[id] = card
+        guard let session = store.alive.first(where: { $0.remoteSession == id && $0.entrypoint == "cowork" }) else { return }
+        let current = requests.first { $0.remoteKey != nil && $0.sessionId == session.id }
+        if let current, current.remoteKey != card.pending?.requestId {
+            finish(current, "cowork: answered in Claude", reply: false)
+        }
+        remoteAnswered = remoteAnswered.filter { Date().timeIntervalSince($0.value) < 120 }
+        guard let pending = card.pending, current?.remoteKey != pending.requestId,
+              remoteAnswered[pending.requestId] == nil else { return }
+        let name = session.displayName
+        let request = PendingRequest(remote: pending, sessionId: session.id) { [weak self] output in
+            self?.answerThroughClaudeAI(output, pending: pending, in: id, name: name)
+        }
+        guard let request else { return }
+        // Its window's reading of the same question gives way.
+        for r in requests where r.desktopKey != nil && r.sameAsk(as: request) {
+            finish(r, "desktop prompt: taken from claude.ai instead", reply: false)
+        }
+        requests.append(request)
+        DebugLog.note("cowork: \(request.kind == .question ? "question" : "permission") on the bar, from claude.ai")
+        setNeedsRefresh()
+    }
+
+    /// Signed out, or the key turned down: what Cowork tasks asked through
+    /// claude.ai leaves the bar (their chats are gone, no list says so).
+    private func dropRemoteRequests() {
+        for r in requests where r.remoteKey != nil { finish(r, "cowork: signed out of claude.ai — dropped", reply: false) }
+        remoteCards = [:]
+    }
+
+    /// The bar's answer (what a PermissionRequest hook would print) as
+    /// Claude Code's control_response. Not taken: offered again.
+    private func answerThroughClaudeAI(_ output: [String: Any], pending: ClaudeAIChats.Pending, in id: String, name: String) {
+        guard var decision = (output["hookSpecificOutput"] as? [String: Any])?["decision"] as? [String: Any] else { return }
+        // An allow carries the input it runs with: as asked, if not changed.
+        if decision["behavior"] as? String == "allow", decision["updatedInput"] == nil { decision["updatedInput"] = pending.input }
+        remoteAnswered[pending.requestId] = Date()
+        claudeAI.answer(decision, request: pending.requestId, in: id) { [weak self] result in
+            switch result {
+            case .sent:
+                DebugLog.note("cowork: answered through claude.ai (\(name))")
+                self?.claudeAI.lookSoon()
+            case .kept(let why):
+                NSSound.beep()
+                self?.remoteAnswered[pending.requestId] = nil
+                DebugLog.note("cowork: claude.ai didn't take the answer (\(name)): \(why) — asked again")
+            case .unsure(let why):
+                NSSound.beep()
+                DebugLog.note("cowork: \(why) (\(name)) — the answer may have gone in")
+            }
+        }
     }
 
     /// A Codex chat its own server has loaded (Terminal's codex, 0.164 on):
@@ -2297,8 +2458,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Hands it to Claude's input (Inject): off the main thread, then the
     /// chat's echo shows it. If Claude's side doesn't take it, `fallback`.
-    /// A Codex chat's go to Codex's server instead.
+    /// A Codex chat's go to Codex's server instead; a Cowork task's, or a
+    /// desktop Code chat's with Remote Control, to claude.ai.
     private func inject(_ text: String, files: [String] = [], into session: Session, fallback: @escaping () -> Void) {
+        if let remote = remoteDirect(session) {
+            sendToClaudeAI(text, files: files, into: session, remote: remote, fallback: fallback)
+            return
+        }
         if codexDirect(session) {
             handedAt[session.id] = Date()
             sendToCodex(text, files: files, into: session, fallback: fallback)
@@ -2647,11 +2813,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.model.liveLimitState = state
             DebugLog.note("claude.ai: \(state)")
         }
-        claudeAI.onChats = { [weak self] chats in self?.store.apply(claudeAI: chats) }
+        claudeAI.onChats = { [weak self] chats in
+            guard let self else { return }
+            self.store.apply(claudeAI: chats)
+            // A Cowork task no longer waiting: answered in Claude, or stopped.
+            for r in self.requests where r.remoteKey != nil && r.sessionId.flatMap({ self.store.sessions[$0]?.waitingNotice }) != true {
+                self.finish(r, "cowork: no longer waiting (answered in Claude)", reply: false)
+            }
+        }
+        claudeAI.onRemote = { [weak self] id, card in self?.remoteCard(card, for: id) }
         claudeAI.onContext = { [weak self] uuid, context in self?.store.apply(claudeAIContext: context, chat: uuid) }
         claudeAI.onRejected = { [weak self] in
             // Its chats would stay "working" for hours.
             self?.store.forgetClaudeAI()
+            self?.dropRemoteRequests()
             self?.model.liveKeyRejected = true
         }
         model.signInClaudeAI = { [weak self] in
@@ -2674,6 +2849,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ClaudeAI.deleteKey()
             self?.claudeAI.stop()
             self?.store.forgetClaudeAI()
+            self?.dropRemoteRequests()
             self?.model.hasLiveKey = false
             self?.model.liveKeyRejected = false
             self?.model.liveLimitState = "Off"
@@ -2696,7 +2872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func askClaudeAIChats() {
         let alert = NSAlert()
         alert.messageText = "Show your Cowork tasks and claude.ai chats too?"
-        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It only reads, only from claude.ai, and keeps the chats' names on this Mac. You can sign out any time in Settings → General → Claude."
+        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It talks only to claude.ai — reads, and sends only what you send to a task — and keeps the chats' names on this Mac. You can sign out any time in Settings → General → Claude."
         alert.addButton(withTitle: "Show Them")
         alert.addButton(withTitle: "Only the Limit")
         NSApp.activate(ignoringOtherApps: true)

@@ -13,11 +13,27 @@ final class Responder {
     /// One with nowhere to answer (the checks).
     init() { connection = nil }
 
+    /// One whose answer goes elsewhere (claude.ai, for what a Cowork task
+    /// asks): `pass` leaves it waiting there.
+    init(answered: @escaping ([String: Any]) -> Void) {
+        connection = nil
+        elsewhere = answered
+    }
+
+    private var elsewhere: (([String: Any]) -> Void)?
+
     /// Keep the hook waiting up to `seconds` more.
     func hold(_ seconds: Double) { connection?.send(["hold": seconds]) }
 
     /// Final answer: the JSON the hook prints for Claude.
-    func answer(_ output: [String: Any]) { connection?.finish(["output": output]) }
+    func answer(_ output: [String: Any]) {
+        if let elsewhere {
+            self.elsewhere = nil
+            elsewhere(output)
+            return
+        }
+        connection?.finish(["output": output])
+    }
 
     /// Final: no decision, Claude's own UI takes over.
     func pass() { connection?.finish(["pass": true]) }

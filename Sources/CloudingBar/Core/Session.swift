@@ -174,6 +174,13 @@ final class Session {
     /// the app gives it, once known to be this session.
     var desktopChat: String?
     var desktopTitle: String?
+    /// A Claude Code chat of the desktop app, by the app's own id
+    /// ("local_…"): its link opens it (DesktopSessions).
+    var desktopLocal: String?
+    /// Its session on claude.ai ("cse_…"): a Cowork task's, or a desktop
+    /// Code chat's Remote Control. Words and answers go to it through
+    /// claude.ai, wherever its window is (owner, 29.10).
+    var remoteSession: String?
 
     /// Distinct on the dark widget, none of them the orange of "needs you".
     static let colors: [UInt32] = [0x0A84FF, 0xBF5AF2, 0x40C8E0, 0x30D158, 0xFF6EB4, 0xFFD60A, 0x7D7AFF, 0x63E6BE,

@@ -81,6 +81,85 @@ enum ClaudeAIChats {
         return nil
     }
 
+    /// A session's card on claude.ai (`/v1/code/sessions/<cse>`), as Claude
+    /// Code itself reads it: a Cowork task's, or a Remote Control one's.
+    struct Remote {
+        /// Remote Control: a Claude Code on this Mac, reached through claude.ai.
+        var bridge = false
+        /// Its Claude Code is on the line. Words for a Remote Control one
+        /// that isn't would wait on claude.ai till it comes back.
+        var connected = true
+        var archived = false
+        /// What it waits on you for (`worker_status` "requires_action").
+        var pending: Pending?
+    }
+
+    /// A question or permission waiting there (`pending_action`).
+    struct Pending {
+        let requestId: String
+        let tool: String
+        let input: [String: Any]
+    }
+
+    /// The card; nil if it isn't one.
+    static func remote(session json: Any?) -> Remote? {
+        guard var o = json as? [String: Any] else { return nil }
+        if o["id"] == nil, let inner = o["session"] as? [String: Any] { o = inner }
+        guard o["id"] is String else { return nil }
+        var r = Remote()
+        r.bridge = o["environment_kind"] as? String == "bridge"
+        r.connected = o["connection_status"] as? String != "disconnected"
+        r.archived = o["status"] as? String == "archived"
+        if o["worker_status"] as? String == "requires_action",
+           let p = (o["external_metadata"] as? [String: Any])?["pending_action"] as? [String: Any],
+           let tool = p["tool_name"] as? String, !tool.isEmpty, tool.count <= 128,
+           // A dialog (an MCP server's form…) isn't a permission: Claude Code
+           // itself leaves those to the computer.
+           !tool.hasPrefix("dialog:"),
+           let request = requestId(p, tool: tool) {
+            r.pending = Pending(requestId: request, tool: tool, input: p["input"] as? [String: Any] ?? [:])
+        }
+        return r
+    }
+
+    /// The request to answer. A question's comes as `suppressed_request_id`
+    /// (`request_id` empty: "tap to answer" on claude.ai), and Claude Code
+    /// takes either; anything else kept for the computer alone (an empty
+    /// `request_id`) isn't answered from here.
+    private static func requestId(_ p: [String: Any], tool: String) -> String? {
+        let given = p["request_id"] as? String ?? ""
+        let id = !given.isEmpty ? given : tool == "AskUserQuestion" ? p["suppressed_request_id"] as? String ?? "" : ""
+        return !id.isEmpty && id.count <= 200 ? id : nil
+    }
+
+    /// The bar writes to claude.ai only for a key that reads the chats too:
+    /// one given for the limit alone (before 1.2.8, "Only the Limit") does
+    /// nothing else (review, 29.10).
+    static func writes(signedIn: Bool, readChats: Bool) -> Bool { signedIn && readChats }
+
+    /// The id the sessions' addresses take: "session_X" is "cse_X" there.
+    static func cse(_ id: String) -> String {
+        id.hasPrefix("session_") ? "cse_" + id.dropFirst("session_".count) : id
+    }
+
+    /// Your words for a session, as Claude Code sends them to one
+    /// (POST `/v1/code/sessions/<cse>/events`).
+    static func message(_ content: [[String: Any]], session: String, uuid: String = UUID().uuidString.lowercased()) -> [String: Any] {
+        ["events": [["payload": [
+            "uuid": uuid, "session_id": session, "type": "user", "parent_tool_use_id": NSNull(),
+            "message": ["role": "user", "content": content],
+        ] as [String: Any]]]]
+    }
+
+    /// Your answer to what it waits on: Claude Code's control_response,
+    /// the decision as a PermissionRequest hook gives it.
+    static func answer(_ decision: [String: Any], request: String, uuid: String = UUID().uuidString.lowercased()) -> [String: Any] {
+        ["events": [["payload": [
+            "uuid": uuid, "type": "control_response",
+            "response": ["subtype": "success", "request_id": request, "response": decision] as [String: Any],
+        ] as [String: Any]]]]
+    }
+
     /// The objects of an array, or of `{"data": [...]}`; anything else in it left out.
     static func items(_ json: Any?) -> [[String: Any]] {
         (json as? [Any] ?? (json as? [String: Any])?["data"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }

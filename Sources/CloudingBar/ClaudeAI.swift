@@ -5,8 +5,11 @@ import Foundation
 /// whole account, and Cowork tasks and chats as claude.ai lists them: what
 /// each is called, whether it works or waits for you, a Cowork task's
 /// context. The key gives full access to the account, so: kept only in
-/// the Keychain, sent only to claude.ai, used only to read (GET, no
-/// redirect followed). The addresses are unofficial and may stop working.
+/// the Keychain, sent only to claude.ai, no redirect followed; it reads
+/// (GET), and writes only what you send — your words to a Cowork task or a
+/// desktop Code chat's Remote Control, your answer to what one asks
+/// (owner, 29.10: not typed into a window that must be in front). The
+/// addresses are unofficial and may stop working.
 final class ClaudeAI {
     var onUpdate: ((_ percent: Double, _ resetsAt: Double?) -> Void)?
     /// The weekly (7-day) limit, when the plan has one.
@@ -19,6 +22,12 @@ final class ClaudeAI {
     var onContext: ((String, ClaudeAIChats.Context) -> Void)?
     /// claude.ai turned the key down (401, 403): nothing more is asked.
     var onRejected: (() -> Void)?
+    /// A session's card (by its "cse_…"): a Cowork task waiting on you, a
+    /// Remote Control one in `bridges`.
+    var onRemote: ((String, ClaudeAIChats.Remote) -> Void)?
+    /// The desktop Code chats' Remote Control sessions: whether each is on
+    /// the line, read every 30 s.
+    var bridges: Set<String> = []
     /// The chats too, not the limit alone: a key pasted before 1.2.8 was
     /// given for the limit, and reads the chats only once you say so.
     var readChats = true
@@ -31,6 +40,8 @@ final class ClaudeAI {
     private var chats: [ClaudeAIChats.Chat] = []
     /// When each Cowork task's events were read, and the reply's end they saw.
     private var contextRead: [String: (at: Date, settled: Date?)] = [:]
+    /// When each Remote Control card was read.
+    private var cardRead: [String: Date] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
     private var asking: Set<String> = []
     /// One more at each stop: an answer to a request from before is dropped.
@@ -116,6 +127,7 @@ final class ClaudeAI {
         orgId = nil
         chats = []
         contextRead = [:]
+        cardRead = [:]
         nextOrg = .distantPast
         nextUsage = .distantPast
         nextChats = .distantPast
@@ -155,6 +167,17 @@ final class ClaudeAI {
             nextChats = now.addingTimeInterval(busy ? 20 : 60)
             fetchChats(org: org, key: key)
         }
+        let due = readChats ? bridges.filter { now.timeIntervalSince(cardRead[$0] ?? .distantPast) >= 30 } : []
+        if !due.isEmpty { fetchCards(Array(due.prefix(5)), org: org, key: key) }
+    }
+
+    /// Signed in, the account known, and the key given for the chats too:
+    /// words and answers can go.
+    var canSend: Bool { ClaudeAIChats.writes(signedIn: timer != nil && orgId != nil, readChats: readChats) }
+
+    /// The list again in a few seconds (something was just sent).
+    func lookSoon() {
+        nextChats = min(nextChats, Date().addingTimeInterval(3))
     }
 
     private func fetchUsage(org: String, key: String) {
@@ -196,7 +219,54 @@ final class ClaudeAI {
             self.chats = chats
             self.onChats?(chats)
             self.fetchContexts(org: org, key: key)
+            // What a Cowork task waiting on you asks: only its card has it.
+            let waiting = chats.filter { $0.needsInput != nil && !$0.archived }.compactMap(\.workspace)
+            if !waiting.isEmpty { self.fetchCards(Array(waiting.prefix(5)), org: org, key: key) }
         }
+    }
+
+    /// Sessions' cards: whether each is on the line, what it waits on you for.
+    /// A Remote Control one that can't be read counts as off the line.
+    private func fetchCards(_ ids: [String], org: String, key: String) {
+        let now = Date()
+        for id in ids where ClaudeAIChats.isId(id) {
+            cardRead[id] = now
+            get("/v1/code/sessions/\(id)", key: key, headers: ccr(org)) { [weak self] status, json in
+                guard let self else { return }
+                if status == 200, let card = ClaudeAIChats.remote(session: json) {
+                    self.onRemote?(id, card)
+                    return
+                }
+                self.note("session card: HTTP \(status)")
+                if self.bridges.contains(id) { self.onRemote?(id, ClaudeAIChats.Remote(bridge: true, connected: false)) }
+            }
+        }
+    }
+
+    private func ccr(_ org: String) -> [String: String] {
+        ["anthropic-version": "2023-06-01", "anthropic-beta": "ccr-byoc-2025-07-29",
+         "anthropic-client-feature": "ccr", "x-organization-uuid": org]
+    }
+
+    // MARK: What you send
+
+    enum Sent: Equatable {
+        case sent
+        /// claude.ai said no: not taken, safe to keep and send another way.
+        case kept(String)
+        /// No answer, or claude.ai's own fault: it may have gone in — not sent again.
+        case unsure(String)
+    }
+
+    /// Your words into a Cowork task or a Remote Control session, as Claude
+    /// Code sends them; Claude there echoes them into its chat as yours.
+    func send(_ content: [[String: Any]], to session: String, done: @escaping (Sent) -> Void) {
+        post("/v1/code/sessions/\(session)/events", body: ClaudeAIChats.message(content, session: session), done: done)
+    }
+
+    /// Your answer to what it waits on (its card's request id).
+    func answer(_ decision: [String: Any], request: String, in session: String, done: @escaping (Sent) -> Void) {
+        post("/v1/code/sessions/\(session)/events", body: ClaudeAIChats.answer(decision, request: request), done: done)
     }
 
     /// A Cowork task's events: while it works (every 30 s), after a reply
@@ -217,8 +287,7 @@ final class ClaudeAI {
             let skip = ["stream_event", "tool_progress", "tool_use_summary", "keep_alive", "thinking_trace",
                         "transcript", "env_manager_log"].map { "&exclude_types=" + $0 }.joined()
             get("/v1/code/sessions/\(workspace)/events?limit=30&sort_order=desc" + skip, key: key,
-                headers: ["anthropic-version": "2023-06-01", "anthropic-beta": "ccr-byoc-2025-07-29",
-                          "anthropic-client-feature": "ccr", "x-organization-uuid": org]) { [weak self] status, json in
+                headers: ccr(org)) { [weak self] status, json in
                 guard let self else { return }
                 guard status == 200 else {
                     self.note("cowork events: HTTP \(status)")
@@ -267,7 +336,7 @@ final class ClaudeAI {
         }
     }
 
-    /// A read-only GET to claude.ai with the session cookie. Calls back on
+    /// A GET to claude.ai with the session cookie. Calls back on
     /// the main queue with the HTTP status (0: no answer) and the JSON.
     private func get(_ path: String, key: String, headers: [String: String] = [:],
                      _ done: @escaping (Int, Any?) -> Void) {
@@ -294,6 +363,44 @@ final class ClaudeAI {
                     self.pause = 60
                 }
                 done(status, status == 200 ? data.flatMap { try? JSONSerialization.jsonObject(with: $0) } : nil)
+            }
+        }.resume()
+    }
+
+    /// A POST to claude.ai with the session cookie — only what you send.
+    /// Calls back on the main queue: taken, refused (with claude.ai's
+    /// reason), or no telling.
+    private func post(_ path: String, body: [String: Any], done: @escaping (Sent) -> Void) {
+        guard let key = Self.readKey(), let org = orgId, canSend else {
+            done(.kept("not signed in to claude.ai"))
+            return
+        }
+        guard let u = URL(string: "https://claude.ai" + path), u.host == "claude.ai",
+              let data = try? JSONSerialization.data(withJSONObject: body) else {
+            done(.kept("nothing to send"))
+            return
+        }
+        var request = URLRequest(url: u, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.httpBody = data
+        request.setValue("sessionKey=\(key)", forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (name, value) in ccr(org) { request.setValue(value, forHTTPHeaderField: name) }
+        request.httpShouldHandleCookies = false
+        Self.session.dataTask(with: request) { data, response, error in
+            let status = error == nil ? (response as? HTTPURLResponse)?.statusCode ?? 0 : 0
+            // claude.ai's reason, when it gives one: the error's message alone.
+            let reason = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                .flatMap { ($0["error"] as? [String: Any])?["message"] as? String }
+                .map { " — " + String($0.prefix(200)) } ?? ""
+            DispatchQueue.main.async {
+                switch status {
+                case 200..<300: done(.sent)
+                case 0: done(.unsure("no answer from claude.ai"))
+                case 500...: done(.unsure("claude.ai answered HTTP \(status)" + reason))
+                default: done(.kept("HTTP \(status)" + reason))
+                }
             }
         }.resume()
     }
