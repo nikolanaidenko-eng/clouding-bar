@@ -18,4 +18,31 @@ enum Screenshot {
         }
         do { try process.run() } catch { done(nil) }
     }
+
+    /// The picture itself pasted into the app in front: Claude Desktop's
+    /// Design, Cowork and chats can't open a path typed there (owner, 29.10).
+    /// What the clipboard held comes back a moment later, unless you've
+    /// copied something since.
+    static func paste(_ path: String) {
+        guard let data = FileManager.default.contents(atPath: path) else { NSSound.beep(); return }
+        let board = NSPasteboard.general
+        let saved = board.pasteboardItems?.map { item in
+            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+        } ?? []
+        board.clearContents()
+        board.setData(data, forType: .png)
+        if let tiff = NSImage(data: data)?.tiffRepresentation { board.setData(tiff, forType: .tiff) }
+        let ours = board.changeCount
+        KeySender.press("cmd+v")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            guard board.changeCount == ours else { return }
+            board.clearContents()
+            let items = saved.map { pairs -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                for (type, data) in pairs { item.setData(data, forType: type) }
+                return item
+            }
+            if !items.isEmpty { board.writeObjects(items) }
+        }
+    }
 }
