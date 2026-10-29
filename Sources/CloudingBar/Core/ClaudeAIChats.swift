@@ -58,6 +58,28 @@ enum ClaudeAIChats {
         }
     }
 
+    /// A list read, each chat's Cowork session kept: a task stays one, as
+    /// read before or looked up by its chat (`found`, ClaudeAI). (Every other
+    /// read leaves out the fields that are empty — 32, then 17 — so the
+    /// rest reads the same.)
+    static func merged(_ chats: [Chat], previous: [Chat], found: [String: String] = [:]) -> [Chat] {
+        let before = Dictionary(previous.map { ($0.uuid, $0.workspace) }, uniquingKeysWith: { a, _ in a })
+        return chats.map { chat in
+            var c = chat
+            if c.workspace == nil { c.workspace = before[c.uuid].flatMap { $0 } ?? found[c.uuid] }
+            return c
+        }
+    }
+
+    /// The Cowork session of a chat, from claude.ai's list of sessions asked
+    /// by the chat's tag (`bard-conversation:<uuid>`): a new task's chat
+    /// comes in the chat list without it for minutes (29.10).
+    static func session(found json: Any?) -> String? {
+        guard let id = items(json).first?["id"] as? String, isId(id) else { return nil }
+        let cse = cse(id)
+        return cse.hasPrefix("cse_") ? cse : nil
+    }
+
     struct Context: Equatable {
         let tokens: Int
         let model: String?

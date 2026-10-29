@@ -42,6 +42,10 @@ final class ClaudeAI {
     private var contextRead: [String: (at: Date, settled: Date?)] = [:]
     /// When each Remote Control card was read.
     private var cardRead: [String: Date] = [:]
+    /// Cowork sessions found by their chat (ClaudeAIChats.session), and when
+    /// each chat without one was last asked about.
+    private var found: [String: String] = [:]
+    private var lookedUp: [String: Date] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
     private var asking: Set<String> = []
     /// One more at each stop: an answer to a request from before is dropped.
@@ -128,6 +132,8 @@ final class ClaudeAI {
         chats = []
         contextRead = [:]
         cardRead = [:]
+        found = [:]
+        lookedUp = [:]
         nextOrg = .distantPast
         nextUsage = .distantPast
         nextChats = .distantPast
@@ -164,7 +170,9 @@ final class ClaudeAI {
             fetchUsage(org: org, key: key)
         }
         if readChats, now >= nextChats {
-            nextChats = now.addingTimeInterval(busy ? 20 : 60)
+            // A new chat, a question, a task done: on the bar within seconds
+            // (owner, 29.10: a minute was too long).
+            nextChats = now.addingTimeInterval(busy ? 5 : 15)
             fetchChats(org: org, key: key)
         }
         let due = readChats ? bridges.filter { now.timeIntervalSince(cardRead[$0] ?? .distantPast) >= 30 } : []
@@ -212,12 +220,13 @@ final class ClaudeAI {
                 self.note("chats: HTTP \(status)")
                 return
             }
-            let chats = ClaudeAIChats.chats(json)
+            let chats = ClaudeAIChats.merged(ClaudeAIChats.chats(json), previous: self.chats, found: self.found)
             // Which fields claude.ai gives, once: names only, never values.
             let first = ClaudeAIChats.items(json).first
             self.note("chats: \(chats.count) read, fields \(first?.keys.sorted().joined(separator: ",") ?? "none")")
             self.chats = chats
             self.onChats?(chats)
+            self.lookUpSessions(org: org, key: key)
             self.fetchContexts(org: org, key: key)
             // What a Cowork task waiting on you asks: only its card has it.
             let waiting = chats.filter { $0.needsInput != nil && !$0.archived }.compactMap(\.workspace)
@@ -241,6 +250,34 @@ final class ClaudeAI {
                 let fields = status == 200 ? ", fields " + ((json as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "none") : ""
                 self.note("session card: HTTP \(status)\(fields)")
                 if self.bridges.contains(id) { self.onRemote?(id, ClaudeAIChats.Remote(bridge: true, connected: false)) }
+            }
+        }
+    }
+
+    /// A chat active now without a Cowork session in the list: asked of
+    /// claude.ai's sessions by its tag — a task Claude Desktop just started
+    /// comes in the list as a plain chat for minutes, and its words then
+    /// waited for its window (owner, 29.10). A plain chat has none: asked
+    /// again a minute later, at most three at a time.
+    private func lookUpSessions(org: String, key: String) {
+        let now = Date()
+        let due = chats.filter { chat in
+            chat.workspace == nil && !chat.archived
+                && (chat.running || chat.needsInput != nil || now.timeIntervalSince(chat.lastActive ?? .distantPast) < 120)
+                && now.timeIntervalSince(lookedUp[chat.uuid] ?? .distantPast) >= 60
+        }
+        for chat in due.prefix(3) {
+            lookedUp[chat.uuid] = now
+            let tag = "bard-conversation:" + chat.uuid
+            get("/v1/code/sessions?limit=1&tags=" + tag, key: key, headers: ccr(org)) { [weak self] status, json in
+                guard let self, status == 200, let cse = ClaudeAIChats.session(found: json) else { return }
+                self.found[chat.uuid] = cse
+                self.note("cowork: a task found by its chat")
+                self.chats = ClaudeAIChats.merged(self.chats, previous: [], found: self.found)
+                self.onChats?(self.chats)
+                self.fetchContexts(org: org, key: key)
+                let waiting = self.chats.filter { $0.needsInput != nil && $0.uuid == chat.uuid }.compactMap(\.workspace)
+                if !waiting.isEmpty { self.fetchCards(waiting, org: org, key: key) }
             }
         }
     }
