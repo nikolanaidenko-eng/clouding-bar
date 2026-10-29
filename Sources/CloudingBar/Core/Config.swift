@@ -203,7 +203,7 @@ struct Config: Equatable {
     var claudeAIChats: Bool?
     /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
-    /// The island's size in the notch, set by pulling its ends or bottom:
+    /// The island's size in the notch (pulled on screen before 1.2.18):
     /// wider, it shows the pill's items around the camera. 0: compact.
     var notchWidth: Double = 0
     var notchHeight: Double = 0

@@ -431,12 +431,6 @@ final class WidgetController: NSObject {
 
     // MARK: Placement
 
-    /// The most height the pill can take: the screen's, under the menu bar.
-    private var screenRoom: CGFloat {
-        let target = NSScreen.screens.first { $0.frame.contains(anchor) } ?? screen
-        return (docked ? target.frame : target.visibleFrame).height
-    }
-
     private var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
 
     /// Docked in the notch (a drawn one on Macs without it).
@@ -511,14 +505,7 @@ final class WidgetController: NSObject {
             withAnimation(.cb(0.26)) { state.notched = docked }
             return // re-laid out once the view has changed (queueLayout)
         }
-        // While its edge is pulled the pill is exactly as wide as the
-        // pointer says (and measuring SwiftUI on every move is slow).
-        var size: NSSize
-        if state.mode == .pill, let e = state.pillEditSize {
-            size = NSSize(width: max(PillLayout.minWidth, e.width), height: max(PillLayout.height(rows: 1), e.height))
-        } else {
-            size = host.fittingSize
-        }
+        var size = host.fittingSize
         guard size.width > 0, size.height > 0 else { return }
         // Pill, panel, chats — or the notch growing for a question, for
         // writing, for dictation.

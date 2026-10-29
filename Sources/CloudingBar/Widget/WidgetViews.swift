@@ -581,6 +581,7 @@ struct MetricChip: View {
     let metric: Metric
     var plain = false
     @Environment(\.clickGate) private var gate
+    @Environment(\.cbPreview) private var preview
 
     var body: some View {
         let label = HStack(spacing: plain ? 4 : 5) {
@@ -595,8 +596,12 @@ struct MetricChip: View {
         .background(Capsule().fill(Color.white.opacity(plain ? 0 : 0.06)))
         if let action = metric.action {
             Button { if gate() { action() } } label: { label }.buttonStyle(.plain).help(metric.help)
+        } else if preview {
+            label.contentShape(Capsule()) // Settings' copy: dragged to arrange
         } else {
-            label.contentShape(Capsule())
+            // Nothing of its own to do: a click goes to the pill under it and
+            // opens the panel, the one way now (review, 29.10).
+            label.allowsHitTesting(false)
         }
     }
 }
