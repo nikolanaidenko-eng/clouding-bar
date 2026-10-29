@@ -19,7 +19,12 @@ final class Updater {
     }
     private(set) var release: UpdateCheck.Release?
     private var timer: Timer?
-    private var stamp: URL { Config.directory.appendingPathComponent("update-check.json") }
+    private var stamp: URL { Self.stamp }
+    private static var stamp: URL { Config.directory.appendingPathComponent("update-check.json") }
+
+    /// The copy opened next checks a minute after launch, not a day after
+    /// this one did (moved to Applications from the disk image).
+    static func forgetLastCheck() { try? FileManager.default.removeItem(at: stamp) }
 
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"

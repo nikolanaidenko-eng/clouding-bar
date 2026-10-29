@@ -1865,6 +1865,29 @@ do { // short names for chats (owner, 27.10)
           && !ShortNamer.arguments().contains("--bare"), "namer: the call keeps no session and loads no hooks of yours")
 }
 
+// MARK: Where the app runs from (paths as macOS reported them, 29.10)
+
+check(AppPlace.needsMove(path: "/Volumes/Clouding Bar 2/Clouding Bar.app", readOnlyVolume: true), "on the disk image: move it")
+check(!AppPlace.needsMove(path: "/Applications/Clouding Bar.app", readOnlyVolume: false), "in Applications: stays")
+check(AppPlace.needsMove(path: "/private/var/folders/x/T/AppTranslocation/A1B2/d/Clouding Bar.app", readOnlyVolume: false),
+      "translocated by macOS: move it")
+let images = ["/Volumes/Clouding Bar 2", "/Volumes/Clouding Bar/", "/Volumes/x"]
+check(AppPlace.imageToEject(path: "/Volumes/Clouding Bar 2/Clouding Bar.app", volume: "/Volumes/Clouding Bar 2", images: images) == "/Volumes/Clouding Bar 2",
+      "its disk image is ejected")
+check(AppPlace.imageToEject(path: "/Volumes/Clouding Bar/Clouding Bar.app", volume: "/Volumes/Clouding Bar/", images: images) == "/Volumes/Clouding Bar",
+      "a volume with a slash at the end too")
+check(AppPlace.imageToEject(path: "/Applications/Clouding Bar.app", volume: "/", images: images) == nil, "the Mac's own disk: never ejected")
+check(AppPlace.imageToEject(path: "/Volumes/Clouding Bar 2/Clouding Bar.app", volume: "/Volumes/Clouding Bar", images: images) == nil,
+      "another image of the same name: not that one")
+check(AppPlace.imageToEject(path: "/private/var/folders/x/T/AppTranslocation/A1B2/d/Clouding Bar.app", volume: "/Volumes/x", images: images) == nil,
+      "translocated: nothing ejected")
+check(AppPlace.imageToEject(path: "/Volumes/USB/Clouding Bar.app", volume: "/Volumes/USB", images: images) == nil,
+      "a read-only stick, not a disk image: never ejected")
+check(AppPlace.replaces(installed: nil, with: "1.2.15"), "nothing in Applications: copied there")
+check(AppPlace.replaces(installed: "1.2.9", with: "1.2.15"), "an older copy there: replaced")
+check(!AppPlace.replaces(installed: "1.2.15", with: "1.2.15"), "the same version there: that one opens")
+check(!AppPlace.replaces(installed: "1.3.0", with: "1.2.15"), "a newer copy there: never replaced by an older one")
+
 // MARK: Config
 
 let config = Config()

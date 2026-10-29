@@ -110,6 +110,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Yours alone: messages in the queue, screenshots, the log, copies of
         // your settings and the sockets live here (it was 755).
         chmod(Config.directory.path, 0o700)
+        // Opened from the disk image: to Applications first (on yes this
+        // copy quits here).
+        if MoveToApplications.needed { MoveToApplications.offer() }
         Config.moveTemplates()
         config = Config.load()
         setUpMainMenu()
@@ -2757,7 +2760,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setUpUpdates() {
         model.updatesPossible = Updater.isRelease
         model.checkForUpdates = { [weak self] in self?.updater.check() }
-        model.installUpdate = { [weak self] in self?.updater.install() }
+        model.installUpdate = { [weak self] in self?.installUpdate() }
         updater.onChange = { [weak self] state in self?.showUpdate(state) }
         updater.start { [weak self] in self?.config.checkUpdates ?? false }
         showUpdate(updater.state)
@@ -2779,11 +2782,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func updateFromMenu() {
         DebugLog.tap("menu: updates")
         if case .available = updater.state {
-            updater.install()
+            installUpdate()
         } else {
             updater.check()
             openSettings()
         }
+    }
+
+    /// From the disk image the update can't go in place: moving to
+    /// Applications comes first (the copy there finds the update itself).
+    private func installUpdate() {
+        if MoveToApplications.needed { MoveToApplications.offer() } else { updater.install() }
     }
 
     // MARK: - Codex's server and claude.ai
