@@ -25,8 +25,8 @@ final class WidgetState: ObservableObject {
     var pillMouseDown: ((NSEvent) -> Void)?
     var pillMouseDragged: ((NSEvent) -> Void)?
     var pillMouseUp: ((NSEvent) -> Void)?
-    /// The pointer went over (true) or off a control on the pill.
-    var controlHover: ((Bool) -> Void)?
+    /// Where the last press on the pill landed, in the pill (y up), and its size.
+    var pillPress: (point: CGPoint, size: CGSize)?
     /// A click on the pill's numbers: open the panel.
     var openPanel: (() -> Void)?
     /// Dragging the pill's items onto each other.
@@ -753,9 +753,14 @@ struct MainPanel: View {
     /// it: drag it up or down onto another block to put it there (owner,
     /// 24.10). The grip sits in the gap between blocks, never past the
     /// panel's edge (owner, 25.10).
-    private func movable<C: View>(_ id: String, @ViewBuilder _ content: () -> C) -> some View {
+    @ViewBuilder private func movable<C: View>(_ id: String, @ViewBuilder _ content: () -> C) -> some View {
+        // Moved in Settings' copy only (owner, 29.10).
+        if preview { grip(id, content()) } else { content() }
+    }
+
+    private func grip<C: View>(_ id: String, _ content: C) -> some View {
         let shown = moving == id || (moving == nil && (hoverBlock == id || hoverGrip == id))
-        return content()
+        return content
             .background(GeometryReader { g in
                 Color.clear.preference(key: BlockFrames.self, value: [id: g.frame(in: .named("panel-blocks"))])
             })
@@ -855,7 +860,7 @@ struct MainPanel: View {
             if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
                 if several {
-                    ChatTabs(model: model, state: state, width: inner - character - tabs - 30 - 8)
+                    ChatTabs(model: model, state: state, width: inner - character - tabs - 2 * 30 - 18)
                 } else {
                     // Where it runs and what it's doing: on hover (owner, 26.10).
                     Text(model.hasSession ? model.chatName ?? model.statusTitle : "No chat open")
@@ -874,6 +879,13 @@ struct MainPanel: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 0)
+            // Settings, a click away (owner, 29.10): the widget is arranged there.
+            Button { model.openSettingsTab("widget") } label: {
+                Image(systemName: "gearshape").font(.system(size: 13, weight: .medium))
+            }
+                .buttonStyle(IconButtonStyle(size: 30))
+                .help("Settings")
+                .accessibilityLabel("Settings")
             Button {
                 if let collapse = state.collapse { collapse() } else { withAnimation(.cb(0.22)) { state.mode = state.rest } }
             } label: { Icon(kind: .chevronUp, size: 14) }
