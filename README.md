@@ -266,7 +266,9 @@ Codex chats show up even before step 2, read from Codex's own files.
 [Download the latest .dmg](https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
 (or `Clouding-Bar-<version>.dmg` from [Releases](../../releases)), open it
 and drag **Clouding Bar** into Applications. Releases are signed and
-notarized by Apple.
+notarized by Apple. Opened straight from the disk image, it offers to move
+itself to Applications (from the image it can't update itself), opens from
+there and ejects the image.
 
 Test builds (marked *beta*) aren't notarized yet, so on first launch macOS
 says it can't check the app for malware. Click **Done**, then open
