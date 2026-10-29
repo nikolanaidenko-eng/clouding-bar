@@ -1512,7 +1512,9 @@ struct WidgetPreview: View {
 
     var body: some View {
         let size = natural
-        let scale = scale(for: size)
+        // While the outline is pulled the scale holds: else the outline
+        // wouldn't follow the pointer (review, 29.10).
+        let scale = pull?.scale ?? scale(for: size)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1588,7 +1590,7 @@ struct WidgetPreview: View {
             let fits = PillLayout(model: shown).arrange(width: max(PillLayout.minWidth, r.raw.width), height: height).natural
             model.setConfig("pillWidth", Double(min(max(PillLayout.minWidth, r.raw.width), fits)))
         } else {
-            model.setConfig("pillWidth", r.raw.width >= most ? 10_000 : Double(max(0, r.raw.width)))
+            model.setConfig("pillWidth", r.raw.width >= most ? 10_000 : Double(max(PillLayout.minWidth, r.raw.width)))
         }
         model.setConfig("pillHeight", Double(height))
         withAnimation(.cb(0.2)) { state.pillEditSize = nil }

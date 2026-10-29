@@ -261,6 +261,8 @@ final class Session {
         /// A Cowork task's session: known after a restart while the list
         /// still shows its chat as a plain one (review, 29.10).
         var coworkSession: String?
+        /// …and its window, so a restart doesn't show the guess first.
+        var coworkWindow: Int?
     }
 
     var record: Record {
@@ -270,7 +272,8 @@ final class Session {
                statusContextPercent: statusContextPercent, title: title, colorIndex: colorIndex, workPath: workPath,
                desktopChat: desktopChat, desktopTitle: desktopTitle,
                ambient: ambient ? true : nil, codexHost: codexHost, activitySince: activitySince,
-               coworkSession: entrypoint == "cowork" ? remoteSession : nil)
+               coworkSession: entrypoint == "cowork" ? remoteSession : nil,
+               coworkWindow: entrypoint == "cowork" ? cardWindow : nil)
     }
 
     convenience init(record r: Record) {
@@ -294,7 +297,10 @@ final class Session {
         desktopTitle = r.desktopTitle
         ambient = r.ambient ?? false
         codexHost = r.codexHost
-        if r.entrypoint == "cowork" { remoteSession = r.coworkSession }
+        if r.entrypoint == "cowork" {
+            remoteSession = r.coworkSession
+            cardWindow = r.coworkWindow
+        }
         // Kept, not the restart's time: a Codex turn that ended while the
         // app was away (its task_complete) still counts.
         activitySince = r.activitySince ?? r.lastEvent

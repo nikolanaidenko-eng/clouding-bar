@@ -26,8 +26,8 @@ struct NotchShape: Shape {
 /// around the camera — or a drawn notch on Macs without one. Left of the
 /// camera Cloud and the 5-hour limit, right of it the context, each with
 /// its little bar. It widens for what's being dictated or what Claude asks,
-/// and lights up blue while files are dragged over it. Hover or click
-/// opens the panel under it; drag it away to put the widget anywhere, drag
+/// and lights up blue while files are dragged over it. A click opens the
+/// panel under it; drag it away to put the widget anywhere, drag
 /// it back over the notch to dock it again.
 struct NotchView: View {
     @ObservedObject var model: AppModel
@@ -96,13 +96,13 @@ struct NotchView: View {
     private var compact: some View {
         let camera = state.notchWidth
         return HStack(spacing: 0) {
-            left.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .leading)
+            left.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .leading).allowsHitTesting(false)
             if camera > 0 {
                 Color.clear.frame(width: camera) // the camera
             } else {
                 Rectangle().fill(Color.white.opacity(0.16)).frame(width: 1, height: 14).padding(.horizontal, 12)
             }
-            right.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .trailing)
+            right.frame(minWidth: camera > 0 ? Self.ear : 0, alignment: .trailing).allowsHitTesting(false)
         }
         .font(.system(size: 12, weight: .semibold).monospacedDigit())
         .foregroundColor(.white)
@@ -116,6 +116,8 @@ struct NotchView: View {
         .animation(.cb(0.22), value: state.pillHover)
     }
 
+    /// Its sides only show: a click anywhere on them goes to the island
+    /// and opens the panel (review, 29.10: the bars and numbers took it).
     private var left: some View {
         HStack(spacing: 8) {
             MascotIcon(activity: model.request != nil ? .wait : model.activity, size: 20, variant: model.cloudVariant).cloudOut(model.cloudOut)

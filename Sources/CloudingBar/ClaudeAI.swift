@@ -233,9 +233,10 @@ final class ClaudeAI {
             self.lookUpSessions(org: org, key: key)
             self.fetchContexts(org: org, key: key)
             // What a Cowork task waiting on you asks: only its card has it.
-            // Each at most every 10 s, the list read every 5 now.
+            // Not twice at once (its context's read takes it too), but a
+            // question within seconds (review, 29.10).
             let waiting = chats.filter { $0.needsInput != nil && !$0.archived }.compactMap(\.workspace)
-                .filter { Date().timeIntervalSince(self.cardRead[$0] ?? .distantPast) >= 10 }
+                .filter { Date().timeIntervalSince(self.cardRead[$0] ?? .distantPast) >= 4 }
             if !waiting.isEmpty { self.fetchCards(Array(waiting.prefix(5)), org: org, key: key) }
         }
     }

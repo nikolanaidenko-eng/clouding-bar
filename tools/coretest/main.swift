@@ -1490,6 +1490,9 @@ do { // A Cowork task's context of its real window, and its cost, from its card 
     check(task?.contextWindow(override: nil) == 1_000_000 && task?.contextTokens == 197_148 && task?.costUSD == 0.358445
           && task.map { abs(($0.contextPercent(windowOverride: nil) ?? 0) - 19.7148) < 0.01 } == true,
           "a task's window and context from its card, not the model's guess; its cost on it")
+    let restored = task.map { Session(record: $0.record) }
+    check(restored?.cardWindow == 1_000_000 && restored?.contextWindow(override: nil) == 1_000_000,
+          "…its window kept over a restart: the events read first don't bring back the guess (review, 29.10)")
     store.forgetClaudeAI()
 }
 
