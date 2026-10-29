@@ -419,6 +419,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A terminal, VS Code or Claude in front.
     private var inClaudeApp: Bool { frontApp.map(isTerminal) ?? false }
 
+    /// The chat whose own window or tab is in front, with a Claude app in
+    /// front — never a guess from the one followed before.
+    private var chatInFront: String? {
+        guard let app = frontApp, claudeAppInFront else { return nil }
+        return (app.bundleIdentifier == Self.desktopBundle
+            ? store.session(inDesktop: frontTitle, chat: desktopShown?.chat)
+            : store.session(inWindow: frontTitle, tty: frontTTY))?.id
+    }
+
     /// Somewhere a request can be answered: the Touch Bar or the widget.
     private var canShowRequests: Bool {
         barShouldShow || (config.widget && widget.isVisible)
@@ -1669,7 +1678,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// widget and the Touch Bar. Not the chat shown or in front (you see
     /// it), not in do-not-disturb, not over a request or your writing.
     private func updateDoneAlerts(active: Session?) {
-        let front = frontSession?.id
+        // With its answer to tell, the chat shown on the widget too (the only
+        // one, often: owner, 29.10 — no answer ever showed): all but the one
+        // whose own window is in front.
+        let withAnswer = config.answerPreview
+        let front = withAnswer ? chatInFront : frontSession?.id
+        let active = withAnswer ? nil : active
         for s in store.alive {
             guard let at = s.finishedAt, doneSeen[s.id] != at else { continue }
             doneSeen[s.id] = at
