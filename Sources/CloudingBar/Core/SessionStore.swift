@@ -18,6 +18,8 @@ final class SessionStore {
 
     /// Fires after anything changed.
     var onChange: (() -> Void)?
+    /// A chat now known by another id (a claude.ai chat found to be a Cowork task).
+    var onRenamed: ((_ from: String, _ to: String) -> Void)?
 
     private static var fileURL: URL {
         Config.directory.appendingPathComponent("sessions.json")
@@ -135,8 +137,15 @@ final class SessionStore {
             let id = ClaudeAIChats.sessionId(chat)
             let active = min(chat.lastActive ?? .distantPast, now)
             guard chat.running || chat.needsInput != nil || now.timeIntervalSince(active) < ClaudeAIChats.recent else { continue }
+            let plain = chat.isCowork && sessions[id] == nil ? sessions["claudeai-" + chat.uuid] : nil
             let session = sessions[id] ?? newSession(id, now: active)
             sessions[id] = session
+            if let plain {
+                // Found to be a Cowork task (ClaudeAI looks it up by its chat):
+                // the same chat — its colour, and what waits for it, go along.
+                session.colorIndex = plain.colorIndex
+                onRenamed?(plain.id, id)
+            }
             session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
             session.cwd = chat.isCowork ? "/Cowork" : "/claude.ai"
             session.title = chat.name ?? session.title

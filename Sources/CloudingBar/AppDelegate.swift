@@ -125,6 +125,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store.load()
         SessionTitle.prune(base: Config.directory)
         store.onChange = { [weak self] in self?.setNeedsRefresh() }
+        // Its words and files waiting go with it: through claude.ai now.
+        store.onRenamed = { [weak self] from, to in
+            guard let self else { return }
+            if let files = self.attachments.removeValue(forKey: from) { self.attachments[to, default: []] += files }
+            if self.pickedSessionId == from { self.pickedSessionId = to }
+            if self.lastActiveId == from { self.lastActiveId = to }
+            guard self.queue.contains(where: { $0.sessionId == from }) else { return }
+            self.queue = self.queue.map { $0.sessionId == from ? AppModel.QueueItem(id: $0.id, text: $0.text, sessionId: to, project: $0.project) : $0 }
+            self.saveQueue()
+            DebugLog.note("queue: its chat is a Cowork task — its words go through claude.ai")
+        }
 
         // Hooks, the status line and the tap talk to the app here.
         let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in

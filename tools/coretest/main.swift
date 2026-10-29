@@ -309,6 +309,35 @@ do {
     store.apply(claudeAI: [stale], now: now)
     check(store.sessions["claudeai-" + id(3)] == nil, "claude.ai: one last active 40 minutes ago isn't shown")
     store.forgetClaudeAI()
+    // A task Claude Desktop just started: in the list as a plain chat for
+    // minutes, its Cowork session found by its chat (owner, 29.10).
+    check(ClaudeAIChats.session(found: ["data": [["id": "cse_01TZ8", "tags": ["cowork-remote"]]]]) == "cse_01TZ8"
+          && ClaudeAIChats.session(found: ["data": [["id": "session_01TZ8"]]]) == "cse_01TZ8"
+          && ClaudeAIChats.session(found: ["data": []]) == nil
+          && ClaudeAIChats.session(found: ["data": [["id": "../x"]]]) == nil
+          && ClaudeAIChats.session(found: ["data": [["id": "env_01"]]]) == nil,
+          "a chat's Cowork session from the sessions asked by its tag; none, or not a session's id: none")
+    let newTask = ClaudeAIChats.chats(["data": [["uuid": id(3), "name": "New task", "updated_at": at(5)]]])
+    let foundTask = ClaudeAIChats.merged(newTask, previous: [], found: [id(3): "cse_05"])
+    check(foundTask.first?.workspace == "cse_05" && foundTask.first?.isCowork == true
+          && ClaudeAIChats.merged(newTask, previous: foundTask).first?.workspace == "cse_05"
+          && ClaudeAIChats.merged(chats, previous: foundTask, found: [id(1): "cse_x"])[0].workspace == "cse_01AbC"
+          && ClaudeAIChats.merged(newTask, previous: []).first?.workspace == nil,
+          "a task stays one when a later list leaves its session out; the list's own wins; a plain chat stays plain")
+    var renamed: [(String, String)] = []
+    store.onRenamed = { renamed.append(($0, $1)) }
+    store.apply(claudeAI: newTask, now: now)
+    let before = store.sessions["claudeai-" + id(3)]
+    store.apply(claudeAI: foundTask, now: now)
+    check(before != nil && renamed.count == 1 && renamed.first?.0 == "claudeai-" + id(3) && renamed.first?.1 == "cowork-" + id(3)
+          && store.sessions["cowork-" + id(3)]?.colorIndex == before?.colorIndex
+          && store.sessions["cowork-" + id(3)]?.remoteSession == "cse_05"
+          && store.sessions["cowork-" + id(3)]?.desktopChat == "/chat/" + id(3),
+          "a chat found to be a Cowork task: the same chat (colour, page), what waits for it told to follow")
+    store.apply(claudeAI: foundTask, now: now)
+    check(renamed.count == 1, "…once")
+    store.onRenamed = nil
+    store.forgetClaudeAI()
 
     // One Claude process, one chat (owner, 28.10): another chat opened in its tab, the one before is gone
     let tab = SessionStore()
