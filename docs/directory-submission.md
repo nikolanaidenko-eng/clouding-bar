@@ -28,10 +28,14 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 
 1. `plugin/hooks/run.sh` execs `~/.cloudingbar/cloudingbar-hook`, a program outside the plugin, and reads `~/.claude/settings.json` (to step aside). Expect a "held for a reviewer" finding. README explains it.
 2. `scripts/install-app.sh` downloads and installs an app from GitHub (verifies Developer ID signature and notarization). Same: explain in the review notes.
-3. The plugin sits in a subfolder (`plugin/`), so "Scripts the validator couldn't follow" will probably hold the version. The doc's remedy is a plugin at its own repository root; not done.
+3. The plugin sits in a subfolder (`plugin/`) and `run.sh` uses shell variables and `$(...)`, so "Scripts the validator couldn't follow" holds the version for a reviewer (a hold, not a block; the hook commands themselves name only `${CLAUDE_PLUGIN_ROOT}/hooks/run.sh`, which is allowed). The doc's remedy is a plugin at its own repository root; not done.
 4. PolyForm Shield is source-available, not OSI open source: check against the Software Directory Policy.
 
 ## What the owner clicks
+
+**The repository is fixed at submission:** "You can't change a submission's repository and folder after you submit. To list a plugin from a different repository or folder, create a new submission." So the move from `nikolanaidenko-eng` to `wvnikola` (pre-release) comes first, and the listing texts above get the new URL.
+
+Checked 29.10 on 1.2.16: `claude plugin validate plugin` and the marketplace pass; no `.DS_Store`, no file over 256 KiB, no `!` lines in commands or skills.
 
 1. Needs a Pro/Max/Team/Enterprise claude.ai account; connect GitHub in claude.ai (account with push rights to nikolanaidenko-eng/clouding-bar).
 2. Push this branch to `main` first (the directory reads the repository; it must be public before going live).
