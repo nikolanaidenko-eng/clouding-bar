@@ -9,7 +9,9 @@ import Foundation
 /// (GET), and writes only what you send — your words to a Cowork task, a chat or a
 /// desktop Code chat's Remote Control, your answer to what one asks
 /// (owner, 29.10: not typed into a window that must be in front). The
-/// addresses are unofficial and may stop working.
+/// addresses are unofficial and may stop working. Anthropic's terms don't
+/// allow this (ClaudeAINotice): the app doesn't pass itself off as claude.ai's
+/// web client — no client-platform header, no browser User-Agent (owner, 30.10).
 final class ClaudeAI {
     var onUpdate: ((_ percent: Double, _ resetsAt: Double?) -> Void)?
     /// The weekly (7-day) limit, when the plan has one.
@@ -50,7 +52,8 @@ final class ClaudeAI {
     private var found: [String: String] = [:]
     private var lookedUp: [String: Date] = [:]
     /// What each Cowork task's card said last, and when words last went to
-    /// it: read every 4 s while it works, waits or was just written to.
+    /// it: read every 5 s while it works, waits or was just written to, else
+    /// every 30 s (ClaudeAIChats.Pace).
     private var cardState: [String: (working: Bool, waiting: String?)] = [:]
     private var nudged: [String: Date] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
@@ -66,6 +69,7 @@ final class ClaudeAI {
     /// What's been written to debug.log already, so it's said once.
     private var logged: Set<String> = []
     private static let service = "Clouding Bar · claude.ai session key"
+    private typealias Pace = ClaudeAIChats.Pace
 
     // MARK: Keychain
 
@@ -120,13 +124,14 @@ final class ClaudeAI {
 
     // MARK: Polling
 
-    /// The limit every minute; the chats every 20 s while one works or
-    /// waits for you (or did a moment ago), else every minute; a Cowork
-    /// task's events while it works and once after each reply.
+    /// The limit every minute; the chats every 5 s while one works or waits
+    /// for you (or did a moment ago), else every 30 s; a Cowork task's card
+    /// the same way; its events every 30 s while it works and once after
+    /// each reply (ClaudeAIChats.Pace).
     func start() {
         stop()
         guard Self.hasKey else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.tick() }
+        timer = Timer.scheduledTimer(withTimeInterval: ClaudeAIChats.Pace.tick, repeats: true) { [weak self] _ in self?.tick() }
         tick()
     }
 
@@ -180,8 +185,9 @@ final class ClaudeAI {
         }
         if readChats, now >= nextChats {
             // A new chat, a question, a task done: on the bar within seconds
-            // (owner, 29.10: a minute was too long).
-            nextChats = now.addingTimeInterval(busy ? 5 : 15)
+            // while one is going on (owner, 29.10: a minute was too long);
+            // 30 s at rest (owner, 30.10: less often).
+            nextChats = now.addingTimeInterval(Pace.gap(Pace.chats(busy: busy)))
             fetchChats(org: org, key: key)
         }
         let due = readChats ? bridges.filter { now.timeIntervalSince(cardRead[$0] ?? .distantPast) >= 30 } : []
@@ -197,7 +203,8 @@ final class ClaudeAI {
                 || now.timeIntervalSince(self.nudged[ws] ?? .distantPast) < 120
         }
         let cards = (tasks.filter(hot) + tasks.filter { !hot($0) }).compactMap { chat -> String? in
-            guard let ws = chat.workspace, now.timeIntervalSince(self.cardRead[ws] ?? .distantPast) >= (hot(chat) ? 4 : 15) else { return nil }
+            guard let ws = chat.workspace,
+                  Pace.due(last: self.cardRead[ws] ?? .distantPast, every: Pace.card(hot: hot(chat)), now: now) else { return nil }
             return ws
         }
         if !cards.isEmpty { fetchCards(Array(cards.prefix(3)), org: org, key: key) }
@@ -257,7 +264,7 @@ final class ClaudeAI {
             // Not twice at once (its context's read takes it too), but a
             // question within seconds (review, 29.10).
             let waiting = chats.filter { $0.needsInput != nil && !$0.archived }.compactMap(\.workspace)
-                .filter { Date().timeIntervalSince(self.cardRead[$0] ?? .distantPast) >= 4 }
+                .filter { Pace.due(last: self.cardRead[$0] ?? .distantPast, every: Pace.active) }
             if !waiting.isEmpty { self.fetchCards(Array(waiting.prefix(5)), org: org, key: key) }
         }
     }
@@ -472,7 +479,10 @@ final class ClaudeAI {
         return [.notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(code)
     }
 
-    /// A POST of protobuf to claude.ai's RPC, as its page makes it.
+    /// A POST of protobuf to claude.ai's RPC, in the shape its page sends —
+    /// without its `anthropic-client-platform: web_claude_ai`: the app doesn't
+    /// say it is the web client (owner, 30.10). Turned down (4xx), the words
+    /// are `.kept` and go the older way (the task's session, or keys).
     private func postProto(_ path: String, body: Data, chat: String, done: @escaping (Sent) -> Void) {
         guard let key = Self.readKey(), let org = orgId, canSend else {
             done(.kept("not signed in to claude.ai"))
@@ -489,7 +499,6 @@ final class ClaudeAI {
         request.setValue("application/proto", forHTTPHeaderField: "Content-Type")
         request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
         request.setValue(org, forHTTPHeaderField: "x-organization-uuid")
-        request.setValue("web_claude_ai", forHTTPHeaderField: "anthropic-client-platform")
         request.setValue(chat, forHTTPHeaderField: "anthropic-chat-conversation-uuid")
         request.httpShouldHandleCookies = false
         Self.session.dataTask(with: request) { data, response, error in
