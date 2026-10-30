@@ -2362,5 +2362,61 @@ do { // templates move into the menu once: the defaults when it had none of its 
     if let saved { try? saved.write(to: Config.fileURL) } else { try? FileManager.default.removeItem(at: Config.fileURL) }
 }
 
+// MARK: The widget on several screens, its outline pulled
+
+do {
+    // A MacBook with a notch, a monitor standing above it (owner's desk, 30.10).
+    let book = WidgetPlace.Display(frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+                                   visible: CGRect(x: 0, y: 0, width: 1440, height: 870), notch: true)
+    let monitor = WidgetPlace.Display(frame: CGRect(x: -240, y: 900, width: 1920, height: 1080),
+                                      visible: CGRect(x: -240, y: 900, width: 1920, height: 1050), notch: false)
+    let top = CGPoint(x: 720, y: 900)
+    let size = CGSize(width: 300, height: 37)
+    let island = WidgetPlace.frame(size: size, anchor: top, fixed: nil, docked: true, displays: [book, monitor])
+    check(island == CGRect(x: 570, y: 863, width: 300, height: 37), "notch: under a monitor, hangs from the MacBook's top")
+    check(!island.intersects(monitor.frame), "notch: nothing of it on the monitor above")
+    check(WidgetPlace.notchIndex([monitor, book]) == 1, "notch: on the camera's screen when the monitor is the main one")
+    check(WidgetPlace.notchIndex([monitor]) == 0, "notch: lid closed, drawn on the only screen")
+    check(WidgetPlace.notchIndex([monitor, monitor]) == 0, "notch: no camera anywhere, on the first screen")
+    let onMonitor = CGPoint(x: 500, y: 1500)
+    check(WidgetPlace.bounds(anchor: onMonitor, docked: false, displays: [book, monitor]) == monitor.visible, "pill: stays on the monitor it was put on")
+    check(WidgetPlace.bounds(anchor: onMonitor, docked: false, displays: [book]) == book.visible, "pill: monitor gone, back on the screen left")
+    check(WidgetPlace.frame(size: size, anchor: onMonitor, fixed: nil, docked: false, displays: [book]).maxY == 870, "pill: monitor gone, fully on the screen left")
+
+    // Counterexamples from the review, 30.10.
+    let both = [book, monitor]
+    let pillSize = CGSize(width: 200, height: 44)
+    check(WidgetPlace.frame(size: pillSize, anchor: CGPoint(x: 1000, y: 900), fixed: nil, docked: false, displays: both).maxY == 870,
+          "pill: dragged sideways out of the notch, stays on the MacBook")
+    check(WidgetPlace.bounds(anchor: top, docked: false, displays: both) == book.visible, "pill: on the MacBook's top edge, the MacBook's")
+    check(WidgetPlace.frame(size: pillSize, anchor: CGPoint(x: 700, y: 1985), fixed: nil, docked: false, displays: both).minY > 900,
+          "pill: past the monitor's top, stays on the monitor")
+    check(WidgetPlace.frame(size: pillSize, anchor: CGPoint(x: -400, y: 1500), fixed: nil, docked: false, displays: both).minX == -240,
+          "pill: past the monitor's side, stays on the monitor")
+    check(WidgetPlace.bounds(anchor: CGPoint(x: 700, y: 1980), docked: false, displays: both) == monitor.visible, "pill: top pulled to the monitor's top, the monitor's")
+    check(!WidgetPlace.overNotch(CGPoint(x: 720, y: 1500), screen: book.frame, camera: 180), "notch: pointer high on the monitor above: not docking")
+    check(!WidgetPlace.overNotch(CGPoint(x: 720, y: 901), screen: book.frame, camera: 180), "notch: pointer just over the edge, on the monitor: not docking")
+    check(WidgetPlace.overNotch(CGPoint(x: 720, y: 880), screen: book.frame, camera: 180), "notch: at the top of its screen: docking")
+    check(WidgetPlace.overNotch(CGPoint(x: 720, y: 900), screen: book.frame, camera: 180), "notch: pointer stopped at the top with no monitor: docking")
+    check(!WidgetPlace.overNotch(CGPoint(x: 1000, y: 880), screen: book.frame, camera: 180), "notch: too far to the side: not docking")
+
+    // Its left end stays put, wherever the right is pulled.
+    let pill = CGRect(x: 1000, y: 700, width: 200, height: 44)
+    let room = WidgetPlace.room(frame: pill, bounds: book.visible, h: 1, v: -1, centered: false)
+    check(room == CGSize(width: 440, height: 744), "pull: room to the screen's edges from the sides that stay")
+    let low = CGSize(width: 44, height: 44), most = CGSize(width: 1360, height: 870)
+    let far = WidgetPlace.pulled(raw: CGSize(width: 900, height: 2000), low: low, most: most, room: room)
+    check(far == room, "pull: past the edge it stops there")
+    let left = WidgetPlace.frame(size: far, anchor: CGPoint(x: 1100, y: 744), fixed: (1000, true), docked: false, displays: [book])
+    check(left.minX == 1000 && left.maxY == 744, "pull: past the edge the far sides don't move")
+    check(WidgetPlace.pulled(raw: CGSize(width: 10, height: 1), low: low, most: most, room: room) == low, "pull: never under the least")
+    let followed = WidgetPlace.pulled(raw: CGSize(width: 321, height: 60), low: low, most: most, room: room)
+    check(followed == CGSize(width: 321, height: 60), "pull: in between, exactly where the pointer says")
+    let centred = WidgetPlace.room(frame: CGRect(x: 620, y: 826, width: 200, height: 44), bounds: book.visible, h: 1, v: -1, centered: true)
+    check(centred.width == 1440, "pull: centred, as far as both sides have room")
+    let rubber = WidgetPlace.pulled(raw: CGSize(width: 1000, height: 44), low: low, most: CGSize(width: 900, height: 870), room: CGSize(width: 1400, height: 870))
+    check(rubber.width == 920, "pull: past what it can show, it gives a little")
+}
+
 print(failures == 0 ? "\nall passed" : "\n\(failures) failed")
 exit(failures == 0 ? 0 : 1)

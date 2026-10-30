@@ -1554,7 +1554,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let alive = store.alive
         set(\.config, config)
         set(\.touchBarPresent, touchBarPresent)
-        set(\.hasNotch, WidgetController.hasNotch(NSScreen.screens.first))
+        set(\.hasNotch, WidgetController.hasNotch(WidgetController.notchScreen))
         set(\.hasSession, !alive.isEmpty)
         set(\.activity, request != nil ? .wait : activity(of: active))
         set(\.project, active?.projectName)

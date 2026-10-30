@@ -76,8 +76,8 @@ final class WidgetController: NSObject {
         panel.setAccessibilityTitle("Clouding Bar")
 
         state.pillMouseDown = { [weak self] event in self?.pillMouseDown(event) }
-        state.pillMouseDragged = { [weak self] _ in self?.pillMouseDragged() }
-        state.pillMouseUp = { [weak self] _ in self?.pillMouseUp() }
+        state.pillMouseDragged = { [weak self] in self?.pillMouseDragged() }
+        state.pillMouseUp = { [weak self] in self?.pillMouseUp() }
         state.openPanel = { [weak self] in self?.set(.panel) }
         state.startTyping = { [weak self] in self?.beginTyping() }
         state.endTyping = { [weak self] in self?.endTyping() }
@@ -106,7 +106,7 @@ final class WidgetController: NSObject {
     }
 
     func show() {
-        guard !panel.isVisible else { return }
+        guard !panel.isVisible, !NSScreen.screens.isEmpty else { return }
         panel.level = level
         layout()
         panel.orderFrontRegardless()
@@ -393,10 +393,17 @@ final class WidgetController: NSObject {
         let centered: Bool
         let bottom: CGFloat
         let most: CGFloat
+        /// To the screen's edges from the sides that stay put.
+        let room: CGSize
+        /// The pulled end when pressed, and how far it's been from the pointer.
+        let edge: CGFloat
+        var off: CGFloat = 0
+        var moves = 0
         var raw: CGSize
     }
 
     private func pillMouseDown(_ event: NSEvent) {
+        guard !NSScreen.screens.isEmpty else { return }
         // While dictating, the pill is the stop button.
         if model.listening {
             model.voiceToggle()
@@ -415,8 +422,12 @@ final class WidgetController: NSObject {
             fixedEdge = centered ? nil
                 : rim.h == 1 ? FixedEdge(x: frame.minX, left: true) : FixedEdge(x: frame.maxX, left: false)
             let most = PillLayout(model: model).maxWidth + (atNotch ? state.notchWidth + 2 * NotchView.shoulder : 0)
+            let bounds = WidgetPlace.bounds(anchor: anchor, docked: docked, displays: displays) ?? screen.visibleFrame
+            let room = WidgetPlace.room(frame: frame, bounds: bounds, h: rim.h, v: rim.v, centered: centered)
             gesture = .resize(Resize(start: mouse, size: frame.size, h: rim.h, v: rim.v, centered: centered,
-                                     bottom: frame.minY, most: most, raw: frame.size))
+                                     bottom: frame.minY, most: most, room: room,
+                                     edge: rim.h == 1 ? frame.maxX : frame.minX, raw: frame.size))
+            DebugLog.note("pull: from \(frame), h \(rim.h) v \(rim.v), centred \(centered), notch \(atNotch), room \(room)")
             withAnimation(.cb(0.15)) { state.pillEditSize = frame.size }
             layout()
         } else {
@@ -425,6 +436,7 @@ final class WidgetController: NSObject {
     }
 
     private func pillMouseDragged() {
+        guard !NSScreen.screens.isEmpty else { return }
         let p = NSEvent.mouseLocation
         switch gesture {
         case let .move(start, startAnchor, moved):
@@ -440,26 +452,43 @@ final class WidgetController: NSObject {
             let dx = p.x - r.start.x, dy = p.y - r.start.y
             r.raw = CGSize(width: r.size.width + CGFloat(r.h) * dx * (r.centered ? 2 : 1),
                            height: r.size.height + CGFloat(r.v) * dy)
-            gesture = .resize(r)
-            // Past either end it gives a little, like a rubber band.
-            func rubber(_ x: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
-                x > high ? high + (x - high) * 0.2 : x < low ? low - (low - x) * 0.2 : x
-            }
-            let w = rubber(r.raw.width, PillLayout.minWidth, r.most)
             // Down to the bottom of the screen: once taller than wide, it
             // stands up as a column.
-            let h = rubber(r.raw.height, atNotch ? state.notchHeight : PillLayout.height(rows: 1), screenRoom)
-            state.pillEditSize = CGSize(width: w, height: h)
+            let low = atNotch ? CGSize(width: NotchView.compactWidth(camera: state.notchWidth), height: state.notchHeight)
+                : CGSize(width: PillLayout.minWidth, height: PillLayout.height(rows: 1))
+            let size = WidgetPlace.pulled(raw: r.raw, low: low, most: CGSize(width: r.most, height: r.room.height), room: r.room)
+            state.pillEditSize = size
             // Pulling the top: the bottom stays, so the top moves.
-            if r.v == 1 { dragAnchor = CGPoint(x: anchor.x, y: r.bottom + h) }
+            if r.v == 1 { dragAnchor = CGPoint(x: anchor.x, y: r.bottom + size.height) }
             layout()
+            // How far the end is from the pointer, for the log. Held back by
+            // an edge or the least it shows, it's meant to be.
+            if abs(size.width - r.raw.width) < 0.5 {
+                let edge = r.h == 1 ? panel.frame.maxX : panel.frame.minX
+                r.off = max(r.off, abs(edge - (r.edge + dx)))
+            }
+            r.moves += 1
+            gesture = .resize(r)
         case nil:
             break
         }
     }
 
     private func pillMouseUp() {
-        defer { gesture = nil }
+        defer {
+            gesture = nil
+            panel.invalidateShadow()
+        }
+        // The last screen unplugged mid-pull: nothing to place it on yet.
+        guard !NSScreen.screens.isEmpty else {
+            fixedEdge = nil
+            state.pillEditSize = nil
+            return
+        }
+        if case let .resize(r)? = gesture {
+            let off = String(format: "%.1f", r.off)
+            DebugLog.note("pull: let go after \(r.moves) moves at \(panel.frame), its end at most \(off) from the pointer")
+        }
         switch gesture {
         case let .move(_, _, moved):
             if moved && dockPreview {
@@ -485,19 +514,22 @@ final class WidgetController: NSObject {
         case let .resize(r) where atNotch:
             // The island: compact again if pulled in that far.
             let compact = r.raw.width <= NotchView.compactWidth(camera: state.notchWidth) + 24
-            model.setConfig("notchWidth", compact ? 0 : Double(min(r.most, r.raw.width)))
-            model.setConfig("notchHeight", compact ? 0 : Double(min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))))
+            model.setConfig("notchWidth", compact ? 0 : Double(min(r.most, r.room.width, r.raw.width)))
+            model.setConfig("notchHeight", compact ? 0 : Double(min(r.room.height, max(PillLayout.height(rows: 1), r.raw.height))))
             withAnimation(.cb(0.2)) { state.pillEditSize = nil }
             queueLayout()
         case let .resize(r):
-            let height = min(screenRoom, max(PillLayout.height(rows: 1), r.raw.height))
-            if PillLayout.isVertical(width: r.raw.width, height: height) {
+            let height = min(r.room.height, max(PillLayout.height(rows: 1), r.raw.height))
+            // What was shown when let go, not where the pointer went past the edge.
+            let width = max(PillLayout.minWidth, min(r.raw.width, r.room.width))
+            if PillLayout.isVertical(width: width, height: height) {
                 // A column keeps no spare width around what it shows.
-                let natural = PillLayout(model: model).arrange(width: max(PillLayout.minWidth, r.raw.width), height: height).natural
-                model.setConfig("pillWidth", Double(min(max(PillLayout.minWidth, r.raw.width), natural)))
+                let natural = PillLayout(model: model).arrange(width: width, height: height).natural
+                model.setConfig("pillWidth", Double(min(width, natural)))
             } else {
                 // Pulled all the way: everything, now and whatever's added later.
-                model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(PillLayout.minWidth, r.raw.width)))
+                // (Without the room for it, it would push its fixed end away.)
+                model.setConfig("pillWidth", r.raw.width >= r.most && r.room.width >= r.most ? 10_000 : Double(width))
             }
             model.setConfig("pillHeight", Double(height))
             // Snap to what it shows, the opposite sides still in place.
@@ -519,13 +551,21 @@ final class WidgetController: NSObject {
 
     // MARK: Placement
 
-    /// The most height the pill can take: the screen's, under the menu bar.
-    private var screenRoom: CGFloat {
-        let target = NSScreen.screens.first { $0.frame.contains(anchor) } ?? screen
-        return (docked ? target.frame : target.visibleFrame).height
-    }
-
+    /// The menu bar's: where the pill stands until it's put somewhere.
     private var screen: NSScreen { NSScreen.screens.first ?? NSScreen.main! }
+
+    /// The camera's screen, whichever is the main one; with none, the first,
+    /// where a notch is drawn.
+    static var notchScreen: NSScreen? {
+        let screens = NSScreen.screens
+        return screens.isEmpty ? nil : screens[WidgetPlace.notchIndex(displays(screens))]
+    }
+    private var notchScreen: NSScreen { Self.notchScreen ?? screen }
+
+    private static func displays(_ screens: [NSScreen]) -> [WidgetPlace.Display] {
+        screens.map { WidgetPlace.Display(frame: $0.frame, visible: $0.visibleFrame, notch: hasNotch($0)) }
+    }
+    private var displays: [WidgetPlace.Display] { Self.displays(NSScreen.screens) }
 
     /// Docked in the notch (a drawn one on Macs without it).
     private var atNotch: Bool {
@@ -553,9 +593,7 @@ final class WidgetController: NSObject {
 
     /// Near enough to the notch to dock there: around it, at the very top.
     private func overNotch(_ p: CGPoint) -> Bool {
-        let f = screen.frame
-        let half = max(150, Self.notch(of: screen).width / 2 + 110)
-        return abs(p.x - f.midX) < half && p.y > f.maxY - 60
+        WidgetPlace.overNotch(p, screen: notchScreen.frame, camera: Self.notch(of: notchScreen).width)
     }
 
     /// With "Automatically hide the menu bar" the default spot is the top
@@ -573,7 +611,7 @@ final class WidgetController: NSObject {
     private var anchor: CGPoint {
         if docked {
             // In the notch: the top of the screen, inside the menu bar.
-            return CGPoint(x: screen.frame.midX, y: screen.frame.maxY)
+            return CGPoint(x: notchScreen.frame.midX, y: notchScreen.frame.maxY)
         }
         if let a = dragAnchor ?? model.config.widgetPosition { return a }
         // Top center, right under the menu bar.
@@ -593,9 +631,10 @@ final class WidgetController: NSObject {
     private struct FixedEdge { let x: CGFloat; let left: Bool }
 
     private func layout() {
-        guard panel != nil else { return }
+        // No screen at all: the only monitor unplugged. It comes back here.
+        guard panel != nil, !NSScreen.screens.isEmpty else { return }
         // The island in the notch, or the pill.
-        let notch = Self.notch(of: screen)
+        let notch = Self.notch(of: notchScreen)
         if state.notchWidth != notch.width { state.notchWidth = notch.width }
         if state.notchHeight != notch.height { state.notchHeight = notch.height }
         if state.notched != docked {
@@ -626,24 +665,27 @@ final class WidgetController: NSObject {
             size = NSSize(width: max(size.width, panel.frame.width), height: max(size.height, panel.frame.height))
         }
         let a = anchor
-        var frame = NSRect(x: a.x - size.width / 2, y: a.y - size.height, width: size.width, height: size.height)
-        if let fixed = fixedEdge { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
-        // Keep it on a screen.
-        let target = NSScreen.screens.first { $0.frame.contains(a) } ?? screen
-        let bounds = docked ? target.frame : target.visibleFrame
-        frame.origin.x = min(max(frame.minX, bounds.minX), bounds.maxX - frame.width)
-        frame.origin.y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
+        // Kept on a screen.
+        let frame = WidgetPlace.frame(size: size, anchor: a, fixed: fixedEdge.map { ($0.x, $0.left) }, docked: docked, displays: displays)
         panel.level = level
         // In the notch it's flush with the screen's top: its shadow would
         // fall on a monitor above, the notch's shape there (owner, 30.10).
         if panel.hasShadow == docked { panel.hasShadow = !docked }
         if panel.frame != frame {
-            panel.setFrame(frame, display: true)
-            panel.invalidateShadow()
+            // While pulled the window waits for the view's own update: drawn
+            // now, the pill of a move ago sat centred in the new window, and
+            // its fixed end shook.
+            panel.setFrame(frame, display: gesture == nil)
+            if gesture == nil { panel.invalidateShadow() }
         }
     }
 
-    @objc private func screensChanged() { layout() }
+    /// A monitor came or went, or the main screen changed.
+    @objc private func screensChanged() {
+        layout()
+        let list = NSScreen.screens.map { "\($0.frame)\(Self.hasNotch($0) ? " notch" : "")" }.joined(separator: ", ")
+        DebugLog.note("screens: \(list); the widget at \(panel.frame), docked \(docked)")
+    }
 }
 
 /// Takes the keyboard only while a request card is open (the "Other"

@@ -23,8 +23,8 @@ final class WidgetState: ObservableObject {
     /// Set by WidgetController: the pill hands its mouse over for moving,
     /// resizing and clicks.
     var pillMouseDown: ((NSEvent) -> Void)?
-    var pillMouseDragged: ((NSEvent) -> Void)?
-    var pillMouseUp: ((NSEvent) -> Void)?
+    var pillMouseDragged: (() -> Void)?
+    var pillMouseUp: (() -> Void)?
     /// Where the last press on the pill landed, in the pill (y up), and its size.
     var pillPress: (point: CGPoint, size: CGSize)?
     /// A click on the pill's numbers: open the panel.
