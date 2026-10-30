@@ -1496,6 +1496,37 @@ do { // A Cowork task's context of its real window, and its cost, from its card 
     store.forgetClaudeAI()
 }
 
+do { // A Cowork task wakes and is done from claude.ai alone: its card, words sent from here, a reply's end (owner, 30.10)
+    let store = SessionStore()
+    let uuid = "33333333-aaaa-4bbb-8ccc-000000000001", id = "cowork-" + uuid
+    let t0 = Date().addingTimeInterval(-60)
+    func list(settled: Date, running: Bool = false) -> [ClaudeAIChats.Chat] {
+        var c = ClaudeAIChats.Chat(uuid: uuid)
+        c.workspace = "cse_09"; c.settledAt = settled; c.updatedAt = settled; c.running = running
+        return [c]
+    }
+    store.apply(claudeAI: list(settled: t0))
+    let task = store.sessions[id]
+    check(task?.activity == .sleep && task?.finishedAt == nil, "a task seen first, idle: not just done")
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(30)))
+    check(task?.activity == .sleep && task?.finishedAt != nil,
+          "a reply of a few seconds, never seen at work: done all the same (its end moved)")
+    let firstDone = task?.finishedAt
+    store.markSent(id)
+    check(task?.activity == .work, "words sent from here: at work at once")
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(30)))
+    check(task?.activity == .work, "…still, while no reply has ended")
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(50)))
+    check(task?.activity == .sleep && task?.finishedAt != firstDone && task?.finishedAt != nil, "…done once its reply ends")
+    let cards = ClaudeAIChats.withCards(list(settled: t0), ["cse_09": (working: true, waiting: "question")])
+    check(cards.first?.running == true && cards.first?.needsInput == "question"
+          && ClaudeAIChats.withCards(list(settled: t0), [:]).first?.running == false,
+          "the list with its card's word: at work, a question waiting")
+    check(ClaudeAIChats.remote(session: ["id": "cse_09", "worker_status": "running"])?.working == true
+          && ClaudeAIChats.remote(session: ["id": "cse_09", "worker_status": "idle"])?.working == false,
+          "a card's worker_status: running is at work")
+}
+
 do { // Words into a Cowork task's chat as claude.ai's page sends them, so the chat shows them (owner, 30.10)
     let body = ClaudeAIChats.chatMessage("задай мне вопрос с 2 вариантами", chat: "93590da4-96d9-4b3b-83f3-a2dfa5741076",
                                          mutation: ("sess_6e76154c85b83f9e", 5), message: "34fa521f-7916-403b-b8b8-0a5feafcf370",

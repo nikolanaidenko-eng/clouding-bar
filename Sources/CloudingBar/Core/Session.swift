@@ -93,6 +93,11 @@ final class Session {
     var costUSD: Double?
     /// A Cowork task's window as its card says it: not guessed from the model.
     var cardWindow: Int?
+    /// claude.ai's chats: when its last reply ended, as last read, and when
+    /// words went to it from here (and that end then): at work till a new end.
+    var settledSeen: Date?
+    var sentAt: Date?
+    var sentSettled: Date?
     /// Reasoning effort (CLAUDE_EFFORT), e.g. "xhigh".
     var effort: String?
     /// Lines added and removed by Claude's edits in this session.
