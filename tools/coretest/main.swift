@@ -2410,6 +2410,29 @@ do {
     check(WidgetPlace.overNotch(CGPoint(x: 720, y: 900), screen: book.frame, camera: 180), "notch: pointer stopped at the top with no monitor: docking")
     check(!WidgetPlace.overNotch(CGPoint(x: 1000, y: 880), screen: book.frame, camera: 180), "notch: too far to the side: not docking")
 
+    // Dragged to any screen: a third one to the monitor's right, a fourth below.
+    let third = WidgetPlace.Display(frame: CGRect(x: 1680, y: 900, width: 1080, height: 1920),
+                                    visible: CGRect(x: 1680, y: 900, width: 1080, height: 1890), notch: false)
+    let lower = WidgetPlace.Display(frame: CGRect(x: 0, y: -1000, width: 1280, height: 1000),
+                                    visible: CGRect(x: 0, y: -1000, width: 1280, height: 975), notch: false)
+    let desk = [book, monitor, third, lower]
+    func dropped(_ pointer: CGPoint, _ on: WidgetPlace.Display, _ what: String) {
+        // The pill's grabbed by its middle: the anchor is 22 over the pointer.
+        let f = WidgetPlace.frame(size: pillSize, anchor: CGPoint(x: pointer.x, y: pointer.y + 22), fixed: nil, docked: false, pointer: pointer, displays: desk)
+        check(on.visible.contains(f), "drag: on \(what), wholly there")
+        let again = WidgetPlace.frame(size: pillSize, anchor: CGPoint(x: f.midX, y: f.maxY), fixed: nil, docked: false, displays: desk)
+        check(again == f, "drag: on \(what), the same spot after a relaunch")
+    }
+    dropped(CGPoint(x: 500, y: 1500), monitor, "the monitor")
+    dropped(CGPoint(x: 2200, y: 1500), third, "the third screen")
+    dropped(CGPoint(x: 600, y: -500), lower, "the screen below")
+    dropped(CGPoint(x: 700, y: 400), book, "the MacBook")
+    dropped(CGPoint(x: 720, y: 905), monitor, "the monitor's bottom edge, right over the notch")
+    dropped(CGPoint(x: 2750, y: 2800), third, "the third screen's far corner")
+    dropped(CGPoint(x: 20, y: 1970), monitor, "the monitor's top")
+    check(WidgetPlace.bounds(anchor: CGPoint(x: 720, y: 905), docked: false, pointer: CGPoint(x: 720, y: 880), displays: desk) == book.visible,
+          "drag: the pointer still on the MacBook, the pill too")
+
     // Its left end stays put, wherever the right is pulled.
     let pill = CGRect(x: 1000, y: 700, width: 200, height: 44)
     let room = WidgetPlace.room(frame: pill, bounds: book.visible, h: 1, v: -1, centered: false)
