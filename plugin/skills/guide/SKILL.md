@@ -42,7 +42,7 @@ in the cloud and on the Mac alike), and the app can't be installed from Cowork (
 Don't send them to GitHub's pages or to Claude Code, and don't mention `/reload-plugins` or
 `/clouding-bar:install` — those are Claude Code's.
 
-1. **The link**: <https://github.com/wvnikola/clouding-bar/releases/latest/download/Clouding-Bar.dmg>
+1. **The link**: <https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg>
    — a click on it downloads **Clouding-Bar.dmg** into Downloads.
 2. **Tell them exactly what to click**, numbered, in their language — they may never have installed
    a Mac app:
@@ -90,4 +90,4 @@ window and needs no sign-in.
 - No account, no analytics, no server of its own. The plugin itself uses no network, except
   `/clouding-bar:install` downloading the app from GitHub.
 - The app checks GitHub for updates once a day (menu bar icon → Check for Updates).
-- Everything else: <https://github.com/wvnikola/clouding-bar>.
+- Everything else: <https://github.com/nikolanaidenko-eng/clouding-bar>.

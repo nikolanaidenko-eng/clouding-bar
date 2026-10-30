@@ -5,7 +5,7 @@
 # update; a build of your own (make install) is left alone.
 # CLOUDING_BAR_DMG=<a local .dmg> installs that one instead (for testing).
 set -eu
-REPO=wvnikola/clouding-bar
+REPO=nikolanaidenko-eng/clouding-bar
 TEAM=8RFNMA23CG
 APP="Clouding Bar.app"
 BUNDLE_ID=dev.cloudingbar.app

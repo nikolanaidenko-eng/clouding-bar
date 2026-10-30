@@ -10,7 +10,7 @@ enum UpdateCheck {
         let page: URL?
     }
 
-    static let repo = "wvnikola/clouding-bar"
+    static let repo = "nikolanaidenko-eng/clouding-bar"
 
     /// GitHub's list of releases, newest first (CLOUDINGBAR_UPDATE_FEED
     /// stands in for it in tests).
