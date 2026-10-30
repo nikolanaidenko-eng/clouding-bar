@@ -50,7 +50,7 @@ enum SettingsTour {
                  text: "Codex chats show up by themselves, read from Codex's own files. Connect adds its hooks, for permission requests on the bar. Codex asks you to trust them once: Trust all, or /hooks.",
                  group: "Codex", only: { Setup.hasCodex }),
         TourStop(tab: "widget", anchor: "widget.preview", title: "The widget",
-                 text: "A pill over your windows: the chat, its limit and context. Click it for the panel: chats as tabs, a message line, screenshot, mic, your buttons. Drag it to the top of the screen for the notch. Arranged here only: drag to swap, pull an edge to resize."),
+                 text: "A pill over your windows: the chat, its limit and context. Click it for the panel: chats as tabs, a message line, screenshot, mic, your buttons. Drag it to the top of the screen for the notch. Pull its edge to resize it. Rearranged only here: drag to swap."),
         TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "The Touch Bar",
                  text: "Claude's bar while Terminal, VS Code or Claude is in front. Tap the chat's name to switch chats. Permission requests and Claude's questions come here: answer with a tap. Drag a block to move it, pull its edge to size it."),
         TourStop(tab: "buttons", anchor: "buttons.list", title: "Your buttons",

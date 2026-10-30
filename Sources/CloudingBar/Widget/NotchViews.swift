@@ -32,8 +32,6 @@ struct NotchShape: Shape {
 struct NotchView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var state: WidgetState
-    /// Settings' copy: its ends and bottom pull (owner, 29.10).
-    @Environment(\.cbPreview) private var preview
     /// Just switched to another chat: its name shows for a moment.
     @State private var flash: String?
 
@@ -113,7 +111,7 @@ struct NotchView: View {
         .padding(.horizontal, state.pillHover && state.pillEditSize == nil ? 3 : 0) // a little give under the pointer
         .frame(minWidth: state.pillEditSize?.width)
         .frame(height: state.pillEditSize.map { max(state.notchHeight, $0.height) } ?? state.notchHeight)
-        .background(PillDragHandle(state: state, fromTop: false, resizable: preview))
+        .background(PillDragHandle(state: state, fromTop: false, resizable: true))
         .background(NotchShape().fill(Color.black))
         .animation(.cb(0.22), value: state.pillHover)
     }
@@ -186,7 +184,7 @@ struct NotchView: View {
             .font(.system(size: 13).monospacedDigit())
             .foregroundColor(.cbText)
             .padding(.horizontal, Self.shoulder)
-            .background(PillDragHandle(state: state, fromTop: false, resizable: preview))
+            .background(PillDragHandle(state: state, fromTop: false, resizable: true))
             .background(NotchShape(radius: 16).fill(Color.black))
     }
 

@@ -1474,7 +1474,7 @@ struct LiveBar: NSViewRepresentable {
 
 /// The widget itself, live, as it shows now — what's switched on below
 /// appears in it at once — scaled to fit, and arranged here only (owner,
-/// 29.10; the widget on screen just moves): drag an item onto another to
+/// 29.10; on screen it moves and its outline pulls, 30.10): drag an item onto another to
 /// swap them, an item's right edge to size it (24.10), the outline for the
 /// whole pill, wider or narrower, taller or lower. Clicks do nothing here:
 /// nothing is sent from it.
@@ -1546,9 +1546,9 @@ struct WidgetPreview: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
-            Text(panel ? "Drag a block up or down by the bar over it, a button onto another to swap them. The widget itself only moves."
+            Text(panel ? "Drag a block up or down by the bar over it, a button onto another to swap them. The widget itself doesn't rearrange."
                  : notch ? "In the notch: pull its ends or bottom — wider, the pill's items around the camera; back in, compact again."
-                 : "Drag an item onto another to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget. The widget itself only moves.")
+                 : "Drag an item onto another to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget, here or on screen. On screen nothing rearranges.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
