@@ -37,4 +37,4 @@ set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, 
 
 Source: <https://github.com/wvnikola/clouding-bar>. License: MIT.
 
-No network, except `/clouding-bar:install` downloading the app from GitHub. (The Mac app's own network use is in the main README.)
+No network, except `/clouding-bar:install` downloading the app from GitHub. (The Mac app's own network use is in [docs/privacy.md](https://github.com/wvnikola/clouding-bar/blob/main/docs/privacy.md).)
