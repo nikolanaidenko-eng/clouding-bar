@@ -136,7 +136,7 @@ leaves your Mac, and when:
   account-wide limit and sending to a Claude Desktop or Terminal chat through
   Remote Control without switching windows. If you sign in, the app reads
   your account's limit, Cowork tasks and chats from claude.ai (every 5 s while
-  something is going on, every 30 s at rest), and sends what you send from the
+  something is going on, every 15 s at rest), and sends what you send from the
   widget to them. The session key lives in the macOS Keychain and goes only to
   claude.ai. These addresses are unofficial and may stop working at any time;
   its messages to chats name claude.ai's web client, and its sign-in window

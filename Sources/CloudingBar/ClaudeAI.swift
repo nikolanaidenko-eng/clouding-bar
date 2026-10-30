@@ -54,7 +54,7 @@ final class ClaudeAI {
     private var lookedUp: [String: Date] = [:]
     /// What each Cowork task's card said last, and when words last went to
     /// it: read every 5 s while it works, waits or was just written to, else
-    /// every 30 s (ClaudeAIChats.Pace).
+    /// every 15 s (ClaudeAIChats.Pace).
     private var cardState: [String: (working: Bool, waiting: String?)] = [:]
     private var nudged: [String: Date] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
@@ -126,7 +126,7 @@ final class ClaudeAI {
     // MARK: Polling
 
     /// The limit every minute; the chats every 5 s while one works or waits
-    /// for you (or did a moment ago), else every 30 s; a Cowork task's card
+    /// for you (or did a moment ago), else every 15 s; a Cowork task's card
     /// the same way; its events every 30 s while it works and once after
     /// each reply (ClaudeAIChats.Pace).
     func start() {
@@ -187,7 +187,7 @@ final class ClaudeAI {
         if readChats, now >= nextChats {
             // A new chat, a question, a task done: on the bar within seconds
             // while one is going on (owner, 29.10: a minute was too long);
-            // 30 s at rest (owner, 30.10: less often).
+            // 15 s at rest.
             nextChats = now.addingTimeInterval(Pace.gap(Pace.chats(busy: busy)))
             fetchChats(org: org, key: key)
         }
