@@ -1496,6 +1496,29 @@ do { // A Cowork task's context of its real window, and its cost, from its card 
     store.forgetClaudeAI()
 }
 
+do { // Words only where they're meant (owner, 30.10): the queue's files apart again; keys only to a chat its window names
+    let real: (String) -> Bool = { ["/a/shot.png", "/a/my shot.png"].contains($0) }
+    check(Inject.split("look at this /a/shot.png", exists: real).words == "look at this"
+          && Inject.split("look at this /a/shot.png", exists: real).files == ["/a/shot.png"]
+          && Inject.split("two \"/a/my shot.png\" /a/shot.png", exists: real).files == ["/a/my shot.png", "/a/shot.png"]
+          && Inject.split("two \"/a/my shot.png\" /a/shot.png", exists: real).words == "two"
+          && Inject.split("/a/shot.png", exists: real).words.isEmpty
+          && Inject.split("about /a/other.png here", exists: real).files.isEmpty
+          && Inject.split("ends in /a/other.png", exists: real).words == "ends in /a/other.png",
+          "a queued message's files, after its words; other paths stay words")
+    let store = SessionStore()
+    store.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "chat-a", "cwd": "/Users/me/GitHub"]))
+    store.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "chat-b", "cwd": "/Users/me/GitHub/app"]))
+    store.sessions["chat-b"]?.title = "Файл HANDOFF"
+    check(store.session(inWindow: "Claude Code — GitHub")?.id == "chat-a"
+          && store.session(inWindow: "Claude Code — GitHub", naming: true) == nil,
+          "a window's folder is enough to follow a chat, not to type into it with another open")
+    check(store.session(inWindow: "Файл HANDOFF — GitHub", naming: true)?.id == "chat-b",
+          "a window naming the chat: keys go there")
+    store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-a", "cwd": "/Users/me/GitHub"]))
+    store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-b", "cwd": "/Users/me/GitHub/app"]))
+}
+
 do { // A Cowork task wakes and is done from claude.ai alone: its card, words sent from here, a reply's end (owner, 30.10)
     let store = SessionStore()
     let uuid = "33333333-aaaa-4bbb-8ccc-000000000001", id = "cowork-" + uuid
