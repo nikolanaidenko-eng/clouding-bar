@@ -201,6 +201,10 @@ struct Config: Equatable {
     /// you signed in (1.2.8) or said yes for a key pasted before; nil, not
     /// asked yet.
     var claudeAIChats: Bool?
+    /// The warning about claude.ai's terms was shown: in the sign-in window,
+    /// or once, as a question, to those who were signed in before 1.2.21
+    /// (owner, 30.10).
+    var claudeAIRiskShown = false
     /// Docked in the notch (a drawn one on Macs without it).
     var widgetAtNotch = false
     /// The island's size in the notch (pulled on screen before 1.2.18):
@@ -326,6 +330,7 @@ struct Config: Equatable {
         if let v = obj["buttonColors"] as? String, ["color", "gray"].contains(v) { config.buttonColors = v }
         if let v = obj["setupDeclined"] as? Bool { config.setupDeclined = v }
         if let v = obj["claudeAIChats"] as? Bool { config.claudeAIChats = v }
+        if let v = obj["claudeAIRiskShown"] as? Bool { config.claudeAIRiskShown = v }
         if let v = obj["notchWidth"] as? NSNumber { config.notchWidth = v.doubleValue }
         if let v = obj["notchHeight"] as? NSNumber { config.notchHeight = v.doubleValue }
         if let v = obj["sessionsList"] as? Bool { config.sessionsList = v }

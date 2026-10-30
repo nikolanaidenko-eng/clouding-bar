@@ -5,7 +5,9 @@ import WebKit
 /// page in a window of ours, with a browser store of its own that nothing
 /// keeps. Once you're signed in, the session key is taken from the page's
 /// cookie, handed on for the Keychain, and the window closes — no key to
-/// find and paste (owner, 28.10).
+/// find and paste (owner, 28.10). First the warning that this goes against
+/// Anthropic's terms (ClaudeAINotice): nothing is loaded and no key is taken
+/// until "I Understand" (owner, 30.10).
 final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver, NSWindowDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
@@ -13,6 +15,15 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
     private var popups: [NSWindow] = []
     private var done: ((String?) -> Void)?
     private var taken = false
+    /// "I Understand" was pressed: only then the page loads and a key is taken.
+    private var confirmed = false
+    private var warning: NSView?
+    private var buttons: NSView?
+    private var reminder: NSView?
+    /// Soaks up the room under the warning until the page takes it.
+    private var filler: NSView?
+    private static let askHeight: CGFloat = 350
+    private static let pageHeight: CGFloat = 720
 
     /// Shows the window (or brings it up); `done` gets the key, or nil when
     /// the window was closed without one.
@@ -24,14 +35,16 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         }
         self.done = done
         taken = false
+        confirmed = false
 
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
         web.uiDelegate = self
-        // As Safari: some sign-ins (Google) turn away an app's web view.
-        web.customUserAgent = Self.safariAgent
+        // Its own name, not a browser's (owner, 30.10): a sign-in that turns
+        // away an app's web view (Google's) may do so; claude.ai's own works.
+        config.applicationNameForUserAgent = Self.agentName
         config.websiteDataStore.httpCookieStore.add(self)
         webView = web
 
@@ -41,21 +54,80 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
             + "Signing in starts a new login session; Sign Out deletes the key from this Mac. Unofficial — it can stop working any time.")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [note, web])
+
+        // The warning, before anything else: a box of its own and two buttons.
+        let heading = NSTextField(wrappingLabelWithString: ClaudeAINotice.title)
+        heading.font = .systemFont(ofSize: 13, weight: .semibold)
+        let body = NSTextField(wrappingLabelWithString: ClaudeAINotice.text)
+        body.font = .systemFont(ofSize: 12)
+        let inner = NSStackView(views: [heading, body])
+        inner.orientation = .vertical
+        inner.alignment = .leading
+        inner.spacing = 6
+        inner.edgeInsets = NSEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 8
+        box.layer?.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.14).cgColor
+        box.layer?.borderColor = NSColor.systemOrange.withAlphaComponent(0.5).cgColor
+        box.layer?.borderWidth = 1
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(inner)
+        NSLayoutConstraint.activate([
+            inner.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            inner.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            inner.topAnchor.constraint(equalTo: box.topAnchor),
+            inner.bottomAnchor.constraint(equalTo: box.bottomAnchor),
+            heading.widthAnchor.constraint(equalTo: inner.widthAnchor, constant: -24),
+            body.widthAnchor.constraint(equalTo: inner.widthAnchor, constant: -24),
+        ])
+        let understand = NSButton(title: "I Understand", target: self, action: #selector(understood))
+        understand.keyEquivalent = "\r"
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelled))
+        cancel.keyEquivalent = "\u{1b}"
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .horizontal)
+        let row = NSStackView(views: [spacer, cancel, understand])
+        row.orientation = .horizontal
+        row.distribution = .fill
+        row.spacing = 10
+        row.translatesAutoresizingMaskIntoConstraints = false
+        // After "I Understand" the box gives way to one line that stays.
+        let remind = NSTextField(wrappingLabelWithString: ClaudeAINotice.short)
+        remind.font = .systemFont(ofSize: 11, weight: .medium)
+        remind.textColor = .systemOrange
+        remind.isHidden = true
+        web.isHidden = true
+        let room = NSView()
+        room.setContentHuggingPriority(NSLayoutConstraint.Priority(1), for: .vertical)
+        warning = box
+        buttons = row
+        reminder = remind
+        filler = room
+
+        let stack = NSStackView(views: [box, note, row, room, remind, web])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 0, bottom: 0, right: 0)
         note.translatesAutoresizingMaskIntoConstraints = false
+        remind.translatesAutoresizingMaskIntoConstraints = false
+        box.translatesAutoresizingMaskIntoConstraints = false
         web.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
+            box.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16),
+            box.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -16),
             note.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16),
             note.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -16),
+            remind.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16),
+            remind.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -16),
+            row.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: stack.trailingAnchor, constant: -16),
             web.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             web.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
         ])
 
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 720),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: Self.askHeight),
                          styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.title = "Sign In to claude.ai"
         w.contentView = stack
@@ -64,16 +136,32 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         w.center()
         window = w
         w.makeKeyAndOrderFront(nil)
-        web.load(URLRequest(url: URL(string: "https://claude.ai/login")!))
-        DebugLog.note("claude.ai sign-in: window open")
+        DebugLog.note("claude.ai sign-in: window open, warning shown")
     }
 
-    /// "Mozilla/5.0 … Version/27.0 Safari/605.1.15", this Mac's Safari.
-    private static var safariAgent: String {
-        let plist = NSDictionary(contentsOfFile: "/Applications/Safari.app/Contents/Info.plist")
-        let version = plist?["CFBundleShortVersionString"] as? String ?? "18.0"
-        return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(version) Safari/605.1.15"
+    /// The app's name in the page's User-Agent, after WebKit's own: "CloudingBar/1.2.21".
+    private static var agentName: String { "CloudingBar/" + Updater.version }
+
+    /// "I Understand": now claude.ai's sign-in page loads.
+    @objc private func understood() {
+        guard !confirmed, let web = webView, let window else { return }
+        confirmed = true
+        DebugLog.note("claude.ai sign-in: warning accepted")
+        warning?.isHidden = true
+        buttons?.isHidden = true
+        filler?.isHidden = true
+        reminder?.isHidden = false
+        web.isHidden = false
+        // Taller, the top edge staying where it is.
+        var frame = window.frame
+        let height = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: 480, height: Self.pageHeight)).height
+        frame.origin.y -= height - frame.height
+        frame.size.height = height
+        window.setFrame(window.constrainFrameRect(frame, to: window.screen), display: true, animate: true)
+        web.load(URLRequest(url: URL(string: "https://claude.ai/login")!))
     }
+
+    @objc private func cancelled() { window?.close() }
 
     // MARK: The key
 
@@ -85,7 +173,7 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
 
     private func look(in store: WKHTTPCookieStore) {
         store.getAllCookies { [weak self] cookies in
-            guard let self, !self.taken,
+            guard let self, self.confirmed, !self.taken,
                   let cookie = cookies.first(where: { $0.name == "sessionKey" && Self.isClaudeAI($0.domain) }),
                   !cookie.value.isEmpty else { return }
             self.taken = true
@@ -117,7 +205,6 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         let child = WKWebView(frame: NSRect(x: 0, y: 0, width: 480, height: 640), configuration: configuration)
         child.navigationDelegate = self
         child.uiDelegate = self
-        child.customUserAgent = Self.safariAgent
         let w = NSWindow(contentRect: child.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         w.title = "Sign In"
         w.contentView = child
@@ -143,6 +230,10 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         popups = []
         webView = nil
         window = nil
+        warning = nil
+        buttons = nil
+        reminder = nil
+        filler = nil
         if !taken { DebugLog.note("claude.ai sign-in: closed without signing in") }
         done?(nil)
         done = nil

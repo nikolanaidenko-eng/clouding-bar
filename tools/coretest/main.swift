@@ -1733,6 +1733,46 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
     check(!ClaudeAIChats.writes(signedIn: true, readChats: false) && ClaudeAIChats.writes(signedIn: true, readChats: true)
           && !ClaudeAIChats.writes(signedIn: false, readChats: true),
           "a key given for the limit alone (Only the Limit) sends nothing to claude.ai (review, 29.10)")
+    do { // how often claude.ai is asked (owner, 30.10): 5 s at work, 30 s at rest
+        typealias Pace = ClaudeAIChats.Pace
+        check(Pace.chats(busy: true) == 5 && Pace.chats(busy: false) == 30 && Pace.card(hot: true) == 5 && Pace.card(hot: false) == 30
+              && Pace.tick == 5, "claude.ai pace: the chats list and a Cowork card every 5 s at work, every 30 s at rest; the timer ticks every 5 s")
+        check(Pace.gap(Pace.active) < Pace.tick && Pace.gap(Pace.active) > 0 && Pace.gap(Pace.quiet) < Pace.quiet,
+              "claude.ai pace: a read is due a little before its interval is out (under the tick, so 5 s isn't 10)")
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        // Ticks every 5 s, the odd ones 0.4 s late: the next gap is 4.6 s.
+        func reads(ticks: Int, due: (Date, Date) -> Bool) -> Int {
+            var last = t0, n = 0
+            for i in 1...ticks {
+                let now = t0.addingTimeInterval(Double(i) * 5 + (i % 2 == 1 ? 0.4 : 0))
+                if due(last, now) { n += 1; last = now }
+            }
+            return n
+        }
+        check(reads(ticks: 12, due: { Pace.due(last: $0, every: Pace.active, now: $1) }) == 12
+              && reads(ticks: 12, due: { $1.timeIntervalSince($0) >= 5 }) < 12,
+              "claude.ai pace: at work every tick reads even when one comes 0.4 s late (a plain 5 s threshold would skip some) — a waiting question isn't late")
+        check(reads(ticks: 12, due: { Pace.due(last: $0, every: Pace.quiet, now: $1) }) == 2,
+              "claude.ai pace: at rest two reads in a minute")
+        check(Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(15)) == false
+              && Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(30)),
+              "claude.ai pace: at rest not due at 15 s (the old pace), due at 30 s")
+    }
+    do { // the warning about claude.ai's terms (owner, 30.10)
+        let text = ClaudeAINotice.title + ClaudeAINotice.text
+        check(["Anthropic's terms", "session keys", "automatically", "suspension", "hasn't approved", "Cowork tasks", "claude.ai chats",
+               "account-wide limit", "at your own risk"].allSatisfy { text.contains($0) },
+              "claude.ai warning: the terms, the risk, what goes away without the sign-in, at your own risk")
+        check(ClaudeAINotice.needsAsk(hasKey: true, shown: false) && !ClaudeAINotice.needsAsk(hasKey: true, shown: true)
+              && !ClaudeAINotice.needsAsk(hasKey: false, shown: false) && !ClaudeAINotice.needsAsk(hasKey: false, shown: true),
+              "claude.ai warning: asked once, only of those who already have a key")
+        let saved = try? Data(contentsOf: Config.fileURL)
+        try? FileManager.default.removeItem(at: Config.fileURL)
+        check(!Config.load().claudeAIRiskShown, "claude.ai warning: not shown yet in a fresh config")
+        Config.save("claudeAIRiskShown", true)
+        check(Config.load().claudeAIRiskShown, "claude.ai warning: remembered in the config")
+        if let saved { try? saved.write(to: Config.fileURL) } else { try? FileManager.default.removeItem(at: Config.fileURL) }
+    }
     let idle = ClaudeAIChats.remote(session: ["id": "cse_02", "worker_status": "idle",
                                               "external_metadata": ["pending_action": ["tool_name": "Bash", "request_id": "r"]]])
     check(idle != nil && idle?.pending == nil, "…a pending action left on a card that isn't waiting: nothing asked")

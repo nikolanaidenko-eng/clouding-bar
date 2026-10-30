@@ -44,7 +44,7 @@ enum SettingsTour {
                  text: "Claude's panel in VS Code doesn't pass the limit on. Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat, no window switched. For chats opened after it.",
                  group: "Claude", only: { Setup.hasVSCode }),
         TourStop(tab: "general", anchor: "claudeai", title: "Cowork and claude.ai: Sign In",
-                 text: "Cowork runs in the cloud, out of the hooks' reach. Sign In to claude.ai here: Cowork tasks and your chats join the list — working, done or waiting for you — and a click opens one in Claude Desktop. The key stays in Keychain.",
+                 text: "Cowork runs in the cloud, out of the hooks' reach. Sign In to claude.ai here: Cowork tasks and your chats join the list — working, done or waiting for you — and a click opens one in Claude Desktop. The key stays in Keychain. Optional: it goes against Anthropic's terms for third-party apps, at your own risk.",
                  group: "Claude"),
         TourStop(tab: "general", anchor: "codex", title: "Codex",
                  text: "Codex chats show up by themselves, read from Codex's own files. Connect adds its hooks, for permission requests on the bar. Codex asks you to trust them once: Trust all, or /hooks.",

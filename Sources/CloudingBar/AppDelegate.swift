@@ -3009,6 +3009,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 DebugLog.tap("claude.ai signed in")
                 self.setConfig("claudeAIChats", true)
+                // The window showed the warning and waited for "I Understand".
+                self.setConfig("claudeAIRiskShown", true)
                 self.claudeAI.readChats = true
                 self.model.hasLiveKey = true
                 self.model.liveKeyRejected = false
@@ -3031,12 +3033,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // A key pasted before 1.2.8 was given for the limit: the chats
             // only once you say so (review, 28.10).
             claudeAI.readChats = config.claudeAIChats == true
-            model.liveLimitState = "Checking…"
-            claudeAI.start()
-            if config.claudeAIChats == nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.askClaudeAIChats() }
+            // Signed in before the warning (1.2.21): asked once, and claude.ai
+            // is left alone until the answer (owner, 30.10).
+            let warn = ClaudeAINotice.needsAsk(hasKey: true, shown: config.claudeAIRiskShown)
+            if warn {
+                model.liveLimitState = "Waiting for your answer"
+            } else {
+                model.liveLimitState = "Checking…"
+                claudeAI.start()
+            }
+            if warn || config.claudeAIChats == nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                    guard let self else { return }
+                    if warn {
+                        guard self.askClaudeAIRisk() else { return }
+                        self.model.liveLimitState = "Checking…"
+                        self.claudeAI.start()
+                    }
+                    if self.config.claudeAIChats == nil { self.askClaudeAIChats() }
+                }
             }
         }
+    }
+
+    /// Once, for those already signed in: Anthropic's terms don't allow this,
+    /// and the choice is theirs (owner, 30.10). False: signed out, by the
+    /// same way as Settings' Sign Out.
+    private func askClaudeAIRisk() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = ClaudeAINotice.title
+        alert.informativeText = ClaudeAINotice.text
+        alert.addButton(withTitle: "Keep Signed In")
+        alert.addButton(withTitle: "Sign Out")
+        NSApp.activate(ignoringOtherApps: true)
+        let keep = alert.runModal() == .alertFirstButtonReturn
+        setConfig("claudeAIRiskShown", true)
+        DebugLog.tap("claude.ai terms warning: \(keep ? "kept signed in" : "signed out")")
+        if !keep { model.removeLiveKey() }
+        return keep
     }
 
     /// Once, for a key from before 1.2.8: the chats too, or the limit alone.
