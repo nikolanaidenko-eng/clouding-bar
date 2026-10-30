@@ -10,8 +10,9 @@ import Foundation
 /// desktop Code chat's Remote Control, your answer to what one asks
 /// (owner, 29.10: not typed into a window that must be in front). The
 /// addresses are unofficial and may stop working. Anthropic's terms don't
-/// allow this (ClaudeAINotice): the app doesn't pass itself off as claude.ai's
-/// web client — no client-platform header, no browser User-Agent (owner, 30.10).
+/// allow this (ClaudeAINotice): the app says so before the sign-in. Its chat
+/// messages name the web client, and its sign-in window Safari: disclosed in
+/// docs/privacy.md (owner, 30.10: kept, not submitted to the directory).
 final class ClaudeAI {
     var onUpdate: ((_ percent: Double, _ resetsAt: Double?) -> Void)?
     /// The weekly (7-day) limit, when the plan has one.
@@ -479,10 +480,8 @@ final class ClaudeAI {
         return [.notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(code)
     }
 
-    /// A POST of protobuf to claude.ai's RPC, in the shape its page sends —
-    /// without its `anthropic-client-platform: web_claude_ai`: the app doesn't
-    /// say it is the web client (owner, 30.10). Turned down (4xx), the words
-    /// are `.kept` and go the older way (the task's session, or keys).
+    /// A POST of protobuf to claude.ai's RPC, as its page makes it. Turned down
+    /// (4xx), the words are `.kept` and go the older way (the task's session, or keys).
     private func postProto(_ path: String, body: Data, chat: String, done: @escaping (Sent) -> Void) {
         guard let key = Self.readKey(), let org = orgId, canSend else {
             done(.kept("not signed in to claude.ai"))
@@ -498,6 +497,7 @@ final class ClaudeAI {
         request.setValue("sessionKey=\(key)", forHTTPHeaderField: "Cookie")
         request.setValue("application/proto", forHTTPHeaderField: "Content-Type")
         request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+        request.setValue("web_claude_ai", forHTTPHeaderField: "anthropic-client-platform")
         request.setValue(org, forHTTPHeaderField: "x-organization-uuid")
         request.setValue(chat, forHTTPHeaderField: "anthropic-chat-conversation-uuid")
         request.httpShouldHandleCookies = false

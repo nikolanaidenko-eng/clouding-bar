@@ -139,7 +139,8 @@ leaves your Mac, and when:
   something is going on, every 30 s at rest), and sends what you send from the
   widget to them. The session key lives in the macOS Keychain and goes only to
   claude.ai. These addresses are unofficial and may stop working at any time;
-  the app doesn't pass itself off as claude.ai's web client. Anthropic's words
+  its messages to chats name claude.ai's web client, and its sign-in window
+  Safari. Anthropic's words
   and the details: [docs/privacy.md](docs/privacy.md#the-claudeai-sign-in-optional).
 - The start of an answer (shown when a chat is done) stays in memory, never on
   disk; on macOS 26 with Apple Intelligence, Apple's model on your Mac retells
