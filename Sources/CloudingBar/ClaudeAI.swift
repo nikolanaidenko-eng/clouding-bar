@@ -331,6 +331,8 @@ final class ClaudeAI {
         case kept(String)
         /// No answer, or claude.ai's own fault: it may have gone in — not sent again.
         case unsure(String)
+        /// No connection at all: it surely didn't go, and may later.
+        case offline
     }
 
     /// Your words into a Cowork task or a Remote Control session, as Claude
@@ -464,6 +466,12 @@ final class ClaudeAI {
 
     /// Calls back on the main queue: taken, refused (with claude.ai's
     /// reason), or no telling.
+    /// Nothing reached claude.ai: no network, no such host, no connection made.
+    private static func neverLeft(_ error: Error?) -> Bool {
+        guard let code = (error as? URLError)?.code else { return false }
+        return [.notConnectedToInternet, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(code)
+    }
+
     /// A POST of protobuf to claude.ai's RPC, as its page makes it.
     private func postProto(_ path: String, body: Data, chat: String, done: @escaping (Sent) -> Void) {
         guard let key = Self.readKey(), let org = orgId, canSend else {
@@ -493,7 +501,7 @@ final class ClaudeAI {
             DispatchQueue.main.async {
                 switch status {
                 case 200..<300: done(.sent)
-                case 0: done(.unsure("no answer from claude.ai"))
+                case 0: done(Self.neverLeft(error) ? .offline : .unsure("no answer from claude.ai"))
                 case 500...: done(.unsure("claude.ai answered HTTP \(status)" + reason))
                 default: done(.kept("HTTP \(status)" + reason))
                 }
@@ -529,7 +537,7 @@ final class ClaudeAI {
             DispatchQueue.main.async {
                 switch status {
                 case 200..<300: done(.sent)
-                case 0: done(.unsure("no answer from claude.ai"))
+                case 0: done(Self.neverLeft(error) ? .offline : .unsure("no answer from claude.ai"))
                 case 500...: done(.unsure("claude.ai answered HTTP \(status)" + reason))
                 default: done(.kept("HTTP \(status)" + reason))
                 }

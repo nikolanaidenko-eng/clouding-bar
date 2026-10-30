@@ -1515,6 +1515,16 @@ do { // Words only where they're meant (owner, 30.10): the queue's files apart a
           "a window's folder is enough to follow a chat, not to type into it with another open")
     check(store.session(inWindow: "Файл HANDOFF — GitHub", naming: true)?.id == "chat-b",
           "a window naming the chat: keys go there")
+    store.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "chat-c", "cwd": "/Users/me/projX"]))
+    check(store.session(inWindow: "main.swift — projX", naming: true)?.id == "chat-c",
+          "a folder only one chat is in: keys go there, whatever other folders' chats are open (review, 30.10)")
+    store.sessions["chat-c"]?.title = "Fix login - add tests"
+    store.apply(Inbound(raw: ["hook_event_name": "SessionStart", "session_id": "chat-d", "cwd": "/Users/me/projX"]))
+    check(store.session(inWindow: "Fix login - add tests — projX", naming: true)?.id == "chat-c"
+          && store.session(inWindow: "main.swift — projX", naming: true) == nil,
+          "a name with a dash in it still names its chat; two chats of that folder, no name: none")
+    store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-c", "cwd": "/Users/me/projX"]))
+    store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-d", "cwd": "/Users/me/projX"]))
     store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-a", "cwd": "/Users/me/GitHub"]))
     store.apply(Inbound(raw: ["hook_event_name": "SessionEnd", "session_id": "chat-b", "cwd": "/Users/me/GitHub/app"]))
 }

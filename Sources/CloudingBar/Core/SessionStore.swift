@@ -390,9 +390,10 @@ final class SessionStore {
     /// (two chats of one project, the window on a file): typing there
     /// could land anywhere.
     /// `naming`: keys go there, so the title must name the chat itself if
-    /// another could be the one open: its folder in the title says nothing
+    /// another of that folder could be the one open: the folder says nothing
     /// of which tab is in front (owner, 30.10: words for one chat went into
-    /// another open in that window).
+    /// another open in that window). Chats of other folders don't count
+    /// (review, 30.10: with one elsewhere, nothing was ever in front).
     func session(inWindow title: String?, tty: String? = nil, naming: Bool = false) -> Session? {
         if let tty {
             // A terminal tab in front that's no chat's we know (a shell,
@@ -406,7 +407,7 @@ final class SessionStore {
         // Nor one from claude.ai's list: it lives in Claude Desktop.
         let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient && !$0.fromClaudeAI })
         guard let top = ranked.first else { return nil }
-        if naming, top.score < 3, alive.filter({ !$0.ambient && !$0.fromClaudeAI && $0.tty == nil }).count > 1 { return nil }
+        if naming, top.score < 3, ranked.count > 1 { return nil }
         // Short names made two chats' titles equal: words go only to the one chat
         // the title tells, at any score (review, 27.10).
         return ranked.filter { $0.score == top.score }.count == 1 ? top.session : nil
@@ -438,7 +439,9 @@ final class SessionStore {
         let set = Set(parts)
         let home = FileManager.default.homeDirectoryForCurrentUser.pathComponents
         func titled(_ t: String) -> Bool {
-            parts.contains { p in p == t || (p.hasSuffix("…") && t.hasPrefix(String(p.dropLast()))) }
+            // A name with " — " in it is cut in two by `titleParts`: whole, then.
+            if [" — ", " – ", " - "].contains(where: t.contains), title.contains(t) { return true }
+            return parts.contains { p in p == t || (p.hasSuffix("…") && t.hasPrefix(String(p.dropLast()))) }
         }
         var list: [(score: Int, session: Session)] = []
         for session in sessions {
