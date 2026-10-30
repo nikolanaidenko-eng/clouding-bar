@@ -49,6 +49,7 @@ must. A first version for **Windows** is in [windows/](windows/README.md).
 - **Cowork and chats.** After **Sign In…** to claude.ai, Cowork tasks and claude.ai
   chats show up — working, done or waiting for you, with their context. A Cowork
   task's questions and permissions come to the bar, and your messages go to it.
+  (The sign-in goes against Anthropic's terms: see [Private by design](#private-by-design).)
 - **Codex.** Codex chats show up by themselves, with their limits and context.
   **Connect** adds permission requests on the bar.
 
@@ -61,8 +62,15 @@ One Mac app, installed once, whichever way you get it. What else each place need
 | Where you work with Claude | What it needs |
 |---|---|
 | Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
-| Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings. The plugin isn't needed |
+| Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings (read the [warning](#private-by-design) first). The plugin isn't needed |
 | Codex | the app, then **Connect** for Codex in it |
+
+> **Cowork needs the claude.ai sign-in, and Anthropic's terms don't allow it.**
+> Third-party apps may not collect or store claude.ai session keys, or reach
+> claude.ai automatically; signing in goes against that and could put your
+> account at risk, including suspension. Anthropic hasn't approved Clouding Bar.
+> Use it at your own risk. Everything else works without it. Details:
+> [docs/privacy.md](docs/privacy.md#the-claudeai-sign-in-optional).
 
 **1. The plugin, from Claude Code.** Type these inside Claude Code (after `claude`
 in a terminal), not in the shell:
@@ -119,11 +127,20 @@ leaves your Mac, and when:
 - **Dictation** is recognised on your Mac. Audio goes to Apple only if you tick
   *Allow sending audio to Apple* (off by default), and only for a language your
   Mac can't do offline.
-- **claude.ai sign-in is optional**, off until you use it. Then the app reads
-  your account's limit, Cowork tasks and chats from claude.ai, and sends what
-  you send from the widget to them. The session key lives in the macOS Keychain
-  and goes only to claude.ai. These addresses aren't an official API and may
-  stop working at any time.
+- **claude.ai sign-in is optional**, off until you use it, and **against
+  Anthropic's terms** — at your own risk. Anthropic's terms don't allow
+  third-party apps to collect or store claude.ai session keys, or to reach
+  claude.ai automatically. Signing in could put your account at risk,
+  including suspension, and Anthropic hasn't approved Clouding Bar. Without
+  it everything else keeps working, except Cowork tasks, claude.ai chats, the
+  account-wide limit and sending to a Claude Desktop or Terminal chat through
+  Remote Control without switching windows. If you sign in, the app reads
+  your account's limit, Cowork tasks and chats from claude.ai (every 5 s while
+  something is going on, every 30 s at rest), and sends what you send from the
+  widget to them. The session key lives in the macOS Keychain and goes only to
+  claude.ai. These addresses are unofficial and may stop working at any time;
+  the app doesn't pass itself off as claude.ai's web client. Anthropic's words
+  and the details: [docs/privacy.md](docs/privacy.md#the-claudeai-sign-in-optional).
 - The start of an answer (shown when a chat is done) stays in memory, never on
   disk; on macOS 26 with Apple Intelligence, Apple's model on your Mac retells
   it. No message text is kept.

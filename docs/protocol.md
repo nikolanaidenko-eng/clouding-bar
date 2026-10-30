@@ -301,6 +301,11 @@ Question answered via `PreToolUse`:
 
 ## Cowork and chats through claude.ai
 
+**This goes against Anthropic's terms for third-party apps** (see
+[privacy.md](privacy.md#the-claudeai-sign-in-optional)): the app says so
+before the sign-in and does not pass itself off as claude.ai's web client (no
+`anthropic-client-platform` header, no browser User-Agent).
+
 Cowork tasks and claude.ai / Claude Desktop chats are read from claude.ai,
 once the user signs in (Settings → General → Claude → claude.ai →
 **Sign In…**). The app takes the `sessionKey` cookie from claude.ai's own
@@ -315,9 +320,9 @@ The addresses are unofficial and can stop working at any time.
 |---|---|---|
 | `/api/organizations` | once | the organization id |
 | `/api/organizations/{org}/usage` | every minute | the 5-hour and weekly limit |
-| `/api/organizations/{org}/chat_conversations_v2` | every 20 s while a chat runs or waits, else every minute | the chats list |
+| `/api/organizations/{org}/chat_conversations_v2` | every 5 s while a chat runs, waits or was active in the last two minutes, else every 30 s | the chats list |
 | `/v1/code/sessions/{id}/events` | for a Cowork task that is running or just finished | context and model |
-| `/v1/code/sessions/{id}` | a Cowork task waiting for you, each time the list is read; a Claude Code chat's Remote Control every 30 s | `worker_status` `"requires_action"` with `external_metadata.pending_action` (`tool_name`, `input`, `request_id` — a question's in `suppressed_request_id`; `dialog:*` left alone): what it asks; `environment_kind` `"bridge"` and `connection_status`: Remote Control on the line |
+| `/v1/code/sessions/{id}` | a Cowork task active in the last half hour: every 5 s while it works, waits for you or was just written to, else every 30 s; a Claude Code chat's Remote Control every 30 s | `worker_status` `"requires_action"` with `external_metadata.pending_action` (`tool_name`, `input`, `request_id` — a question's in `suppressed_request_id`; `dialog:*` left alone): what it asks; `environment_kind` `"bridge"` and `connection_status`: Remote Control on the line |
 | POST `/v1/code/sessions/{id}/events` | only when the user sends | `{"events":[{"payload":{"type":"user","uuid","session_id","parent_tool_use_id":null,"message":{"role":"user","content":[…]}}}]}` — a message, as Claude Code sends one; `{"events":[{"payload":{"type":"control_response","uuid","response":{"subtype":"success","request_id","response":<decision>}}}]}` — an answer, the decision as a `PermissionRequest` hook gives it |
 
 A Remote Control session id `session_X` is `cse_X` in these addresses. A

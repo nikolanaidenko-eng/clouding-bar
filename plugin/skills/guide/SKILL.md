@@ -51,16 +51,30 @@ Don't send them to GitHub's pages or to Claude Code, and don't mention `/reload-
    3. Open Clouding Bar from Applications (or ⌘ Space, type "Clouding Bar", Return).
    4. It asks to connect to Claude Code: **Connect**. macOS then asks for Accessibility:
       **Open System Settings** and switch Clouding Bar on.
-   5. For Cowork: in Clouding Bar, **Settings → General → Claude → claude.ai → Sign In…**, and sign
-      in to claude.ai in the window that opens; it closes by itself.
+   Stop there. Seeing Cowork tasks takes the claude.ai sign-in, which is a risk: say so first
+   (**Before the claude.ai sign-in**, below) and don't list it as a step to take.
 
-**See Cowork tasks.** In the app: Settings → General → Claude → claude.ai → **Sign In…**.
-Sign in to claude.ai in the window that opens; it closes by itself. Cowork tasks (and claude.ai
-and Claude Desktop chats) then show up in the chats list, with the account-wide 5-hour limit.
-No plugin, no folder, nothing for you to write.
+**Before the claude.ai sign-in.** The app's claude.ai sign-in is optional and goes against
+Anthropic's terms. Tell the user this, plainly and in their language, *before* you mention how to
+sign in — in the same reply as the install steps, if Cowork tasks come up, and whenever they ask why a
+Cowork task or a claude.ai chat isn't shown:
+
+- Anthropic's terms don't allow third-party apps to collect or store claude.ai session keys, or to
+  reach claude.ai automatically. Signing in could put their account at risk, including suspension.
+  Anthropic hasn't approved Clouding Bar. It's their own risk.
+- Without it everything else keeps working. What goes away: Cowork tasks, claude.ai chats, the
+  account-wide limit, and sending to a Claude Desktop or Terminal chat through Remote Control without
+  switching windows.
+
+Don't recommend it, don't present it as a normal step and never sign in for them. Only if they say they
+want Cowork tasks anyway: in the app, **Settings → General → Claude → claude.ai → Sign In…** — it
+shows the same warning and waits for **I Understand**, then claude.ai's sign-in page; the window closes
+by itself. Cowork tasks (and claude.ai and Claude Desktop chats) then show up in the chats list, with
+the account-wide 5-hour limit. No plugin, no folder, nothing for you to write.
 
 A question Cowork asks in Claude Desktop shows up on the Touch Bar and in the pill, and can be
-answered there (Claude Desktop's window has to be on the current desktop).
+answered there (Claude Desktop's window has to be on the current desktop) — this is read from the
+window and needs no sign-in.
 
 ## In Claude Code
 
