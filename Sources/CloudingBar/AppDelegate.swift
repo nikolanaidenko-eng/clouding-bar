@@ -2440,6 +2440,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// claude.ai's cards of the sessions it holds, by "cse_…" (ClaudeAI.onRemote).
     private var remoteCards: [String: ClaudeAIChats.Remote] = [:]
+    /// Cowork's numbers for Stats, from those cards.
+    private let coworkLedger = CoworkLedger()
     /// claude.ai refused words for these: keys again for a while, not the
     /// same refusal every 10 s.
     private var remoteRefused: [String: Date] = [:]
@@ -2534,6 +2536,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func remoteCard(_ card: ClaudeAIChats.Remote, for id: String) {
         remoteCards[id] = card
         store.apply(coworkCard: card, session: id)
+        // Stats: what this read adds to the task's record (owner, 30.10).
+        if let task = store.sessions.values.first(where: { $0.entrypoint == "cowork" && $0.remoteSession == id }),
+           task.id.hasPrefix("cowork-") {
+            coworkLedger.record(card, task: String(task.id.dropFirst("cowork-".count)), title: task.title, model: task.model)
+        }
         guard let session = store.alive.first(where: { $0.remoteSession == id && $0.entrypoint == "cowork" }) else { return }
         let current = requests.first { $0.remoteKey != nil && $0.sessionId == session.id }
         if let current, current.remoteKey != card.pending?.requestId {

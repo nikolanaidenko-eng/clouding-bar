@@ -73,6 +73,14 @@ struct StatsTab: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear(perform: load)
+        // Cowork's numbers grow while this is open (counted as its cards are read).
+        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
+            guard var s = stats else { return }
+            let cowork = DayStats.cowork(Cowork.kept())
+            guard cowork != s.coworkHistory else { return }
+            s.coworkHistory = cowork
+            stats = s
+        }
     }
 
     private func load() {

@@ -165,6 +165,12 @@ enum ClaudeAIChats {
         /// Claude is at it (`worker_status` "running"): the list says so only
         /// now and then, and a reply of a few seconds slipped by (30.10).
         var working = false
+        /// What the task has used so far as Stats counts it (fresh input,
+        /// cache writes, output — not cache reads, as for Claude Code), and
+        /// when it began. A running total, as far as can be told from here
+        /// (30.10); Cowork.step works out what each read adds.
+        var usedTokens: Int?
+        var created: Date?
     }
 
     /// A question or permission waiting there (`pending_action`).
@@ -198,6 +204,11 @@ enum ClaudeAIChats {
         }
         if let cost = ((meta?["usage"] as? [String: Any])?["cost_usd"] as? NSNumber)?.doubleValue,
            cost.isFinite, cost >= 0, cost < 1_000_000 { r.costUSD = cost }
+        if let usage = meta?["usage"] as? [String: Any] {
+            let parts = ["input_tokens", "cache_write_tokens", "output_tokens"].compactMap { usage[$0] as? NSNumber }
+            if !parts.isEmpty { r.usedTokens = parts.map(total).reduce(0, +) }
+        }
+        r.created = date(o["created_at"])
         if o["worker_status"] as? String == "requires_action",
            let p = meta?["pending_action"] as? [String: Any],
            let tool = p["tool_name"] as? String, !tool.isEmpty, tool.count <= 128,
@@ -312,6 +323,12 @@ enum ClaudeAIChats {
         static func bytes(_ field: Int, _ b: [UInt8]) -> [UInt8] { varint(field << 3 | 2) + varint(b.count) + b }
         static func string(_ field: Int, _ s: String) -> [UInt8] { bytes(field, Array(s.utf8)) }
         static func message(_ field: Int, _ inner: [UInt8]) -> [UInt8] { bytes(field, inner) }
+    }
+
+    /// A running total: far past `clamp`'s bound for one reply, but not past sense.
+    private static func total(_ n: NSNumber) -> Int {
+        let d = n.doubleValue
+        return d.isFinite && d > 0 ? Int(min(d, 1e12)) : 0
     }
 
     private static func clamp(_ n: NSNumber?) -> Int {
