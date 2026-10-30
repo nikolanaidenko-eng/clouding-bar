@@ -2,8 +2,10 @@
 
 **Claude Code at a glance — on your Touch Bar, in a floating pill, or in the notch.**
 
+Made by [Nikola](https://github.com/nikolanaidenko-eng).
+
 <p>
-  <a href="https://github.com/wvnikola/clouding-bar/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/wvnikola/clouding-bar?label=release&color=5E5CE6"></a>
+  <a href="https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/nikolanaidenko-eng/clouding-bar?label=release&color=5E5CE6"></a>
   <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-111111?logo=apple">
   <img alt="Signed and notarized by Apple" src="https://img.shields.io/badge/notarized-Apple-0A84FF">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-D97757">
@@ -76,7 +78,7 @@ One Mac app, installed once, whichever way you get it. What else each place need
 in a terminal), not in the shell:
 
 ```
-/plugin marketplace add wvnikola/clouding-bar
+/plugin marketplace add nikolanaidenko-eng/clouding-bar
 /plugin install clouding-bar@clouding-bar
 /reload-plugins
 /clouding-bar:install
@@ -86,14 +88,14 @@ in a terminal), not in the shell:
 with Clouding Bar's Developer ID, notarized by Apple) and puts it in
 Applications. When the app opens, say **Connect**, then allow Accessibility.
 
-**2. The .dmg.** [Download the latest](https://github.com/wvnikola/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
-(or a version from [Releases](https://github.com/wvnikola/clouding-bar/releases)),
+**2. The .dmg.** [Download the latest](https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
+(or a version from [Releases](https://github.com/nikolanaidenko-eng/clouding-bar/releases)),
 open it and drag **Clouding Bar** into Applications.
 
 **3. From source,** with the Xcode Command Line Tools (`xcode-select --install`):
 
 ```sh
-git clone https://github.com/wvnikola/clouding-bar
+git clone https://github.com/nikolanaidenko-eng/clouding-bar
 cd clouding-bar
 make install
 ```

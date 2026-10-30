@@ -26,7 +26,7 @@ you get it. What else each place needs:
 In Claude Code — the terminal, VS Code or Claude Desktop's Code tab:
 
 ```
-/plugin marketplace add wvnikola/clouding-bar
+/plugin marketplace add nikolanaidenko-eng/clouding-bar
 /plugin install clouding-bar@clouding-bar
 /reload-plugins
 /clouding-bar:install
@@ -56,7 +56,7 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 Cowork tasks then show up in the chats list. No plugin and no connected
 folder are needed. If you'd like Cowork to fetch the app for you, add the
 plugin in Claude Desktop (**Customize** → **Plugins** → **Add** → **Add
-marketplace** → `wvnikola/clouding-bar`) and ask a task "walk me
+marketplace** → `nikolanaidenko-eng/clouding-bar`) and ask a task "walk me
 through Clouding Bar": it gives you the link to the newest .dmg and tells you
 what to click. Had the plugin before 1.2.8? Update it there (or remove it): older ones
 still ask Cowork to save its status to a folder, which nothing reads now.
@@ -74,8 +74,8 @@ Codex chats show up even before step 2, read from Codex's own files.
 
 ## Download
 
-[Download the latest .dmg](https://github.com/wvnikola/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
-(or `Clouding-Bar-<version>.dmg` from [Releases](https://github.com/wvnikola/clouding-bar/releases)), open it
+[Download the latest .dmg](https://github.com/nikolanaidenko-eng/clouding-bar/releases/latest/download/Clouding-Bar.dmg)
+(or `Clouding-Bar-<version>.dmg` from [Releases](https://github.com/nikolanaidenko-eng/clouding-bar/releases)), open it
 and drag **Clouding Bar** into Applications. Releases are signed and
 notarized by Apple. Opened straight from the disk image, it offers to move
 itself to Applications (from the image it can't update itself), opens from
@@ -114,7 +114,7 @@ auto-update.
 You need the Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
-git clone https://github.com/wvnikola/clouding-bar
+git clone https://github.com/nikolanaidenko-eng/clouding-bar
 cd clouding-bar
 make install
 ```

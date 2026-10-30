@@ -1,8 +1,8 @@
 # Clouding Bar: submitting the plugin to Anthropic's directory
 
 > **Not submitted (owner, 30.10): the app's claude.ai sign-in goes against Anthropic's terms for third-party apps.**
-> The plugin stays on GitHub only, installed from its own marketplace, `wvnikola/clouding-bar`
-> (`/plugin marketplace add wvnikola/clouding-bar`); it isn't listed in Anthropic's directory and the
+> The plugin stays on GitHub only, installed from its own marketplace, `nikolanaidenko-eng/clouding-bar`
+> (`/plugin marketplace add nikolanaidenko-eng/clouding-bar`); it isn't listed in Anthropic's directory and the
 > README and docs don't say it is. Anthropic's words, on
 > [Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance): "developers may not
 > collect, store, or intermediate Claude.ai credentials or session tokens", and Anthropic "does not
@@ -19,7 +19,7 @@ https://claude.com/docs/plugins/pre-submission-checklist.md, https://claude.com/
 - **Short description:** Every Claude Code chat on your Mac's Touch Bar, a floating pill or the notch; answer permissions and questions from there.
 - **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. No account, no analytics, no server. (Cowork tasks show in the Mac app through its own optional claude.ai sign-in, not through this plugin; the plugin never talks to claude.ai.)
 - **Works in:** Claude Code (Mac). In Cowork it only helps install the Mac app (its guide); Cowork's tasks reach the app through the app's own claude.ai sign-in. Hooks are ignored in Chat (platform-support table), so Chat gets nothing from it.
-- **Repository:** https://github.com/wvnikola/clouding-bar, plugin path `plugin`, branch `main`. License: MIT.
+- **Repository:** https://github.com/nikolanaidenko-eng/clouding-bar, plugin path `plugin`, branch `main`. License: MIT.
 - **Icon:** `plugin/.claude-plugin/icon.png` (1024x1024, from the app icon).
 
 ## Screenshots (docs/images/)
@@ -47,10 +47,10 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 
 Checked 30.10 on 1.2.20: `claude plugin validate plugin` and the marketplace pass; no `.DS_Store`, no file over 256 KiB, no `!` lines in commands or skills.
 
-1. Needs a Pro/Max/Team/Enterprise claude.ai account; connect GitHub in claude.ai (account with push rights to wvnikola/clouding-bar).
+1. Needs a Pro/Max/Team/Enterprise claude.ai account; connect GitHub in claude.ai (account with push rights to nikolanaidenko-eng/clouding-bar).
 2. Push this branch to `main` first (the directory reads the repository; it must be public before going live).
 3. Open https://claude.ai/directory/manage, **Submit new**, **Plugin bundle**.
-4. Source: repository `wvnikola/clouding-bar`, plugin path `plugin`, branch empty (default). **Validate**; fix anything marked Blocks.
+4. Source: repository `nikolanaidenko-eng/clouding-bar`, plugin path `plugin`, branch empty (default). **Validate**; fix anything marked Blocks.
 5. Check Listing details; Data handling: answers above; Compliance: contact email, tick all four acknowledgements.
 6. Review and submit: keep **GitHub push webhook**; **Submit for review**. Then watch status in **Submissions**; when it passes, **Publish** (a reviewer publishes it).
 7. Fee: none mentioned in the docs; review time "isn't fixed".
