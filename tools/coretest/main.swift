@@ -1498,18 +1498,16 @@ do { // A Cowork task's context of its real window, and its cost, from its card 
 
 do { // Words into a Cowork task's chat as claude.ai's page sends them, so the chat shows them (owner, 30.10)
     let body = ClaudeAIChats.chatMessage("задай мне вопрос с 2 вариантами", chat: "11111111-aaaa-4bbb-8ccc-000000000076",
-                                         after: "44444444-aaaa-4bbb-8ccc-0000000000e0", mutation: ("sess_0000000000000001", 5),
-                                         message: "55555555-aaaa-4bbb-8ccc-000000000370", timeZone: "Europe/Amsterdam", language: "ru")
+                                         mutation: ("sess_0000000000000001", 5), message: "55555555-aaaa-4bbb-8ccc-000000000370",
+                                         reply: "44444444-aaaa-4bbb-8ccc-0000000000e0", timeZone: "Europe/Amsterdam", language: "ru")
     // The page's own request (30.10), less two fields of its own the server doesn't ask for.
     let page = "0a640a190a15736573735f303030303030303030303030303030311005122431313131313131312d616161612d346262622d386363632d30303030303030303030373618033a18080110011801300140015001b00101c00101e001018802017205656e2d5553129f010a2435353535353535352d616161612d346262622d386363632d303030303030303030333730122434343434343434342d616161612d346262622d386363632d3030303030303030303065301a38d0b7d0b0d0b4d0b0d0b920d0bcd0bdd0b520d0b2d0bed0bfd180d0bed18120d181203220d0b2d0b0d180d0b8d0b0d0bdd182d0b0d0bcd0b862104575726f70652f416d7374657264616d6a027275900101"
     check(body.map { String(format: "%02x", $0) }.joined() == page, "a chat message's bytes as claude.ai's page sends them")
     check(ClaudeAIChats.Proto.varint(300) == [0xAC, 0x02] && ClaudeAIChats.Proto.varint(0) == [0],
           "protobuf varints")
-    let listed = ClaudeAIChats.chats(["data": [["uuid": "11111111-aaaa-4bbb-8ccc-000000000076",
-                                                "current_leaf_message_uuid": "44444444-aaaa-4bbb-8ccc-0000000000e0"],
-                                               ["uuid": "11111111-aaaa-4bbb-8ccc-000000000077", "current_leaf_message_uuid": "../x"]]])
-    check(listed.first?.leaf == "44444444-aaaa-4bbb-8ccc-0000000000e0" && listed.last?.leaf == nil,
-          "a chat's latest message, what a new one follows; not an id: none")
+    let fresh = ClaudeAIChats.chatMessage("hi", chat: "11111111-aaaa-4bbb-8ccc-000000000076", mutation: ("sess_1", 1))
+    check(fresh.count > 100 && fresh != ClaudeAIChats.chatMessage("hi", chat: "11111111-aaaa-4bbb-8ccc-000000000076", mutation: ("sess_1", 1)),
+          "each message and its reply get new ids of their own (a server's v5 id: refused, 30.10)")
 }
 
 do { // Through claude.ai, without the window in front (owner, 29.10): a session's card, what goes, Desktop's Code chats
