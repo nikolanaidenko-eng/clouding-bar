@@ -17,7 +17,7 @@ https://claude.com/docs/plugins/pre-submission-checklist.md, https://claude.com/
 
 touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, stats.png, settings.png (optional: tour.png, touchbar-short.png, demo.gif).
 
-## Data handling answers (from README, "Private by design")
+## Data handling answers (from the README's "Private by design" and docs/privacy.md)
 
 - **Reads or stores personal data?** Chat titles and status of the user's own Claude sessions, kept locally in `~/.cloudingbar` on the user's Mac. Never reads Claude Code credentials.
 - **Sends data elsewhere than declared connectors?** No server of ours, no analytics. Exceptions, all user-visible: (1) once a day a plain request to GitHub's public releases list for the update check (can be switched off) and the download on install; (2) optional short chat names: the app runs the user's own `claude -p` with Haiku, so the chat title and first 400 letters of the first message go to Anthropic, same place the chat already goes (switchable off); (3) dictation uses on-device recognition, audio goes to Apple only if the user ticks "Allow sending audio to Apple" (off by default); (4) opt-in "claude.ai sign-in (limit, Cowork tasks and chats)": session key stays in Keychain, goes only to claude.ai.
