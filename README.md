@@ -183,7 +183,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   tasks also the context and the model. Click one to open it in Claude
   Desktop. A Cowork task's questions and permissions come to the bar, and
   your messages go to it through claude.ai — whatever Claude Desktop shows
-  in front; the same for a Claude Code chat in Claude Desktop or Terminal
+  in front, and shown in its chat as if typed there (pictures reach Claude,
+  but don't show in the chat yet). Words go the same way to a plain claude.ai
+  chat; and to a Claude Code chat in Claude Desktop or Terminal
   with Remote Control on (`/remote-control`, or `"remoteControlAtStartup": true`
   for every new one). The account-wide 5-hour and weekly limit come with it (Desktop,
   Cowork and claude.ai chats count too). No plugin, no connected folder,
@@ -406,26 +408,37 @@ identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, off until you sign in,
 **Settings → General → Claude → claude.ai → Sign In…**: the app then
 reads your account's limit, Cowork tasks and chats from claude.ai, and sends
-what you send from the widget or the bar to a Cowork task or to a Claude
-Desktop or Terminal Claude Code chat with Remote Control on. Only to claude.ai, with the session
+what you send from the widget or the bar to a Cowork task, a claude.ai chat,
+or a Claude Desktop or Terminal Claude Code chat with Remote Control on. Only to claude.ai, with the session
 key as a cookie, never following redirects:
 
 - `/api/organizations` — once;
 - `/api/organizations/{org}/usage` — every minute (the 5-hour and weekly limit);
 - `/api/organizations/{org}/chat_conversations_v2` (or the older
-  `chat_conversations`, if claude.ai doesn't know it) — every 20 s while a
-  chat runs or waits, else every minute (names and states);
+  `chat_conversations`, if claude.ai doesn't know it) — every 5 s while a
+  chat runs, waits or was active in the last two minutes, else every 15 s
+  (names and states);
+- `/v1/code/sessions?limit=1&tags=bard-conversation:{chat}` — for a chat active
+  in the last half hour that isn't known as a Cowork task yet, at most once a
+  minute (5 minutes once quiet): whether it is one;
 - `/v1/code/sessions/{id}/events` — for a Cowork task that is running or just
   finished (context and model). This answer holds the task's messages too: the
   app keeps only the latest reply's model, token counts and text (for the
   start of the answer), in memory, and writes none of the messages to disk or
   to its log;
-- `/v1/code/sessions/{id}` — for a Cowork task waiting for you (what it asks:
-  the question or permission, shown on the bar), and every 30 s for the
+- `/v1/code/sessions/{id}` — for each Cowork task active in the last half hour,
+  every 4 s while it works, waits for you or was just written to, else every
+  15 s (whether it works, what it asks — the question or permission, shown on
+  the bar — its context, its window and its cost), and every 30 s for the
   Remote Control of a Claude Code chat in Claude Desktop or Terminal (whether
   it's on the line);
-- POST `/v1/code/sessions/{id}/events` — only when you send: your message to
-  that task or chat, or your answer to what it asks. Nothing else is written.
+- POST `/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction`
+  — only when you send words to a Cowork task or a claude.ai chat: your message,
+  as claude.ai's own page sends it, so the chat shows it. It says it comes from
+  claude.ai's web client (`web_claude_ai`), as the page does;
+- POST `/v1/code/sessions/{id}/events` — only when you send: a message with a
+  picture to a Cowork task, a message to a Remote Control chat, or your answer
+  to what a task asks. Nothing else is written.
 
 Sign In opens a window with claude.ai's own sign-in pages (and Google's or
 Apple's, if you sign in with one), in a browser store that is thrown away
@@ -436,7 +449,7 @@ except to claude.ai. Signing in starts a new
 login session on your account, as signing in anywhere does (claude.ai may
 email you about it).
 
-The names, states, model and context of the chats shown (those at work,
+The names, states, model, context, a Cowork task's session id and window of the chats shown (those at work,
 waiting for you or active in the last half hour; names up to 200 characters) are kept in
 `~/.cloudingbar/sessions.json`, so the list is back after a restart; no
 message text is kept. **Sign Out** deletes the key from your Mac and forgets

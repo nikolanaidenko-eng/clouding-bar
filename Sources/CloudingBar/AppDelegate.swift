@@ -3036,7 +3036,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func askClaudeAIChats() {
         let alert = NSAlert()
         alert.messageText = "Show your Cowork tasks and claude.ai chats too?"
-        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It talks only to claude.ai — reads, and sends only what you send to a task — and keeps the chats' names on this Mac. You can sign out any time in Settings → General → Claude."
+        alert.informativeText = "Clouding Bar can now show them in its chats list — working, done or waiting for you, and a Cowork task's context — with the claude.ai key you gave it for the limit. It talks only to claude.ai — reads, and sends only what you send to a task or chat — and keeps the chats' names on this Mac. You can sign out any time in Settings → General → Claude."
         alert.addButton(withTitle: "Show Them")
         alert.addButton(withTitle: "Only the Limit")
         NSApp.activate(ignoringOtherApps: true)
