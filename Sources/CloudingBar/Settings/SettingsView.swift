@@ -961,10 +961,10 @@ struct GeneralTab: View {
                 if let message = model.setupMessage { note(message) }
                 SettingsRow(title: "claude.ai: Cowork, chats and limit",
                             hint: model.hasLiveKey && model.config.claudeAIChats != true
-                                ? "The whole account's limit · \(model.liveLimitState). Cowork tasks and chats aren't read with this key: Sign Out, then Sign In to show them"
+                                ? "The whole account's limit · \(model.liveLimitState). Cowork tasks and chats aren't read with this key: Sign Out, then Sign In to show them · Against Anthropic's terms for third-party apps: use at your own risk"
                                 : model.hasLiveKey
-                                ? "Cowork tasks and your chats of the last half hour — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState)"
-                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Unofficial: the key stays in Keychain and goes only to claude.ai",
+                                ? "Cowork tasks and your chats of the last half hour — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState) · Against Anthropic's terms for third-party apps: use at your own risk"
+                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Against Anthropic's terms for third-party apps: could put your account at risk, use at your own risk. Unofficial: the key stays in Keychain and goes only to claude.ai",
                             // The box's last row has no line under it.
                             divider: !model.accessibilityTrusted) {
                     if model.hasLiveKey && !model.liveKeyRejected {
