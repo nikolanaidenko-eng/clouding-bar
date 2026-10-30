@@ -189,11 +189,16 @@ final class ClaudeAI {
         // Cowork tasks of the last half hour: their cards, whatever the list
         // says — at work, a question, done (owner, 30.10: "everything from
         // claude.ai"; a task started in Claude Desktop woke nothing).
-        let tasks = readChats ? chats.filter { $0.isCowork && !$0.archived && now.timeIntervalSince($0.lastActive ?? .distantPast) < ClaudeAIChats.recent }
-            .compactMap(\.workspace) : []
-        let cards = tasks.filter { ws in
-            let hot = cardState[ws].map { $0.working || $0.waiting != nil } == true || now.timeIntervalSince(nudged[ws] ?? .distantPast) < 120
-            return now.timeIntervalSince(cardRead[ws] ?? .distantPast) >= (hot ? 4 : 15)
+        let tasks = readChats ? chats.filter { $0.isCowork && !$0.archived && now.timeIntervalSince($0.lastActive ?? .distantPast) < ClaudeAIChats.recent } : []
+        // At work by the list or its card, waiting, or just written to: first.
+        let hot = { (chat: ClaudeAIChats.Chat) -> Bool in
+            guard let ws = chat.workspace else { return false }
+            return chat.running || chat.needsInput != nil || self.cardState[ws].map { $0.working || $0.waiting != nil } == true
+                || now.timeIntervalSince(self.nudged[ws] ?? .distantPast) < 120
+        }
+        let cards = (tasks.filter(hot) + tasks.filter { !hot($0) }).compactMap { chat -> String? in
+            guard let ws = chat.workspace, now.timeIntervalSince(self.cardRead[ws] ?? .distantPast) >= (hot(chat) ? 4 : 15) else { return nil }
+            return ws
         }
         if !cards.isEmpty { fetchCards(Array(cards.prefix(3)), org: org, key: key) }
     }

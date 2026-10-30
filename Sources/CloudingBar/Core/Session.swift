@@ -98,6 +98,11 @@ final class Session {
     var settledSeen: Date?
     var sentAt: Date?
     var sentSettled: Date?
+    /// Read from claude.ai's list before (a first reply's end counts then).
+    var listed = false
+    /// Said done before the list's reply end came (its card was first): that
+    /// end is this done's, not another (review, 30.10: two for one reply).
+    var endAhead = false
     /// Reasoning effort (CLAUDE_EFFORT), e.g. "xhigh".
     var effort: String?
     /// Lines added and removed by Claude's edits in this session.
