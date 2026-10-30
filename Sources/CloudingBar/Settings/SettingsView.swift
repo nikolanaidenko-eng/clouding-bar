@@ -1483,9 +1483,14 @@ struct WidgetPreview: View {
     @StateObject private var state = WidgetState()
     /// With no chat open: the widget with example numbers.
     @StateObject private var example = AppModel()
-    @State private var panel = false
+    /// "pill", "panel" or "notch".
+    @State private var shape = "pill"
     @State private var panelSize = CGSize(width: 480, height: 280)
+    @State private var notchSize = CGSize(width: 420, height: 32)
     @State private var pull: Pull?
+
+    private var panel: Bool { shape == "panel" }
+    private var notch: Bool { shape == "notch" }
 
     /// The outline being pulled: `h` −1/1 for the left/right end, `v` 1/−1
     /// for the top/bottom; in the pill's own points (the copy is scaled).
@@ -1500,10 +1505,11 @@ struct WidgetPreview: View {
     private var shown: AppModel { model.hasSession ? model : example }
 
     /// The pill's size as the widget works it out (as pulled, while it is);
-    /// the panel's, measured.
+    /// the panel's and the island's, measured.
     private var natural: CGSize {
         if panel { return panelSize }
-        return state.pillEditSize ?? PillLayout(model: shown).arrange(width: shown.pillBudget, height: shown.pillHeightBudget).frame
+        if let pulled = state.pillEditSize { return pulled }
+        return notch ? notchSize : PillLayout(model: shown).arrange(width: shown.pillBudget, height: shown.pillHeightBudget).frame
     }
 
     private func scale(for size: CGSize) -> CGFloat {
@@ -1518,10 +1524,10 @@ struct WidgetPreview: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
-                SettingsSegments(options: [("pill", "Pill"), ("panel", "Panel")], selected: panel ? "panel" : "pill",
+                SettingsSegments(options: [("pill", "Pill"), ("panel", "Panel"), ("notch", "Notch")], selected: shape,
                                  tint: 0x8E8E93) {
-                    panel = $0 == "panel"
-                    state.mode = panel ? .panel : .pill
+                    shape = $0
+                    place()
                     measure()
                 }
                 if !model.hasSession {
@@ -1541,12 +1547,13 @@ struct WidgetPreview: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
             Text(panel ? "Drag a block up or down by the bar over it, a button onto another to swap them. The widget itself only moves."
+                 : notch ? "In the notch: pull its ends or bottom — wider, the pill's items around the camera; back in, compact again."
                  : "Drag an item onto another to swap them, an item's right edge to make it wider or narrower, the outline for the whole widget. The widget itself only moves.")
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear {
-            sync(); state.mode = panel ? .panel : .pill; measure()
+            sync(); place(); measure()
             state.pillMouseDown = { _ in beginPull() }
             state.pillMouseDragged = { _ in movePull() }
             state.pillMouseUp = { _ in endPull() }
@@ -1559,13 +1566,28 @@ struct WidgetPreview: View {
 
     private func sync() { example.fillExample(from: model) }
 
-    private var most: CGFloat { PillLayout(model: shown).maxWidth }
+    /// The island as on this Mac's screen: its camera, or a drawn notch.
+    private var camera: (width: CGFloat, height: CGFloat) {
+        NSScreen.main.map(WidgetController.notch(of:)) ?? (0, 32)
+    }
+
+    private func place() {
+        state.mode = panel ? .panel : .pill
+        state.notched = notch
+        state.notchWidth = camera.width
+        state.notchHeight = camera.height
+    }
+
+    private var most: CGFloat {
+        PillLayout(model: shown).maxWidth + (notch ? camera.width + 2 * NotchView.shoulder : 0)
+    }
     private var mostHeight: CGFloat { NSScreen.main?.visibleFrame.height ?? 800 }
 
     private func beginPull() {
         guard !panel, let press = state.pillPress, let rim = WidgetState.pillRim(press.point, in: press.size) else { return }
         let size = natural
-        pull = Pull(start: NSEvent.mouseLocation, size: size, h: rim.h, v: rim.v, scale: scale(for: size), raw: size)
+        // The island hangs from the top: its ends and bottom pull.
+        pull = Pull(start: NSEvent.mouseLocation, size: size, h: rim.h, v: notch ? -1 : rim.v, scale: scale(for: size), raw: size)
         withAnimation(.cb(0.15)) { state.pillEditSize = size }
     }
 
@@ -1576,7 +1598,7 @@ struct WidgetPreview: View {
                        height: r.size.height + CGFloat(r.v) * (p.y - r.start.y) / r.scale)
         pull = r
         state.pillEditSize = CGSize(width: min(max(r.raw.width, PillLayout.minWidth), most),
-                                    height: min(max(r.raw.height, PillLayout.height(rows: 1)), mostHeight))
+                                    height: min(max(r.raw.height, notch ? camera.height : PillLayout.height(rows: 1)), mostHeight))
     }
 
     /// Let go: the widget takes that size. Taller than wide, it stands up
@@ -1585,6 +1607,15 @@ struct WidgetPreview: View {
     private func endPull() {
         guard let r = pull else { return }
         pull = nil
+        if notch {
+            // Pulled in that far: compact again.
+            let compact = r.raw.width <= NotchView.compactWidth(camera: camera.width) + 24
+            model.setConfig("notchWidth", compact ? 0 : Double(min(most, r.raw.width)))
+            model.setConfig("notchHeight", compact ? 0 : Double(min(mostHeight, max(PillLayout.height(rows: 1), r.raw.height))))
+            withAnimation(.cb(0.2)) { state.pillEditSize = nil }
+            measure()
+            return
+        }
         let height = min(mostHeight, max(PillLayout.height(rows: 1), r.raw.height))
         if PillLayout.isVertical(width: r.raw.width, height: height) {
             let fits = PillLayout(model: shown).arrange(width: max(PillLayout.minWidth, r.raw.width), height: height).natural
@@ -1597,11 +1628,15 @@ struct WidgetPreview: View {
     }
 
     private func measure() {
-        guard panel else { return }
+        guard panel || notch else { return }
         let s = WidgetState()
-        s.mode = .panel
-        let size = NSHostingView(rootView: WidgetView(model: shown, state: s).fixedSize()).fittingSize
-        if size.width > 0, size.height > 0 { panelSize = size }
+        s.mode = panel ? .panel : .pill
+        s.notched = notch
+        s.notchWidth = camera.width
+        s.notchHeight = camera.height
+        let size = NSHostingView(rootView: WidgetView(model: shown, state: s).environment(\.cbPreview, true).fixedSize()).fittingSize
+        guard size.width > 0, size.height > 0 else { return }
+        if panel { panelSize = size } else { notchSize = size }
     }
 }
 
