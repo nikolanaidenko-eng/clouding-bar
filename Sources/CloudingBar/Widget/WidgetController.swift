@@ -431,7 +431,9 @@ final class WidgetController: NSObject {
             withAnimation(.cb(0.15)) { state.pillEditSize = frame.size }
             layout()
         } else {
-            gesture = .move(start: mouse, anchor: anchor, moved: false)
+            // From where it stands: an anchor kept on a screen that's gone
+            // would leave the pointer off the pill for the whole drag.
+            gesture = .move(start: mouse, anchor: docked ? anchor : CGPoint(x: panel.frame.midX, y: panel.frame.maxY), moved: false)
         }
     }
 
@@ -499,8 +501,14 @@ final class WidgetController: NSObject {
                 model.setConfig("widgetAtNotch", true)
                 layout()
             } else if moved, let a = dragAnchor {
-                model.setConfig("widgetPosition", [Double(a.x), Double(a.y)])
+                // Where it stands now, on the screen it was taken to, any of
+                // them; back there next time, and when that monitor returns.
+                let f = WidgetPlace.frame(size: panel.frame.size, anchor: a, fixed: nil, docked: false, pointer: NSEvent.mouseLocation, displays: displays)
+                let spot = CGPoint(x: f.midX, y: f.maxY)
+                dragAnchor = spot
+                model.setConfig("widgetPosition", [Double(spot.x), Double(spot.y)])
                 model.setConfig("widgetAtNotch", false)
+                DebugLog.note("widget: put at \(f)")
             } else {
                 set(.panel) // a click opens it right away
             }
@@ -666,7 +674,9 @@ final class WidgetController: NSObject {
         }
         let a = anchor
         // Kept on a screen.
-        let frame = WidgetPlace.frame(size: size, anchor: a, fixed: fixedEdge.map { ($0.x, $0.left) }, docked: docked, displays: displays)
+        var pointer: CGPoint?
+        if case let .move(_, _, moved)? = gesture, moved { pointer = NSEvent.mouseLocation }
+        let frame = WidgetPlace.frame(size: size, anchor: a, fixed: fixedEdge.map { ($0.x, $0.left) }, docked: docked, pointer: pointer, displays: displays)
         panel.level = level
         // In the notch it's flush with the screen's top: its shadow would
         // fall on a monitor above, the notch's shape there (owner, 30.10).

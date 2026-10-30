@@ -22,11 +22,12 @@ enum WidgetPlace {
     /// the anchor: a rectangle doesn't contain its top edge, so with a
     /// monitor above, the MacBook's top was the monitor's, and the widget
     /// went to the monitor's bottom (owner, 30.10). Off every screen, the
-    /// nearest, not the first.
-    static func bounds(anchor: CGPoint, docked: Bool, displays: [Display]) -> CGRect? {
+    /// nearest, not the first. While it's dragged, the screen the pointer is
+    /// on: that's where you're taking it, any screen of them.
+    static func bounds(anchor: CGPoint, docked: Bool, pointer: CGPoint? = nil, displays: [Display]) -> CGRect? {
         guard !displays.isEmpty else { return nil }
         if docked { return displays[notchIndex(displays)].frame }
-        let inside = CGPoint(x: anchor.x, y: anchor.y - 1)
+        let inside = pointer ?? CGPoint(x: anchor.x, y: anchor.y - 1)
         func gap(_ r: CGRect) -> CGFloat {
             hypot(max(r.minX - inside.x, 0, inside.x - r.maxX), max(r.minY - inside.y, 0, inside.y - r.maxY))
         }
@@ -43,10 +44,10 @@ enum WidgetPlace {
     /// The window for a size hanging from `anchor` (its top-centre), or from
     /// the end that stays put while the other is pulled.
     static func frame(size: CGSize, anchor: CGPoint, fixed: (x: CGFloat, left: Bool)?, docked: Bool,
-                      displays: [Display]) -> CGRect {
+                      pointer: CGPoint? = nil, displays: [Display]) -> CGRect {
         var frame = CGRect(x: anchor.x - size.width / 2, y: anchor.y - size.height, width: size.width, height: size.height)
         if let fixed { frame.origin.x = fixed.left ? fixed.x : fixed.x - size.width }
-        guard let bounds = bounds(anchor: anchor, docked: docked, displays: displays) else { return frame }
+        guard let bounds = bounds(anchor: anchor, docked: docked, pointer: pointer, displays: displays) else { return frame }
         frame.origin.x = min(max(frame.minX, bounds.minX), bounds.maxX - frame.width)
         frame.origin.y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
         return frame
