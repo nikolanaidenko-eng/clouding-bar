@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-30D158"></a>
 </p>
 
-https://github.com/user-attachments/assets/ac4b3e46-2d3a-4ece-a3a6-631e319ae3c9
+https://github.com/user-attachments/assets/f32d6303-e93c-4056-9749-47e9faaaa3a4
 
 <sub>2 minutes: the Touch Bar, the notch, the pill and the panel, answering Claude, Cowork, dictation, stats.</sub>
 
