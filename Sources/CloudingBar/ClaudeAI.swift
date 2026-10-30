@@ -6,7 +6,7 @@ import Foundation
 /// each is called, whether it works or waits for you, a Cowork task's
 /// context. The key gives full access to the account, so: kept only in
 /// the Keychain, sent only to claude.ai, no redirect followed; it reads
-/// (GET), and writes only what you send — your words to a Cowork task or a
+/// (GET), and writes only what you send — your words to a Cowork task, a chat or a
 /// desktop Code chat's Remote Control, your answer to what one asks
 /// (owner, 29.10: not typed into a window that must be in front). The
 /// addresses are unofficial and may stop working.
