@@ -33,6 +33,35 @@ enum ClaudeAIChats {
     /// till 28.10; owner: closed chats stayed in the list).
     static let recent: TimeInterval = 30 * 60
 
+    /// How often claude.ai is asked for the chats list and a Cowork task's
+    /// card (owner, 30.10: less often — every request is the automated access
+    /// Anthropic's terms warn about). The usage, a Remote Control card and a
+    /// task's events keep their own, slower pace.
+    enum Pace {
+        /// The poll timer's tick: nothing is asked more often.
+        static let tick: TimeInterval = 5
+        /// While something happens: a chat runs, waits or was active a
+        /// moment ago; a task works, waits for you or was just written to.
+        static let active: TimeInterval = 5
+        /// At rest.
+        static let quiet: TimeInterval = 30
+        /// A read is due a little before its interval is out: a tick of 5 s
+        /// that comes a hair early would else wait for the next one, and
+        /// 5 s would turn into 10 (and a waiting question into a late one).
+        static let slack: TimeInterval = 0.5
+
+        static func chats(busy: Bool) -> TimeInterval { busy ? active : quiet }
+        static func card(hot: Bool) -> TimeInterval { hot ? active : quiet }
+
+        /// The time to wait after a read of this pace before the next is due.
+        static func gap(_ every: TimeInterval) -> TimeInterval { every - slack }
+
+        /// Whether a read made at `last` is due again at `now`.
+        static func due(last: Date, every: TimeInterval, now: Date = Date()) -> Bool {
+            now.timeIntervalSince(last) >= gap(every)
+        }
+    }
+
     /// What claude.ai shows a chat in, by the session id the app keeps.
     static func sessionId(_ chat: Chat) -> String { (chat.isCowork ? "cowork-" : "claudeai-") + chat.uuid }
 
