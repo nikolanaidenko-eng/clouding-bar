@@ -25,11 +25,12 @@ Everything it does, in full. The [README](../README.md) has the short version.
   until the model is done — its first lines, without markdown or code.
 - **The pill** floats over your windows: which chat, the 5-hour limit, the
   context, when the limit resets, the model, how long the chat has been at
-  it, lines changed, the git branch, subagents. In Settings → Widget, pull
-  its outline to resize it — wider shows more, taller stands it up as a
-  column, pulled thinnest it keeps just the bars — drag items onto each
-  other to swap them, and an item's right edge to make it wider or
-  narrower. On screen it only moves, so a stray drag rearranges nothing.
+  it, lines changed, the git branch, subagents. Pull
+  its outline to resize it, on screen or in Settings → Widget — wider shows
+  more, taller stands it up as a column, pulled thinnest it keeps just the
+  bars. In Settings → Widget, drag items onto each other to swap them, and an
+  item's right edge to make it wider or narrower, so a stray drag on screen
+  rearranges nothing.
 - **The notch.** Drag the pill to the top of the screen and it docks in the
   notch, the numbers on either side of the camera. Macs without a notch get
   a drawn one. When Claude asks something, the notch grows so you can

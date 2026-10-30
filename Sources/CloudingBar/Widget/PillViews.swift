@@ -612,7 +612,7 @@ struct PillView: View {
         }
         .font(.system(size: 13).monospacedDigit())
         .foregroundColor(.cbText)
-        .background(PillDragHandle(state: state, resizable: preview))
+        .background(PillDragHandle(state: state, resizable: true))
         .modifier(Glass(radius: 22, border: model.request != nil ? Color.cbWarning.opacity(0.5) : .cbHairline))
         .overlay(outline)
         .transition(.scale(scale: 0.9).combined(with: .opacity))
@@ -631,7 +631,7 @@ struct PillView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.cbAction, lineWidth: 3)
                 .allowsHitTesting(false)
-        } else if preview && state.pillHover && model.request == nil && !model.listening && !state.pillTyping {
+        } else if state.pillHover && model.request == nil && !model.listening && !state.pillTyping {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.3), lineWidth: 1.5)
                 .allowsHitTesting(false)
@@ -1144,14 +1144,13 @@ struct PillButtonStyle: ButtonStyle {
     }
 }
 
-/// Lets the pill be dragged (and clicked); in Settings' copy its outline
-/// resizes it. It lies under the pill's content, so the items get their own
+/// Lets the pill be dragged (and clicked); its outline resizes it. It lies under the pill's content, so the items get their own
 /// clicks and drags.
 struct PillDragHandle: NSViewRepresentable {
     let state: WidgetState
     /// Off in the notch: it hangs from the top, so only its ends and bottom pull.
     var fromTop = true
-    /// Settings' copy: the outline pulls (owner, 29.10: sized there, not on screen).
+    /// The outline pulls (on the pill and the island; not on a card grown from it).
     var resizable = false
 
     final class HandleView: NSView {
