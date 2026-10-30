@@ -134,7 +134,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - A warning when the **context** fills up, with one tap to `/compact` (or
   let it compact by itself).
 
-**Codex too (beta)**
+**Codex too**
 - Clouding Bar follows OpenAI's **Codex** as well, with nothing to set up:
   it reads Codex's own session files (`~/.codex/sessions`), so its chats
   show up with their 5-hour and weekly limits (while a Codex chat is in
@@ -159,8 +159,7 @@ A first version for **Windows** is in [windows/](windows/README.md).
 - Not for Codex yet: its questions, the model picker, Stats, and words from
   the widget to a chat Codex's server doesn't have (VS Code's, the app's, an
   older Codex's): a chat known only from its files can't be told apart from a
-  shell in the same folder, so nothing is typed. It's little tested — tell us
-  what doesn't work.
+  shell in the same folder, so nothing is typed.
 
 **And**
 - A **tour** on first launch (and behind the ? in Settings): what to
@@ -471,7 +470,7 @@ as you move the pointer, and walks along the tabs.
   More…: open at login (and with Claude), do not disturb, the dictation
   language, appearance (auto, light, dark), short chat names, colourful or
   grey buttons, updates; Claude (the Claude Code connection, the 5-hour limit
-  in VS Code, claude.ai for Cowork and the limit); Codex, in beta, in a box of
+  in VS Code, claude.ai for Cowork and the limit); Codex in a box of
   its own (its hooks, live limits and sending); the context warning.
 - **Widget** — the widget itself on top, the pill or the panel, to arrange
   right there; show it, in the notch; behind More: follow the chat at work,
