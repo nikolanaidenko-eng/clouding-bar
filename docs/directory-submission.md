@@ -10,7 +10,7 @@ https://claude.com/docs/plugins/pre-submission-checklist.md, https://claude.com/
 - **Short description:** Every Claude Code chat on your Mac's Touch Bar, a floating pill or the notch; answer permissions and questions from there.
 - **Long description:** Clouding Bar is a Mac menu bar app that shows what Claude is doing at a glance: which chats are working, which are done, how full the context and the 5-hour limit are. When Claude asks for a permission or a question, you answer from the Touch Bar, the pill or the notch, without switching windows. This plugin is the link between Claude and the app: its hooks hand each event to the app on your Mac, and `/clouding-bar:install` downloads the newest signed and notarized release from GitHub. No account, no analytics, no server. (Cowork tasks show in the Mac app through its own optional claude.ai sign-in, not through this plugin; the plugin never talks to claude.ai.)
 - **Works in:** Claude Code (Mac). In Cowork it only helps install the Mac app (its guide); Cowork's tasks reach the app through the app's own claude.ai sign-in. Hooks are ignored in Chat (platform-support table), so Chat gets nothing from it.
-- **Repository:** https://github.com/wvnikola/clouding-bar, plugin path `plugin`, branch `main`. License: PolyForm Shield 1.0.0.
+- **Repository:** https://github.com/wvnikola/clouding-bar, plugin path `plugin`, branch `main`. License: MIT.
 - **Icon:** `plugin/.claude-plugin/icon.png` (1024x1024, from the app icon).
 
 ## Screenshots (docs/images/)
@@ -29,7 +29,6 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 1. `plugin/hooks/run.sh` execs `~/.cloudingbar/cloudingbar-hook`, a program outside the plugin, and reads `~/.claude/settings.json` (to step aside). Expect a "held for a reviewer" finding. README explains it.
 2. `scripts/install-app.sh` downloads and installs an app from GitHub (verifies Developer ID signature and notarization). Same: explain in the review notes.
 3. The plugin sits in a subfolder (`plugin/`) and `run.sh` uses shell variables and `$(...)`, so "Scripts the validator couldn't follow" holds the version for a reviewer (a hold, not a block; the hook commands themselves name only `${CLAUDE_PLUGIN_ROOT}/hooks/run.sh`, which is allowed). The doc's remedy is a plugin at its own repository root; not done.
-4. PolyForm Shield is source-available, not OSI open source: check against the Software Directory Policy.
 
 ## What the owner clicks
 

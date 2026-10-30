@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/wvnikola/clouding-bar",
   "repository": "https://github.com/wvnikola/clouding-bar",
-  "license": "PolyForm-Shield-1.0.0",
+  "license": "MIT",
   "keywords": [
     "macos",
     "menu-bar",

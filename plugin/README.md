@@ -35,6 +35,6 @@ or in the notch — and lets you answer permissions and questions from there.
 The 5-hour limit and the context reach the app through its status line, which a plugin can't
 set: the app adds it to `~/.claude/settings.json` when you say Connect (merged, backed up).
 
-Source: <https://github.com/wvnikola/clouding-bar>. License: PolyForm Shield 1.0.0.
+Source: <https://github.com/wvnikola/clouding-bar>. License: MIT.
 
 No network, except `/clouding-bar:install` downloading the app from GitHub. (The Mac app's own network use is in the main README.)
