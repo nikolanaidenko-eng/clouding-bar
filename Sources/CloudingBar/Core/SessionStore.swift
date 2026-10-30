@@ -144,6 +144,8 @@ final class SessionStore {
                 // Found to be a Cowork task (ClaudeAI looks it up by its chat):
                 // the same chat — its colour, and what waits for it, go along.
                 session.colorIndex = plain.colorIndex
+                session.settledSeen = plain.settledSeen
+                session.listed = plain.listed
                 onRenamed?(plain.id, id)
             }
             session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
@@ -154,10 +156,13 @@ final class SessionStore {
             if session.desktopChat != chat.page { link(session, desktopChat: chat.page, title: nil) }
             // A reply ended since the last read: one of a few seconds may never
             // show as at work in between (owner, 30.10: no wake, no "done").
-            let ended = chat.settledAt.map { at in session.settledSeen.map { at > $0 } ?? false } ?? false
+            let ended = session.listed && chat.settledAt.map { $0 > (session.settledSeen ?? .distantPast) } == true
             session.settledSeen = chat.settledAt ?? session.settledSeen
-            // Words sent from here and no reply ended since: at work.
-            if session.sentAt != nil && (chat.settledAt != session.sentSettled || now.timeIntervalSince(session.sentAt!) > 600) {
+            session.listed = true
+            // Words sent from here and no reply ended since: at work — unless
+            // a minute and a half on nothing says it works (review, 30.10).
+            if let sent = session.sentAt,
+               chat.settledAt != session.sentSettled || (now.timeIntervalSince(sent) > 90 && !chat.running && chat.needsInput == nil) {
                 session.sentAt = nil
             }
             let working = chat.running || chat.needsInput != nil || session.sentAt != nil
@@ -168,9 +173,12 @@ final class SessionStore {
             if session.activity != activity {
                 session.activity = activity
                 if activity == .work, let since = chat.runningSince { session.activitySince = min(since, now) }
+                // Done before its reply's end shows in the list: that end is this one's.
+                session.endAhead = activity == .sleep && !ended
                 changed = true
             } else if ended && activity == .sleep {
-                session.finishedAt = now
+                // A reply's end, never seen at work: done — once.
+                if session.endAhead { session.endAhead = false } else { session.finishedAt = now }
                 changed = true
             }
             if session.waitingNotice != (chat.needsInput != nil) {
@@ -213,6 +221,7 @@ final class SessionStore {
         guard let session = sessions[id], session.fromClaudeAI else { return }
         session.sentAt = now
         session.sentSettled = session.settledSeen
+        session.endAhead = false
         session.lastEvent = now
         if session.activity != .work {
             session.activity = .work

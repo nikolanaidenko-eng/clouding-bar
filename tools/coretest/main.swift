@@ -1522,6 +1522,22 @@ do { // A Cowork task wakes and is done from claude.ai alone: its card, words se
     check(cards.first?.running == true && cards.first?.needsInput == "question"
           && ClaudeAIChats.withCards(list(settled: t0), [:]).first?.running == false,
           "the list with its card's word: at work, a question waiting")
+    // Review, 30.10: its card says done first, the list's reply end comes after — one done, not two.
+    var atWork = list(settled: t0.addingTimeInterval(50)); atWork[0].running = true
+    store.apply(claudeAI: atWork)
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(50)))
+    let byCard = task?.finishedAt
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(70)))
+    check(byCard != nil && task?.finishedAt == byCard, "done by its card first, then the list's reply end: one done")
+    store.apply(claudeAI: list(settled: t0.addingTimeInterval(80)))
+    check(task?.finishedAt != byCard, "…and the next reply, unseen at work, is done again")
+    // A new task's first reply: its end goes from none to some.
+    var fresh = list(settled: t0); fresh[0] = ClaudeAIChats.Chat(uuid: "33333333-aaaa-4bbb-8ccc-000000000002")
+    fresh[0].workspace = "cse_10"; fresh[0].updatedAt = Date()
+    store.apply(claudeAI: fresh)
+    fresh[0].settledAt = Date()
+    store.apply(claudeAI: fresh)
+    check(store.sessions["cowork-33333333-aaaa-4bbb-8ccc-000000000002"]?.finishedAt != nil, "a new task's first short reply: done")
     check(ClaudeAIChats.remote(session: ["id": "cse_09", "worker_status": "running"])?.working == true
           && ClaudeAIChats.remote(session: ["id": "cse_09", "worker_status": "idle"])?.working == false,
           "a card's worker_status: running is at work")
