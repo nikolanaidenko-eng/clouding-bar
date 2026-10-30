@@ -6,6 +6,10 @@ import SwiftUI
 /// projects the time went to. The week hour by hour, the models and the
 /// tools wait behind More.
 struct StatsTab: View {
+    /// Held here: made in `body`, every update of the model started it over,
+    /// and it never fired while Claude worked (review, 30.10).
+    @State private var coworkTick = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
+    @State private var coworkChanged: Date?
     @ObservedObject var model: AppModel
     @State private var stats: WeekStats?
     @State private var shown = false
@@ -74,8 +78,12 @@ struct StatsTab: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear(perform: load)
         // Cowork's numbers grow while this is open (counted as its cards are read).
-        .onReceive(Timer.publish(every: 10, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(coworkTick) { _ in
             guard var s = stats else { return }
+            // Only once the file has changed: this goes on with the window closed.
+            let changed = (try? FileManager.default.attributesOfItem(atPath: Cowork.keptURL.path))?[.modificationDate] as? Date
+            guard changed != coworkChanged else { return }
+            coworkChanged = changed
             let cowork = DayStats.cowork(Cowork.kept())
             guard cowork != s.coworkHistory else { return }
             s.coworkHistory = cowork
