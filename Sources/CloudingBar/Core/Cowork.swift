@@ -68,20 +68,23 @@ enum Cowork {
     ///  - First read: everything so far goes to the hour the task began (else
     ///    to this hour), so the sum is right and the past isn't doubled.
     ///  - Later: the difference, to this hour. The same total again: nothing.
-    ///  - A total below the last (the count began over): not subtracted, all
-    ///    of the new one counts.
+    ///  - A total below the last: nothing, and the highest stays the mark. A
+    ///    card that's short or behind once mustn't count it all again (review,
+    ///    30.10: 500k, 499k, 501k came to 1M); a count begun over counts again
+    ///    from where it passes the mark — too little, never too much.
     ///  - Minutes: the time since the read before, while it works, at most
     ///    `longestGap` per read; seconds short of a minute carry on.
     static func step(total: Int?, last: Int?, created: Date?, now: Date, working: Bool,
                      since: Date?, carry: Int = 0) -> Step {
         var s = Step(tokenHour: hour(now), carry: carry, total: last)
         if let total {
-            s.total = total
-            if let last, total >= last {
-                s.tokens = total - last
+            if let last {
+                s.total = max(total, last)
+                s.tokens = max(total - last, 0)
             } else {
+                s.total = total
                 s.tokens = total
-                if last == nil, let created, created <= now { s.tokenHour = hour(created) }
+                if let created, created <= now { s.tokenHour = hour(created) }
             }
         }
         if working, let since {
@@ -106,19 +109,30 @@ final class CoworkLedger {
 
     init(url: URL = Cowork.keptURL) {
         self.url = url
-        kept = (try? JSONDecoder().decode([String: Cowork.Kept].self, from: Data(contentsOf: url))) ?? [:]
+        guard let data = try? Data(contentsOf: url) else {
+            kept = [:]
+            return
+        }
+        if let read = try? JSONDecoder().decode([String: Cowork.Kept].self, from: data) {
+            kept = read
+        } else {
+            // Can't be read: put aside, not written over — it's the only copy
+            // of what's been counted (review, 30.10).
+            kept = [:]
+            let aside = url.appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970))")
+            try? FileManager.default.moveItem(at: url, to: aside)
+        }
     }
 
     /// A read of a task's card (by its chat's id). True if the file changed.
     @discardableResult
-    func record(_ card: ClaudeAIChats.Remote, task id: String, title: String?, model: String?, now: Date = Date()) -> Bool {
+    func record(_ card: ClaudeAIChats.Remote, task id: String, model: String?, now: Date = Date()) -> Bool {
         let before = kept[id]
         let step = Cowork.step(total: card.usedTokens, last: before?.total, created: card.created, now: now,
                                working: card.working, since: seen[id], carry: before?.carry ?? 0)
         seen[id] = now
         guard before != nil || step.total != nil || step.minutes > 0 else { return false }
         var task = before ?? Cowork.Kept(usage: [:])
-        if let title, !title.isEmpty { task.title = String(title.prefix(200)) }
         if let model, !model.isEmpty { task.model = String(model.prefix(80)) }
         func add(_ hour: Int, tokens: Int, minutes: Int) {
             var spent = task.usage[String(hour)] ?? Cowork.Spent(tokens: 0, minutes: 0)

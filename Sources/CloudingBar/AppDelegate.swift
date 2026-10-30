@@ -2539,7 +2539,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Stats: what this read adds to the task's record (owner, 30.10).
         if let task = store.sessions.values.first(where: { $0.entrypoint == "cowork" && $0.remoteSession == id }),
            task.id.hasPrefix("cowork-") {
-            coworkLedger.record(card, task: String(task.id.dropFirst("cowork-".count)), title: task.title, model: task.model)
+            coworkLedger.record(card, task: String(task.id.dropFirst("cowork-".count)), model: task.model)
         }
         guard let session = store.alive.first(where: { $0.remoteSession == id && $0.entrypoint == "cowork" }) else { return }
         let current = requests.first { $0.remoteKey != nil && $0.sessionId == session.id }

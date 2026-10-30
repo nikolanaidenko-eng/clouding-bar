@@ -396,9 +396,12 @@ do { // Cowork in Stats, counted from a task's card (owner, 30.10: for Cowork wh
     check(grown.tokens == 800 && grown.tokenHour == h && grown.total == 5800, "Cowork step: later, the difference to this hour")
     let again = Cowork.step(total: 5800, last: 5800, created: at(h - 3), now: now, working: false, since: now.addingTimeInterval(-4))
     check(again.tokens == 0 && again.total == 5800, "Cowork step: the same total twice adds nothing")
-    let reset = Cowork.step(total: 300, last: 5800, created: at(h - 3), now: now, working: false, since: nil)
-    check(reset.tokens == 300 && reset.tokenHour == h && reset.total == 300,
-          "Cowork step: a total below the last (counted over) isn't subtracted; the new one counts, not to the start's hour")
+    let behind = Cowork.step(total: 499_000, last: 500_000, created: at(h - 3), now: now, working: false, since: nil)
+    let past = Cowork.step(total: 501_000, last: behind.total, created: at(h - 3), now: now, working: false, since: nil)
+    check(behind.tokens == 0 && behind.total == 500_000 && past.tokens == 1000 && past.total == 501_000,
+          "Cowork step: a total below the last adds nothing and keeps the mark; 500k, 499k, 501k come to 501k, not 1M (review, 30.10)")
+    let short = Cowork.step(total: 100, last: 500_000, created: nil, now: now, working: false, since: nil)
+    check(short.tokens == 0 && short.total == 500_000, "Cowork step: a card with only part of the total counts nothing again")
     check(Cowork.step(total: nil, last: 5000, created: nil, now: now, working: true, since: nil).total == 5000
           && Cowork.step(total: nil, last: 5000, created: nil, now: now, working: true, since: nil).tokens == 0,
           "Cowork step: a card without a total keeps the last")
@@ -432,45 +435,56 @@ do { // Cowork in Stats, counted from a task's card (owner, 30.10: for Cowork wh
         (try? JSONDecoder().decode([String: Cowork.Kept].self, from: Data(contentsOf: file))) ?? [:]
     }
     let ledger = CoworkLedger(url: file)
-    check(ledger.record(reading(1000), task: "t1", title: "Plan the trip", model: "claude-sonnet-5-5", now: now), "ledger: a first read is written")
-    check(stored()["t1"]?.usage[String(h - 2)] == Cowork.Spent(tokens: 1000, minutes: 0) && stored()["t1"]?.title == "Plan the trip"
+    check(ledger.record(reading(1000), task: "t1", model: "claude-sonnet-5-5", now: now), "ledger: a first read is written")
+    check(stored()["t1"]?.usage[String(h - 2)] == Cowork.Spent(tokens: 1000, minutes: 0) && stored()["t1"]?.title == nil
           && stored()["t1"]?.model == "claude-sonnet-5-5" && stored()["t1"]?.total == 1000,
-          "ledger: all so far at the hour it began, with its title and model")
+          "ledger: all so far at the hour it began, with its model; no title kept (stays after Sign Out, Stats doesn't use it)")
     try? FileManager.default.removeItem(at: file)
-    check(!ledger.record(reading(1000), task: "t1", title: "Plan the trip", model: "claude-sonnet-5-5", now: now.addingTimeInterval(4))
+    check(!ledger.record(reading(1000), task: "t1", model: "claude-sonnet-5-5", now: now.addingTimeInterval(4))
           && !FileManager.default.fileExists(atPath: file.path), "ledger: the same read again writes nothing")
-    check(ledger.record(reading(1400, working: true), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(8)),
+    check(ledger.record(reading(1400, working: true), task: "t1", model: nil, now: now.addingTimeInterval(8)),
           "ledger: growth is written")
     check(stored()["t1"]?.usage[String(h)]?.tokens == 400 && stored()["t1"]?.usage[String(h - 2)]?.tokens == 1000,
           "ledger: …the difference, this hour, beside what was there")
     // A restart: the total on disk is the last seen.
     let restarted = CoworkLedger(url: file)
-    check(!restarted.record(reading(1400), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(60)),
+    check(!restarted.record(reading(1400), task: "t1", model: nil, now: now.addingTimeInterval(60)),
           "ledger: after a restart the same total adds nothing")
-    check(restarted.record(reading(1500), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(64))
+    check(restarted.record(reading(1500), task: "t1", model: nil, now: now.addingTimeInterval(64))
           && stored()["t1"]?.usage[String(h)]?.tokens == 500 && stored()["t1"]?.model == "claude-sonnet-5-5",
           "ledger: …then only the growth; a model not given keeps the one known")
     // Minutes: a minute of reads every 4 s while it works, the hour of the read.
     let busy = CoworkLedger(url: file)
     var t = now.addingTimeInterval(100)
-    _ = busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t)
+    _ = busy.record(reading(1500, working: true), task: "t1", model: nil, now: t)
     for _ in 0..<15 {
         t = t.addingTimeInterval(4)
-        _ = busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t)
+        _ = busy.record(reading(1500, working: true), task: "t1", model: nil, now: t)
     }
     check(stored()["t1"]?.usage[String(h)]?.minutes == 1 && stored()["t1"]?.usage[String(h)]?.tokens == 500,
           "ledger: 15 reads 4 s apart while it works make a minute, written when it came")
-    check(!busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t.addingTimeInterval(4))
+    check(!busy.record(reading(1500, working: true), task: "t1", model: nil, now: t.addingTimeInterval(4))
           && stored()["t1"]?.usage[String(h)]?.minutes == 1, "ledger: seconds short of a minute aren't written")
     // A card with no total (not Cowork's, or odd) leaves no record of its own.
     var bare = ClaudeAIChats.Remote()
     bare.working = false
-    check(!busy.record(bare, task: "t2", title: "x", model: nil, now: t) && stored()["t2"] == nil, "ledger: a card without usage and not at work leaves nothing")
+    check(!busy.record(bare, task: "t2", model: nil, now: t) && stored()["t2"] == nil, "ledger: a card without usage and not at work leaves nothing")
     try? FileManager.default.removeItem(at: file)
 
     // On the real file: what the plugin reported stays, the card's is added, and Stats reads both.
     let live = CoworkLedger()
-    check(live.record(reading(2000), task: "t3", title: "Spreadsheet", model: "claude-opus-5-5", now: now), "ledger: the file of 1.2.8's plugin is added to")
+    // Review, 30.10: a file that can't be read isn't written over.
+    let broken = FileManager.default.temporaryDirectory.appendingPathComponent("cowork-broken-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: broken, withIntermediateDirectories: true)
+    let brokenFile = broken.appendingPathComponent("cowork-usage.json")
+    try? Data(#"{"old-a":{"usage":{"#.utf8).write(to: brokenFile)
+    let afterBroken = CoworkLedger(url: brokenFile)
+    _ = afterBroken.record(reading(1000), task: "t9", model: nil, now: now)
+    let aside = ((try? FileManager.default.contentsOfDirectory(atPath: broken.path)) ?? []).filter { $0.contains("unreadable") }
+    check(aside.count == 1 && (try? String(contentsOf: broken.appendingPathComponent(aside[0]), encoding: .utf8)) == #"{"old-a":{"usage":{"#,
+          "ledger: an unreadable file is put aside whole, a new one begun")
+    try? FileManager.default.removeItem(at: broken)
+    check(live.record(reading(2000), task: "t3", model: "claude-opus-5-5", now: now), "ledger: the file of 1.2.8's plugin is added to")
     let all = DayStats.cowork(Cowork.kept())
     let day = DayStats.key(at(h))
     let began = DayStats.key(at(h - 2))
