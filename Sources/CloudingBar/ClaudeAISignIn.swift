@@ -42,9 +42,8 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = self
         web.uiDelegate = self
-        // Its own name, not a browser's (owner, 30.10): a sign-in that turns
-        // away an app's web view (Google's) may do so; claude.ai's own works.
-        config.applicationNameForUserAgent = Self.agentName
+        // As Safari: some sign-ins (Google) turn away an app's web view.
+        web.customUserAgent = Self.safariAgent
         config.websiteDataStore.httpCookieStore.add(self)
         webView = web
 
@@ -139,8 +138,12 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         DebugLog.note("claude.ai sign-in: window open, warning shown")
     }
 
-    /// The app's name in the page's User-Agent, after WebKit's own: "CloudingBar/1.2.21".
-    private static var agentName: String { "CloudingBar/" + Updater.version }
+    /// "Mozilla/5.0 … Version/27.0 Safari/605.1.15", this Mac's Safari.
+    private static var safariAgent: String {
+        let plist = NSDictionary(contentsOfFile: "/Applications/Safari.app/Contents/Info.plist")
+        let version = plist?["CFBundleShortVersionString"] as? String ?? "18.0"
+        return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(version) Safari/605.1.15"
+    }
 
     /// "I Understand": now claude.ai's sign-in page loads.
     @objc private func understood() {
@@ -205,6 +208,7 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         let child = WKWebView(frame: NSRect(x: 0, y: 0, width: 480, height: 640), configuration: configuration)
         child.navigationDelegate = self
         child.uiDelegate = self
+        child.customUserAgent = Self.safariAgent
         let w = NSWindow(contentRect: child.frame, styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         w.title = "Sign In"
         w.contentView = child

@@ -1735,8 +1735,8 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
           "a key given for the limit alone (Only the Limit) sends nothing to claude.ai (review, 29.10)")
     do { // how often claude.ai is asked (owner, 30.10): 5 s at work, 30 s at rest
         typealias Pace = ClaudeAIChats.Pace
-        check(Pace.chats(busy: true) == 5 && Pace.chats(busy: false) == 30 && Pace.card(hot: true) == 5 && Pace.card(hot: false) == 30
-              && Pace.tick == 5, "claude.ai pace: the chats list and a Cowork card every 5 s at work, every 30 s at rest; the timer ticks every 5 s")
+        check(Pace.chats(busy: true) == 5 && Pace.chats(busy: false) == 15 && Pace.card(hot: true) == 5 && Pace.card(hot: false) == 15
+              && Pace.tick == 5, "claude.ai pace: the chats list and a Cowork card every 5 s at work, every 15 s at rest; the timer ticks every 5 s")
         check(Pace.gap(Pace.active) < Pace.tick && Pace.gap(Pace.active) > 0 && Pace.gap(Pace.quiet) < Pace.quiet,
               "claude.ai pace: a read is due a little before its interval is out (under the tick, so 5 s isn't 10)")
         let t0 = Date(timeIntervalSince1970: 1_000_000)
@@ -1752,11 +1752,11 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
         check(reads(ticks: 12, due: { Pace.due(last: $0, every: Pace.active, now: $1) }) == 12
               && reads(ticks: 12, due: { $1.timeIntervalSince($0) >= 5 }) < 12,
               "claude.ai pace: at work every tick reads even when one comes 0.4 s late (a plain 5 s threshold would skip some) — a waiting question isn't late")
-        check(reads(ticks: 12, due: { Pace.due(last: $0, every: Pace.quiet, now: $1) }) == 2,
-              "claude.ai pace: at rest two reads in a minute")
-        check(Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(15)) == false
-              && Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(30)),
-              "claude.ai pace: at rest not due at 15 s (the old pace), due at 30 s")
+        check(reads(ticks: 12, due: { Pace.due(last: $0, every: Pace.quiet, now: $1) }) == 4,
+              "claude.ai pace: at rest four reads in a minute")
+        check(Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(10)) == false
+              && Pace.due(last: t0, every: Pace.quiet, now: t0.addingTimeInterval(15)),
+              "claude.ai pace: at rest not due at 10 s, due at 15 s")
     }
     do { // the warning about claude.ai's terms (owner, 30.10)
         let text = ClaudeAINotice.title + ClaudeAINotice.text

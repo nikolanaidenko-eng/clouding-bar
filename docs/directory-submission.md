@@ -39,7 +39,7 @@ touchbar.png, touchbar-permission.png, pill.png, notch-question.png, panel.png, 
 2. `scripts/install-app.sh` downloads and installs an app from GitHub (verifies Developer ID signature and notarization). Same: explain in the review notes.
 3. The plugin sits in a subfolder (`plugin/`) and `run.sh` uses shell variables and `$(...)`, so "Scripts the validator couldn't follow" holds the version for a reviewer (a hold, not a block; the hook commands themselves name only `${CLAUDE_PLUGIN_ROOT}/hooks/run.sh`, which is allowed). The doc's remedy is a plugin at its own repository root; not done.
 
-5. The Mac app (not the plugin) signs in to claude.ai with a session key and uses unofficial addresses, (before 1.2.21 sending messages as the web client does, `web_claude_ai`; now without that header, and with a warning before the sign-in). Policy §3F (own or control the endpoints your Software connects to) and §1G (chat history) could be read against it, though the plugin itself doesn't connect there. Disclosed in docs/privacy.md and in the data handling answers; not hidden. A reviewer may ask for changes or reject; a rejected submission can be resubmitted.
+5. The Mac app (not the plugin) signs in to claude.ai with a session key and uses unofficial addresses, sending messages as the web client does (`web_claude_ai`), with a warning before the sign-in since 1.2.21. Policy §3F (own or control the endpoints your Software connects to) and §1G (chat history) could be read against it, though the plugin itself doesn't connect there. Disclosed in docs/privacy.md and in the data handling answers; not hidden. A reviewer may ask for changes or reject; a rejected submission can be resubmitted.
 
 ## What the owner clicks
 

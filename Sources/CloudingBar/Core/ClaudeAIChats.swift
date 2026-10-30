@@ -44,7 +44,7 @@ enum ClaudeAIChats {
         /// moment ago; a task works, waits for you or was just written to.
         static let active: TimeInterval = 5
         /// At rest.
-        static let quiet: TimeInterval = 30
+        static let quiet: TimeInterval = 15
         /// A read is due a little before its interval is out: a tick of 5 s
         /// that comes a hair early would else wait for the next one, and
         /// 5 s would turn into 10 (and a waiting question into a late one).

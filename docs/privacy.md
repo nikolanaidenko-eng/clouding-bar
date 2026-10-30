@@ -70,15 +70,16 @@ what you send from the widget or the bar to a Cowork task, a claude.ai chat,
 or a Claude Desktop or Terminal Claude Code chat with Remote Control on. Only to claude.ai, with the session
 key as a cookie, never following redirects. The addresses are unofficial:
 not a documented API, but the ones claude.ai's own pages use, and they may
-stop working at any time. The app doesn't pass itself off as claude.ai's web
-client: no client-platform header, no browser User-Agent (the requests carry
-the system's own, the app's name and CFNetwork). The requests:
+stop working at any time. Its messages to chats name claude.ai's web client
+(`anthropic-client-platform: web_claude_ai`), as the page does, and the sign-in
+window identifies as Safari, because some sign-ins turn away an app's web view.
+The other requests carry the system's own User-Agent. The requests:
 
 - `/api/organizations` — once;
 - `/api/organizations/{org}/usage` — every minute (the 5-hour and weekly limit);
 - `/api/organizations/{org}/chat_conversations_v2` (or the older
   `chat_conversations`, if claude.ai doesn't know it) — every 5 s while a
-  chat runs, waits or was active in the last two minutes, else every 30 s
+  chat runs, waits or was active in the last two minutes, else every 15 s
   (names and states);
 - `/v1/code/sessions?limit=1&tags=bard-conversation:{chat}` — for a chat active
   in the last half hour that isn't known as a Cowork task yet, at most once a
@@ -90,16 +91,15 @@ the system's own, the app's name and CFNetwork). The requests:
   to its log;
 - `/v1/code/sessions/{id}` — for each Cowork task active in the last half hour,
   every 5 s while it works, waits for you or was just written to, else every
-  30 s (whether it works, what it asks — the question or permission, shown on
+  15 s (whether it works, what it asks — the question or permission, shown on
   the bar — its context, its window, its cost and the tokens it has used so
   far, which Stats counts), and every 30 s for the
   Remote Control of a Claude Code chat in Claude Desktop or Terminal (whether
   it's on the line);
 - POST `/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction`
   — only when you send words to a Cowork task or a claude.ai chat: your message,
-  in the shape claude.ai's own page sends it, so the chat shows it. It carries
-  no `anthropic-client-platform` header (before 1.2.21 it said `web_claude_ai`,
-  the web client's name); if claude.ai turns it down, the words go the other
+  in the shape claude.ai's own page sends it, so the chat shows it. It says
+  it comes from claude.ai's web client (`web_claude_ai`); if claude.ai turns it down, the words go the other
   way (a Cowork task's session, or typed into the window);
 - POST `/v1/code/sessions/{id}/events` — only when you send: a message with a
   picture to a Cowork task, a message to a Remote Control chat, or your answer
