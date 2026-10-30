@@ -107,11 +107,9 @@ The other requests carry the system's own User-Agent. The requests:
 
 Sign In first shows the warning above and loads nothing until you press **I
 Understand**. Then it opens a window with claude.ai's own sign-in pages (and
-Google's or Apple's, if you sign in with one — Google's may refuse a window
-that doesn't pose as a browser, which this one no longer does since 1.2.21),
-in a browser store that is thrown away when the window closes; the pages see
-the app's name (`CloudingBar/<version>`) after WebKit's own in the
-User-Agent. Once you're signed in, the app takes the session key
+Google's or Apple's, if you sign in with one), in a browser store that is
+thrown away when the window closes; the window identifies as Safari, because
+some sign-ins turn away an app's web view. Once you're signed in, the app takes the session key
 from that page's cookie, keeps it only in the macOS Keychain and closes the
 window. The key gives full access to your account; it never leaves your Mac
 except to claude.ai. Signing in starts a new

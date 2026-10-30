@@ -34,9 +34,8 @@ enum ClaudeAIChats {
     static let recent: TimeInterval = 30 * 60
 
     /// How often claude.ai is asked for the chats list and a Cowork task's
-    /// card (owner, 30.10: less often — every request is the automated access
-    /// Anthropic's terms warn about). The usage, a Remote Control card and a
-    /// task's events keep their own, slower pace.
+    /// card. The usage, a Remote Control card and a task's events keep their
+    /// own, slower pace.
     enum Pace {
         /// The poll timer's tick: nothing is asked more often.
         static let tick: TimeInterval = 5

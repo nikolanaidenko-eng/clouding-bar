@@ -1733,7 +1733,7 @@ do { // Through claude.ai, without the window in front (owner, 29.10): a session
     check(!ClaudeAIChats.writes(signedIn: true, readChats: false) && ClaudeAIChats.writes(signedIn: true, readChats: true)
           && !ClaudeAIChats.writes(signedIn: false, readChats: true),
           "a key given for the limit alone (Only the Limit) sends nothing to claude.ai (review, 29.10)")
-    do { // how often claude.ai is asked (owner, 30.10): 5 s at work, 30 s at rest
+    do { // how often claude.ai is asked: 5 s at work, 15 s at rest
         typealias Pace = ClaudeAIChats.Pace
         check(Pace.chats(busy: true) == 5 && Pace.chats(busy: false) == 15 && Pace.card(hot: true) == 5 && Pace.card(hot: false) == 15
               && Pace.tick == 5, "claude.ai pace: the chats list and a Cowork card every 5 s at work, every 15 s at rest; the timer ticks every 5 s")
