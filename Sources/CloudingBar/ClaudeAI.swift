@@ -317,21 +317,15 @@ final class ClaudeAI {
     private var mutationSeq = 0
 
     /// Your words into the chat itself, as its page sends them: shown there,
-    /// passed on to its Cowork task by claude.ai (signed, as typed). Its
-    /// latest message known from the list; none yet: not sent this way.
+    /// passed on to its Cowork task by claude.ai (signed, as typed).
     func sendToChat(_ text: String, chat uuid: String, done: @escaping (Sent) -> Void) {
-        guard let i = chats.firstIndex(where: { $0.uuid == uuid }), let parent = chats[i].leaf else {
-            done(.kept("its latest message isn't known yet"))
+        guard Self.readKey() != nil, orgId != nil, canSend else {
+            done(.kept("not signed in to claude.ai"))
             return
         }
         mutationSeq += 1
-        let message = UUID().uuidString.lowercased()
-        let body = ClaudeAIChats.chatMessage(text, chat: uuid, after: parent, mutation: (mutationSession, mutationSeq), message: message)
-        postProto("/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction", body: body, chat: uuid) { [weak self] result in
-            // The next follows this one, before the list says so.
-            if result == .sent, let self, let j = self.chats.firstIndex(where: { $0.uuid == uuid }) { self.chats[j].leaf = message }
-            done(result)
-        }
+        let body = ClaudeAIChats.chatMessage(text, chat: uuid, mutation: (mutationSession, mutationSeq))
+        postProto("/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction", body: body, chat: uuid, done: done)
     }
 
     /// Your answer to what it waits on (its card's request id).
@@ -439,7 +433,6 @@ final class ClaudeAI {
         }.resume()
     }
 
-    /// A POST to claude.ai with the session cookie — only what you send.
     /// Calls back on the main queue: taken, refused (with claude.ai's
     /// reason), or no telling.
     /// A POST of protobuf to claude.ai's RPC, as its page makes it.
@@ -479,6 +472,7 @@ final class ClaudeAI {
         }.resume()
     }
 
+    /// A POST to claude.ai with the session cookie — only what you send.
     private func post(_ path: String, body: [String: Any], done: @escaping (Sent) -> Void) {
         guard let key = Self.readKey(), let org = orgId, canSend else {
             done(.kept("not signed in to claude.ai"))

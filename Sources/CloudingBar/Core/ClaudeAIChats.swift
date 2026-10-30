@@ -19,8 +19,6 @@ enum ClaudeAIChats {
         var needsInput: String?
         /// When its last reply ended.
         var settledAt: Date?
-        /// Its latest message: what a new one follows (`current_leaf_message_uuid`).
-        var leaf: String?
         var updatedAt: Date?
         /// Archived in claude.ai or Claude Desktop: not shown.
         var archived = false
@@ -54,7 +52,6 @@ enum ClaudeAIChats {
                 chat.needsInput = kind == "permission" || kind == "question" ? kind : "input"
             }
             chat.settledAt = date(o["last_settled_at"])
-            chat.leaf = (o["current_leaf_message_uuid"] as? String).flatMap { isId($0) ? $0 : nil }
             chat.updatedAt = date(o["updated_at"])
             chat.archived = o["is_archived"] as? Bool == true
             return chat
@@ -270,16 +267,18 @@ enum ClaudeAIChats {
     /// PerformAction, as protobuf (`application/proto`), read off the page:
     /// 1 the chat — 1 the mutation (this app's `sess_…` and a count; the
     /// server wants one), 2 its uuid, 3 and 7 as the page sets them, 14 the
-    /// locale; 2 the message — 1 its new uuid, 2 the one it follows, 3 the
-    /// words, 12 the time zone, 13 the language.
-    static func chatMessage(_ text: String, chat: String, after parent: String, mutation: (session: String, seq: Int),
+    /// locale; 2 the message — 1 its new uuid, 2 the uuid Claude's reply
+    /// will have (the page makes both up; not a server's: 400, 30.10),
+    /// 3 the words, 12 the time zone, 13 the language.
+    static func chatMessage(_ text: String, chat: String, mutation: (session: String, seq: Int),
                             message: String = UUID().uuidString.lowercased(),
+                            reply: String = UUID().uuidString.lowercased(),
                             timeZone: String = TimeZone.current.identifier,
-                            language: String = String((Locale.preferredLanguages.first ?? "en").prefix(2))) -> Data {
+                            language: String = (Locale.preferredLanguages.first ?? "en").components(separatedBy: "-")[0]) -> Data {
         let flags = [1, 2, 3, 6, 8, 10, 22, 24, 28, 33].flatMap { Proto.varint($0, 1) }
         let context = Proto.message(1, Proto.message(1, Proto.string(1, mutation.session) + Proto.varint(2, mutation.seq))
             + Proto.string(2, chat) + Proto.varint(3, 3) + Proto.message(7, flags) + Proto.string(14, "en-US"))
-        let send = Proto.message(2, Proto.string(1, message) + Proto.string(2, parent) + Proto.string(3, text)
+        let send = Proto.message(2, Proto.string(1, message) + Proto.string(2, reply) + Proto.string(3, text)
             + Proto.string(12, timeZone) + Proto.string(13, language) + Proto.varint(18, 1))
         return Data(context + send)
     }
