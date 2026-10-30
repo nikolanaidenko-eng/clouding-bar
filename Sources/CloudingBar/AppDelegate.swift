@@ -2421,22 +2421,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         handedAt[session.id] = Date()
         let name = session.displayName, id = session.id
         remoteSending.insert(id)
-        claudeAI.send(content, to: remote) { [weak self] result in
+        let sent = { [weak self] in
             guard let self else { return }
-            self.remoteSending.remove(id)
+            self.queueSentAt = Date()
+            self.claudeAI.lookSoon()
+            self.setNeedsRefresh()
+        }
+        // Into its session: Claude gets it, the chat doesn't show it.
+        let throughSession = { [weak self] in
+            guard let self else { return }
+            self.claudeAI.send(content, to: remote) { [weak self] result in
+                guard let self else { return }
+                self.remoteSending.remove(id)
+                switch result {
+                case .sent:
+                    DebugLog.note("sent through claude.ai (\(name))")
+                    sent()
+                case .kept(let why):
+                    self.remoteRefused[remote] = Date()
+                    DebugLog.note("claude.ai didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
+                    fallback()
+                case .unsure(let why):
+                    NSSound.beep()
+                    DebugLog.note("claude.ai: \(why) (\(name)) — maybe sent, not sent again")
+                }
+            }
+        }
+        // Words alone to a Cowork task: into its chat, as its page sends them,
+        // so they show there too (owner, 30.10). Pictures go to its session
+        // as before; so do words claude.ai's chat turns down.
+        guard files.isEmpty, session.entrypoint == "cowork", id.hasPrefix("cowork-") else { throughSession(); return }
+        claudeAI.sendToChat(text, chat: String(id.dropFirst("cowork-".count))) { [weak self] result in
+            guard let self else { return }
             switch result {
             case .sent:
-                DebugLog.note("sent through claude.ai (\(name))")
-                self.queueSentAt = Date()
-                self.claudeAI.lookSoon()
-                self.setNeedsRefresh()
+                self.remoteSending.remove(id)
+                DebugLog.note("sent into its chat on claude.ai (\(name))")
+                sent()
             case .kept(let why):
-                self.remoteRefused[remote] = Date()
-                DebugLog.note("claude.ai didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
-                fallback()
+                DebugLog.note("its chat didn't take it (\(name)): \(why) — to its session instead")
+                throughSession()
             case .unsure(let why):
+                self.remoteSending.remove(id)
                 NSSound.beep()
-                DebugLog.note("claude.ai: \(why) (\(name)) — maybe sent, not sent again")
+                DebugLog.note("claude.ai's chat: \(why) (\(name)) — maybe sent, not sent again")
             }
         }
     }
