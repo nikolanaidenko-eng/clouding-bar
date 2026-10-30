@@ -985,10 +985,10 @@ struct GeneralTab: View {
 
             if model.hasCodex {
                 SettingsSection(title: "Codex", icon: "terminal", tint: 0x8E8E93) {
-                    SettingsRow(title: "Codex · beta",
+                    SettingsRow(title: "Codex: hooks",
                                 hint: model.codexConnected
-                                    ? "Beta · its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
-                                    : "Beta · its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
+                                    ? "Its limits, context and status are read from Codex's own files · permissions through hooks: Codex asks you to trust them once (Trust all, or /hooks)"
+                                    : "Its limits, context and status show without this; Connect adds the hooks for permissions and Esc. Codex asks you to trust each new hook once (Trust all, or /hooks)") {
                         if model.codexConnected {
                             Label(model.codexViaPlugin ? "Plugin" : "Connected", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
                         } else {

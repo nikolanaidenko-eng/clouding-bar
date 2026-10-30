@@ -46,7 +46,7 @@ enum SettingsTour {
         TourStop(tab: "general", anchor: "claudeai", title: "Cowork and claude.ai: Sign In",
                  text: "Cowork runs in the cloud, out of the hooks' reach. Sign In to claude.ai here: Cowork tasks and your chats join the list — working, done or waiting for you — and a click opens one in Claude Desktop. The key stays in Keychain.",
                  group: "Claude"),
-        TourStop(tab: "general", anchor: "codex", title: "Codex (beta)",
+        TourStop(tab: "general", anchor: "codex", title: "Codex",
                  text: "Codex chats show up by themselves, read from Codex's own files. Connect adds its hooks, for permission requests on the bar. Codex asks you to trust them once: Trust all, or /hooks.",
                  group: "Codex", only: { Setup.hasCodex }),
         TourStop(tab: "widget", anchor: "widget.preview", title: "The widget",
