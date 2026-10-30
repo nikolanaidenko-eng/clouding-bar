@@ -307,7 +307,11 @@ final class AppModel: ObservableObject {
     /// on, as wide as the screen allows (owner, 25.10: what you switch on
     /// shows).
     var pillBudget: CGFloat {
-        if config.pillWidth > 0 { return CGFloat(config.pillWidth) }
+        if config.pillWidth > 0 {
+            // Pulled wide on a monitor that's gone: the screen left, for now.
+            let on = config.widgetPosition.flatMap { p in NSScreen.screens.first { $0.frame.contains(p) } } ?? NSScreen.screens.first
+            return min(CGFloat(config.pillWidth), on?.visibleFrame.width ?? .infinity)
+        }
         switch config.pillDensity {
         case "icon": return 0
         case "numbers": return 260

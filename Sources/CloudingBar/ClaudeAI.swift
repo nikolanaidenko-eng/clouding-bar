@@ -174,6 +174,12 @@ final class ClaudeAI {
                     self.onState?("No organization found for this account")
                     return
                 }
+                // Which ones there are and which was taken: no names, no key.
+                let list = orgs.map { o -> String in
+                    let caps = (o["capabilities"] as? [String] ?? []).joined(separator: "+")
+                    return "\((o["uuid"] as? String ?? "?").prefix(8)) [\(caps)] \(o["raven_type"] as? String ?? "-") \(o["billing_type"] as? String ?? "-")"
+                }.joined(separator: ", ")
+                self.note("organizations: \(list); taken \(id.prefix(8))")
                 self.orgId = id
                 self.tick()
             }
@@ -257,6 +263,7 @@ final class ClaudeAI {
             // Which fields claude.ai gives, once: names only, never values.
             let first = ClaudeAIChats.items(json).first
             self.note("chats: \(chats.count) read, fields \(first?.keys.sorted().joined(separator: ",") ?? "none")")
+            self.note("chats: \(chats.filter(\.isCowork).count) of \(chats.count) are Cowork tasks in \(org.prefix(8))")
             self.chats = chats
             self.onChats?(ClaudeAIChats.withCards(chats, self.cardState))
             self.lookUpSessions(org: org, key: key)
@@ -314,7 +321,11 @@ final class ClaudeAI {
             lookedUp[chat.uuid] = now
             let tag = "bard-conversation:" + chat.uuid
             get("/v1/code/sessions?limit=1&tags=" + tag, key: key, headers: ccr(org)) { [weak self] status, json in
-                guard let self, status == 200, let cse = ClaudeAIChats.session(found: json, chat: chat.uuid) else { return }
+                guard let self else { return }
+                guard status == 200, let cse = ClaudeAIChats.session(found: json, chat: chat.uuid) else {
+                    self.note("cowork: asked by its chat \(chat.uuid.prefix(8)): HTTP \(status), no task")
+                    return
+                }
                 self.found[chat.uuid] = cse
                 self.note("cowork: a task found by its chat")
                 self.chats = ClaudeAIChats.merged(self.chats, previous: [], found: self.found)

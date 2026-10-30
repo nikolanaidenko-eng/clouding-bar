@@ -964,9 +964,7 @@ struct GeneralTab: View {
                                 ? "The whole account's limit · \(model.liveLimitState). Cowork tasks and chats aren't read with this key: Sign Out, then Sign In to show them · Against Anthropic's terms for third-party apps: use at your own risk"
                                 : model.hasLiveKey
                                 ? "Cowork tasks and your chats of the last half hour — working, done or waiting for you, Cowork's context — and the whole account's limit · \(model.liveLimitState) · Against Anthropic's terms for third-party apps: use at your own risk"
-                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Against Anthropic's terms for third-party apps: could put your account at risk, use at your own risk. Unofficial: the key stays in Keychain and goes only to claude.ai",
-                            // The box's last row has no line under it.
-                            divider: !model.accessibilityTrusted) {
+                                : "Sign in to see Cowork tasks and your claude.ai chats here, and the limit for the whole account. Against Anthropic's terms for third-party apps: could put your account at risk, use at your own risk. Unofficial: the key stays in Keychain and goes only to claude.ai") {
                     if model.hasLiveKey && !model.liveKeyRejected {
                         Button("Sign Out") { model.removeLiveKey() }
                     } else {
@@ -974,10 +972,17 @@ struct GeneralTab: View {
                     }
                 }
                 .tourAnchor("claudeai")
-                if !model.accessibilityTrusted {
-                    SettingsRow(title: "Accessibility",
-                                hint: "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility",
-                                divider: false) {
+                SettingsRow(title: "Accessibility",
+                            hint: model.accessibilityTrusted
+                                ? "On: the bar's buttons type into your chats, and the chat in front and Claude Desktop's questions are found. Privacy & Security → Accessibility"
+                                : "Off: the bar's buttons can't type into your chats, and the chat in front, Claude Desktop's questions and its chats can't be found. Turn on Clouding Bar in Privacy & Security → Accessibility",
+                            divider: false) {
+                    HStack(spacing: 10) {
+                        if model.accessibilityTrusted {
+                            Label("On", systemImage: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.sSecondary)
+                        } else {
+                            Label("Off", systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundColor(.sSecondary)
+                        }
                         Button("Open Settings") { model.openAccessibility() }
                     }
                 }
@@ -1521,6 +1526,12 @@ struct WidgetPreview: View {
         // While the outline is pulled the scale holds: else the outline
         // wouldn't follow the pointer (review, 29.10).
         let scale = pull?.scale ?? scale(for: size)
+        // Pulled by its left end or top, the far sides stay where they were,
+        // as on screen; pulled in, the box keeps its size until let go, so
+        // the page under it doesn't jump.
+        let shift = pull.map { CGSize(width: $0.h == -1 ? ($0.size.width - size.width) * scale : 0,
+                                      height: $0.v == 1 ? ($0.size.height - size.height) * scale : 0) } ?? .zero
+        let box = pull.map { CGSize(width: max($0.size.width, size.width), height: max($0.size.height, size.height)) } ?? size
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Text("Arrange").font(.system(size: 12)).foregroundColor(.sSecondary)
@@ -1543,6 +1554,8 @@ struct WidgetPreview: View {
                 .frame(width: size.width, height: size.height, alignment: .topLeading)
                 .scaleEffect(scale, anchor: .topLeading)
                 .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
+                .offset(shift)
+                .frame(width: box.width * scale, height: box.height * scale, alignment: .topLeading)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: 0x1B1B1D)))
@@ -1555,8 +1568,8 @@ struct WidgetPreview: View {
         .onAppear {
             sync(); place(); measure()
             state.pillMouseDown = { _ in beginPull() }
-            state.pillMouseDragged = { _ in movePull() }
-            state.pillMouseUp = { _ in endPull() }
+            state.pillMouseDragged = { movePull() }
+            state.pillMouseUp = { endPull() }
         }
         .onChange(of: model.config) { _ in sync(); measure() }
         .onChange(of: model.buttons) { _ in sync(); measure() }
@@ -1568,7 +1581,7 @@ struct WidgetPreview: View {
 
     /// The island as on this Mac's screen: its camera, or a drawn notch.
     private var camera: (width: CGFloat, height: CGFloat) {
-        NSScreen.main.map(WidgetController.notch(of:)) ?? (0, 32)
+        WidgetController.notchScreen.map(WidgetController.notch(of:)) ?? (0, 32)
     }
 
     private func place() {
@@ -1582,6 +1595,14 @@ struct WidgetPreview: View {
         PillLayout(model: shown).maxWidth + (notch ? camera.width + 2 * NotchView.shoulder : 0)
     }
     private var mostHeight: CGFloat { NSScreen.main?.visibleFrame.height ?? 800 }
+
+    /// As far as the box shows it: past that the copy overflowed, the page
+    /// centred it, and its far end ran away from the pointer (owner, 30.10).
+    /// By its left end or top it only has the box's margin to grow into.
+    private func shownLimit(_ r: Pull) -> CGSize {
+        CGSize(width: min(most, r.h == -1 ? r.size.width + 12 / r.scale : (SettingsView.width - 64 - 24) / r.scale),
+               height: min(mostHeight, r.v == 1 ? r.size.height + 12 / r.scale : .infinity))
+    }
 
     private func beginPull() {
         guard !panel, let press = state.pillPress, let rim = WidgetState.pillRim(press.point, in: press.size) else { return }
@@ -1597,8 +1618,9 @@ struct WidgetPreview: View {
         r.raw = CGSize(width: r.size.width + CGFloat(r.h) * (p.x - r.start.x) / r.scale,
                        height: r.size.height + CGFloat(r.v) * (p.y - r.start.y) / r.scale)
         pull = r
-        state.pillEditSize = CGSize(width: min(max(r.raw.width, PillLayout.minWidth), most),
-                                    height: min(max(r.raw.height, notch ? camera.height : PillLayout.height(rows: 1)), mostHeight))
+        let limit = shownLimit(r)
+        state.pillEditSize = CGSize(width: min(max(r.raw.width, PillLayout.minWidth), limit.width),
+                                    height: min(max(r.raw.height, notch ? camera.height : PillLayout.height(rows: 1)), limit.height))
     }
 
     /// Let go: the widget takes that size. Taller than wide, it stands up
@@ -1607,6 +1629,11 @@ struct WidgetPreview: View {
     private func endPull() {
         guard let r = pull else { return }
         pull = nil
+        // A click on the outline: nothing changes here.
+        if hypot(NSEvent.mouseLocation.x - r.start.x, NSEvent.mouseLocation.y - r.start.y) < 3 {
+            withAnimation(.cb(0.2)) { state.pillEditSize = nil }
+            return
+        }
         if notch {
             // Pulled in that far: compact again.
             let compact = r.raw.width <= NotchView.compactWidth(camera: camera.width) + 24

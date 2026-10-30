@@ -1144,6 +1144,62 @@ struct PillButtonStyle: ButtonStyle {
     }
 }
 
+/// A press on the pill, followed to its release whatever becomes of the view
+/// it landed on. Pulled past the compact island, that view is replaced, and
+/// AppKit then sends the press's drags and release to nobody: the outline
+/// stayed in edit mode for good (owner, 30.10). A release macOS kept to
+/// itself (Mission Control, say) is noticed too: both ways of asking say
+/// it's up (a trackpad's three-finger drag may show in only one), half a
+/// second after the last move.
+final class PillPress {
+    private static var current: PillPress?
+    private let state: WidgetState
+    private var monitor: Any?
+    private var watch: Timer?
+    private var lastMove = Date()
+
+    static func follow(_ state: WidgetState) {
+        current?.stop()
+        current = PillPress(state)
+    }
+
+    private init(_ state: WidgetState) {
+        self.state = state
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            if event.type == .leftMouseUp {
+                self.release()
+            } else {
+                self.lastMove = Date()
+                self.state.pillMouseDragged?()
+            }
+            return nil
+        }
+        watch = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self, NSEvent.pressedMouseButtons & 1 == 0,
+                  !CGEventSource.buttonState(.combinedSessionState, button: .left),
+                  Date().timeIntervalSince(self.lastMove) > 0.5 else { return }
+            DebugLog.note("pull: its release never came, ended by the watch")
+            self.release()
+        }
+    }
+
+    private func release() {
+        stop()
+        Self.current = nil
+        // Where the pointer is now: a flick may not have had a single move.
+        state.pillMouseDragged?()
+        state.pillMouseUp?()
+    }
+
+    private func stop() {
+        watch?.invalidate()
+        watch = nil
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+}
+
 /// Lets the pill be dragged (and clicked); its outline resizes it. It lies under the pill's content, so the items get their own
 /// clicks and drags.
 struct PillDragHandle: NSViewRepresentable {
@@ -1158,12 +1214,14 @@ struct PillDragHandle: NSViewRepresentable {
         var fromTop = true
         var resizable = false
         override func mouseDown(with event: NSEvent) {
-            if resizable { state?.pillPress = (convert(event.locationInWindow, from: nil), bounds.size) }
+            state?.pillPress = resizable ? (convert(event.locationInWindow, from: nil), bounds.size) : nil
             state?.pillMouseDown?(event)
+            if let state { PillPress.follow(state) }
         }
-        override func mouseDragged(with event: NSEvent) { state?.pillMouseDragged?(event) }
-        override func mouseUp(with event: NSEvent) { state?.pillMouseUp?(event) }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        /// Clear views move their window when it's movable by its background
+        /// (Settings): a pull there would drag the whole window with it.
+        override var mouseDownCanMoveWindow: Bool { false }
         /// Diagonal resize arrows all along the outline, pointing the way
         /// it goes: the nearer end and the bottom (the top from the band
         /// along the top) — one drag sizes it both ways.
