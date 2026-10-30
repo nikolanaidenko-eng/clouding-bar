@@ -2362,6 +2362,16 @@ do { // templates move into the menu once: the defaults when it had none of its 
     if let saved { try? saved.write(to: Config.fileURL) } else { try? FileManager.default.removeItem(at: Config.fileURL) }
 }
 
+// MARK: claude.ai's answer about the limit
+
+check(ClaudeAIChats.usageAnswer(status: 200, json: ["five_hour": ["utilization": 12]]) == .limit, "usage: the limit read")
+check(ClaudeAIChats.usageAnswer(status: 200, json: ["five_hour": NSNull()]) == .noLimit, "usage: an API organization's empty limit stops nothing")
+check(ClaudeAIChats.usageAnswer(status: 200, json: [String: Any]()) == .noLimit, "usage: no limit in the answer stops nothing")
+check(ClaudeAIChats.usageAnswer(status: 404, json: nil) == .noLimit, "usage: not there for this organization stops nothing")
+check(ClaudeAIChats.usageAnswer(status: 403, json: nil) == .askAccount, "usage: refused, the account decides whether the key is bad")
+check(ClaudeAIChats.usageAnswer(status: 401, json: nil) == .other, "usage: 401 is still a bad key")
+check(ClaudeAIChats.usageAnswer(status: 429, json: nil) == .other, "usage: too many requests is handled as before")
+
 // MARK: The widget on several screens, its outline pulled
 
 do {

@@ -122,6 +122,21 @@ enum ClaudeAIChats {
         return cse.hasPrefix("cse_") ? cse : nil
     }
 
+    /// What an answer about the limit means. A 403 alone doesn't say the key
+    /// is bad: an organization billed through the API may not have a limit.
+    enum UsageAnswer: Equatable { case limit, noLimit, askAccount, other }
+
+    static func usageAnswer(status: Int, json: Any?) -> UsageAnswer {
+        switch status {
+        case 403: return .askAccount
+        case 404: return .noLimit
+        case 200:
+            let window = (json as? [String: Any])?["five_hour"] as? [String: Any]
+            return window?["utilization"] is NSNumber ? .limit : .noLimit
+        default: return .other
+        }
+    }
+
     struct Context: Equatable {
         let tokens: Int
         let model: String?

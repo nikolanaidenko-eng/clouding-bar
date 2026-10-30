@@ -180,7 +180,8 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
                   let cookie = cookies.first(where: { $0.name == "sessionKey" && Self.isClaudeAI($0.domain) }),
                   !cookie.value.isEmpty else { return }
             self.taken = true
-            DebugLog.note("claude.ai sign-in: signed in, key taken")
+            let active = cookies.first { $0.name == "lastActiveOrg" && Self.isClaudeAI($0.domain) }?.value.prefix(8) ?? "none"
+            DebugLog.note("claude.ai sign-in: signed in, key taken, its active organization \(active)")
             self.done?(cookie.value)
             self.done = nil
             self.window?.close()

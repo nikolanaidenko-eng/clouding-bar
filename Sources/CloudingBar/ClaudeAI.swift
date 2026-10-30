@@ -228,12 +228,33 @@ final class ClaudeAI {
 
     private func fetchUsage(org: String, key: String) {
         get("/api/organizations/\(org)/usage", key: key) { [weak self] status, json in
-            guard let self, self.accepted(status, what: "usage") else { return }
-            guard let window = (json as? [String: Any])?["five_hour"] as? [String: Any],
-                  let utilization = (window["utilization"] as? NSNumber)?.doubleValue else {
-                self.onState?("Unexpected answer from claude.ai")
+            guard let self else { return }
+            switch ClaudeAIChats.usageAnswer(status: status, json: json) {
+            case .limit:
+                break
+            case .noLimit:
+                // Billed through the API, an organization may have none: the
+                // chats, their context and questions go on without it (owner, 30.10).
+                self.note("usage: HTTP \(status), no 5-hour limit in \(org.prefix(8))")
+                self.nextUsage = Date().addingTimeInterval(3600)
+                self.onState?("On")
+                return
+            case .askAccount:
+                // No limit to give, or a key that's no good: the account's own
+                // list tells which. Only that stops everything.
+                self.note("usage: HTTP \(status) in \(org.prefix(8)), asking the account")
+                self.nextUsage = Date().addingTimeInterval(3600)
+                self.get("/api/organizations", key: key) { [weak self] status, _ in
+                    guard let self, self.accepted(status, what: "organizations") else { return }
+                    self.onState?("On")
+                }
+                return
+            case .other:
+                _ = self.accepted(status, what: "usage")
                 return
             }
+            guard let window = (json as? [String: Any])?["five_hour"] as? [String: Any],
+                  let utilization = (window["utilization"] as? NSNumber)?.doubleValue else { return }
             func resets(_ w: [String: Any]) -> Double? { ClaudeAIChats.date(w["resets_at"])?.timeIntervalSince1970 }
             self.onUpdate?(utilization, resets(window))
             if let week = (json as? [String: Any])?["seven_day"] as? [String: Any],
@@ -419,8 +440,8 @@ final class ClaudeAI {
         }
     }
 
-    /// The account's own answers (organizations, usage): a 401 or 403 is
-    /// claude.ai saying the key is no good — not asked again.
+    /// The account's own answers (organizations; usage's 401): a 401 or 403
+    /// is claude.ai saying the key is no good — not asked again.
     private func accepted(_ status: Int, what: String) -> Bool {
         switch status {
         case 200: return true
