@@ -1077,6 +1077,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The window's question on the bar and in the widget, as long as it's there.
     private func syncDesktopPrompt(_ prompt: DesktopChat.Prompt?) {
         desktopPrompt = prompt
+        if prompt == nil { desktopPromptSeen = nil }
         let current = requests.first { $0.desktopKey != nil }
         if let current, current.desktopKey != prompt?.key {
             finish(current, "desktop prompt: answered in Claude", reply: false)
@@ -2394,6 +2395,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.remoteRefused[id] = Date()
                 DebugLog.note("its chat didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
                 fallback()
+            case .offline:
+                DebugLog.note("no connection to claude.ai (\(name)) — kept for later")
+                fallback()
             case .unsure(let why):
                 NSSound.beep()
                 DebugLog.note("claude.ai's chat: \(why) (\(name)) — maybe sent, not sent again")
@@ -2489,6 +2493,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.remoteRefused[remote] = Date()
                     DebugLog.note("claude.ai didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
                     fallback()
+                case .offline:
+                    DebugLog.note("no connection to claude.ai (\(name)) — kept for later")
+                    fallback()
                 case .unsure(let why):
                     NSSound.beep()
                     DebugLog.note("claude.ai: \(why) (\(name)) — maybe sent, not sent again")
@@ -2509,6 +2516,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .kept(let why):
                 DebugLog.note("its chat didn't take it (\(name)): \(why) — to its session instead")
                 throughSession()
+            case .offline:
+                self.remoteSending.remove(id)
+                DebugLog.note("no connection to claude.ai (\(name)) — kept for later")
+                fallback()
             case .unsure(let why):
                 self.remoteSending.remove(id)
                 NSSound.beep()
@@ -2568,6 +2579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 NSSound.beep()
                 self?.remoteAnswered[pending.requestId] = nil
                 DebugLog.note("cowork: claude.ai didn't take the answer (\(name)): \(why) — asked again")
+            case .offline:
+                NSSound.beep()
+                self?.remoteAnswered[pending.requestId] = nil
+                DebugLog.note("cowork: no connection to claude.ai (\(name)) — asked again")
             case .unsure(let why):
                 NSSound.beep()
                 DebugLog.note("cowork: \(why) (\(name)) — the answer may have gone in")
