@@ -372,4 +372,5 @@ picked, else the latest.
 | `queue.json` | the task queue |
 | `limit-history.jsonl` | the 5-hour limit over time, for Stats |
 | `stats-cache.json` | per-transcript hour totals, for Stats |
+| `cowork-usage.json` | tokens and minutes per hour for each Cowork task, counted from its card on claude.ai, for Stats |
 | `shots/` | screenshots taken from the widget, and pictures dropped on it without a file (`drop-*.png`) |

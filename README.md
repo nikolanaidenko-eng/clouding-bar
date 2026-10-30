@@ -175,7 +175,9 @@ A first version for **Windows** is in [windows/](windows/README.md).
   days in a row, your favourite model and peak hour; every day of the last
   half year as a square (point at one to see it); the projects the time
   went to. From local transcripts, kept after Claude Code clears old ones.
-  Cowork history from older versions stays; new Cowork use isn't counted.
+  Cowork tasks count too, from their cards on claude.ai once you're signed
+  in (tokens counted as for Claude Code; time while a task is working), from
+  version 1.2.20 on. What older versions reported stays.
 - **Cowork** tasks and claude.ai / Claude Desktop chats show up too, through
   your claude.ai account: Settings → General → Claude → claude.ai →
   **Sign In…**. The chats list shows each one's name and whether it's

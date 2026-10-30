@@ -42,7 +42,9 @@ struct WeekStats {
     /// stats-days.json so it outlives Claude Code's cleanup of old
     /// transcripts (30 days).
     var history: [String: DayStats] = [:]
-    /// The same for Cowork, from what its plugin reports (cowork-usage.json).
+    /// The same for Cowork, counted from its tasks' cards on claude.ai as
+    /// they are read (CoworkLedger; cowork-usage.json). Tokens as for Claude
+    /// Code: fresh input, cache writes and output.
     var coworkHistory: [String: DayStats] = [:]
 
     var isEmpty: Bool { grid.allSatisfy { $0.allSatisfy { $0 == 0 } } }

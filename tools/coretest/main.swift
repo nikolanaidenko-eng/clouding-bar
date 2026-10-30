@@ -371,6 +371,114 @@ do {
           "Cowork's days from before 1.2.8 kept and added to Claude Code's")
 }
 
+do { // Cowork in Stats, counted from a task's card (owner, 30.10: for Cowork what can be comes from claude.ai)
+    let h = 500_000
+    func at(_ hour: Int, _ seconds: Double = 0) -> Date { Date(timeIntervalSince1970: Double(hour) * 3600 + seconds) }
+    let now = at(h, 600)
+    // The card's running total: fresh input, cache writes and output; cache reads and cost left out.
+    let card = ClaudeAIChats.remote(session: ["id": "cse_08", "worker_status": "running", "created_at": "2026-10-30T08:15:00Z",
+        "external_metadata": ["usage": ["input_tokens": 18, "output_tokens": 1467, "cache_read_tokens": 1_710_110,
+                                        "cache_write_tokens": 43_182, "cost_usd": 0.358]]])
+    check(card?.usedTokens == 18 + 1467 + 43_182 && card?.created != nil && card?.working == true,
+          "a card's running total: input, cache writes and output as Claude Code's; its start")
+    check(ClaudeAIChats.remote(session: ["id": "cse_08"])?.usedTokens == nil
+          && ClaudeAIChats.remote(session: ["id": "cse_08", "external_metadata": ["usage": ["cost_usd": 1]]])?.usedTokens == nil
+          && ClaudeAIChats.remote(session: ["id": "cse_08", "external_metadata": ["usage": ["output_tokens": 1e30]]])?.usedTokens == Int(1e12),
+          "…none without them, and a sane bound")
+
+    let first = Cowork.step(total: 5000, last: nil, created: at(h - 3, 100), now: now, working: false, since: nil)
+    check(first.tokens == 5000 && first.tokenHour == h - 3 && first.total == 5000 && first.minutes == 0,
+          "Cowork step: first read, all so far goes to the hour the task began")
+    check(Cowork.step(total: 5000, last: nil, created: nil, now: now, working: false, since: nil).tokenHour == h
+          && Cowork.step(total: 5000, last: nil, created: at(h + 5), now: now, working: false, since: nil).tokenHour == h,
+          "Cowork step: …to this hour with no start, or one in the future")
+    let grown = Cowork.step(total: 5800, last: 5000, created: at(h - 3), now: now, working: false, since: now.addingTimeInterval(-4))
+    check(grown.tokens == 800 && grown.tokenHour == h && grown.total == 5800, "Cowork step: later, the difference to this hour")
+    let again = Cowork.step(total: 5800, last: 5800, created: at(h - 3), now: now, working: false, since: now.addingTimeInterval(-4))
+    check(again.tokens == 0 && again.total == 5800, "Cowork step: the same total twice adds nothing")
+    let reset = Cowork.step(total: 300, last: 5800, created: at(h - 3), now: now, working: false, since: nil)
+    check(reset.tokens == 300 && reset.tokenHour == h && reset.total == 300,
+          "Cowork step: a total below the last (counted over) isn't subtracted; the new one counts, not to the start's hour")
+    check(Cowork.step(total: nil, last: 5000, created: nil, now: now, working: true, since: nil).total == 5000
+          && Cowork.step(total: nil, last: 5000, created: nil, now: now, working: true, since: nil).tokens == 0,
+          "Cowork step: a card without a total keeps the last")
+    let edge = Cowork.step(total: 900, last: 100, created: nil, now: at(h + 1, 2), working: true, since: at(h, 3598))
+    check(edge.tokenHour == h + 1 && edge.tokens == 800, "Cowork step: across the hour's edge, the read's own hour")
+    // Minutes: the time since the read before, while it works, at most a minute per read.
+    check(Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: now.addingTimeInterval(-4)).carry == 4
+          && Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: now.addingTimeInterval(-4)).minutes == 0,
+          "Cowork step: seconds short of a minute carry on")
+    let ninth = Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: now.addingTimeInterval(-4), carry: 56)
+    check(ninth.minutes == 1 && ninth.carry == 0, "Cowork step: …and make a minute with the next")
+    let slept = Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: now.addingTimeInterval(-3 * 3600))
+    check(slept.minutes == 1 && slept.carry == 0, "Cowork step: a long gap (a Mac asleep) counts one minute at most")
+    check(Cowork.step(total: 1, last: 1, created: nil, now: now, working: false, since: now.addingTimeInterval(-30), carry: 12).minutes == 0
+          && Cowork.step(total: 1, last: 1, created: nil, now: now, working: false, since: now.addingTimeInterval(-30), carry: 12).carry == 12
+          && Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: nil).minutes == 0
+          && Cowork.step(total: 1, last: 1, created: nil, now: now, working: true, since: now.addingTimeInterval(5)).minutes == 0,
+          "Cowork step: no minutes while idle, on a first read in this run, or for a clock gone back")
+
+    // The ledger on disk: a restart doesn't count twice, and nothing is written for nothing.
+    let file = Config.directory.appendingPathComponent("cowork-ledger-test.json")
+    try? FileManager.default.removeItem(at: file)
+    func reading(_ total: Int, working: Bool = false) -> ClaudeAIChats.Remote {
+        var c = ClaudeAIChats.Remote()
+        c.usedTokens = total
+        c.working = working
+        c.created = at(h - 2)
+        return c
+    }
+    func stored() -> [String: Cowork.Kept] {
+        (try? JSONDecoder().decode([String: Cowork.Kept].self, from: Data(contentsOf: file))) ?? [:]
+    }
+    let ledger = CoworkLedger(url: file)
+    check(ledger.record(reading(1000), task: "t1", title: "Plan the trip", model: "claude-sonnet-5-5", now: now), "ledger: a first read is written")
+    check(stored()["t1"]?.usage[String(h - 2)] == Cowork.Spent(tokens: 1000, minutes: 0) && stored()["t1"]?.title == "Plan the trip"
+          && stored()["t1"]?.model == "claude-sonnet-5-5" && stored()["t1"]?.total == 1000,
+          "ledger: all so far at the hour it began, with its title and model")
+    try? FileManager.default.removeItem(at: file)
+    check(!ledger.record(reading(1000), task: "t1", title: "Plan the trip", model: "claude-sonnet-5-5", now: now.addingTimeInterval(4))
+          && !FileManager.default.fileExists(atPath: file.path), "ledger: the same read again writes nothing")
+    check(ledger.record(reading(1400, working: true), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(8)),
+          "ledger: growth is written")
+    check(stored()["t1"]?.usage[String(h)]?.tokens == 400 && stored()["t1"]?.usage[String(h - 2)]?.tokens == 1000,
+          "ledger: …the difference, this hour, beside what was there")
+    // A restart: the total on disk is the last seen.
+    let restarted = CoworkLedger(url: file)
+    check(!restarted.record(reading(1400), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(60)),
+          "ledger: after a restart the same total adds nothing")
+    check(restarted.record(reading(1500), task: "t1", title: "Plan the trip", model: nil, now: now.addingTimeInterval(64))
+          && stored()["t1"]?.usage[String(h)]?.tokens == 500 && stored()["t1"]?.model == "claude-sonnet-5-5",
+          "ledger: …then only the growth; a model not given keeps the one known")
+    // Minutes: a minute of reads every 4 s while it works, the hour of the read.
+    let busy = CoworkLedger(url: file)
+    var t = now.addingTimeInterval(100)
+    _ = busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t)
+    for _ in 0..<15 {
+        t = t.addingTimeInterval(4)
+        _ = busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t)
+    }
+    check(stored()["t1"]?.usage[String(h)]?.minutes == 1 && stored()["t1"]?.usage[String(h)]?.tokens == 500,
+          "ledger: 15 reads 4 s apart while it works make a minute, written when it came")
+    check(!busy.record(reading(1500, working: true), task: "t1", title: nil, model: nil, now: t.addingTimeInterval(4))
+          && stored()["t1"]?.usage[String(h)]?.minutes == 1, "ledger: seconds short of a minute aren't written")
+    // A card with no total (not Cowork's, or odd) leaves no record of its own.
+    var bare = ClaudeAIChats.Remote()
+    bare.working = false
+    check(!busy.record(bare, task: "t2", title: "x", model: nil, now: t) && stored()["t2"] == nil, "ledger: a card without usage and not at work leaves nothing")
+    try? FileManager.default.removeItem(at: file)
+
+    // On the real file: what the plugin reported stays, the card's is added, and Stats reads both.
+    let live = CoworkLedger()
+    check(live.record(reading(2000), task: "t3", title: "Spreadsheet", model: "claude-opus-5-5", now: now), "ledger: the file of 1.2.8's plugin is added to")
+    let all = DayStats.cowork(Cowork.kept())
+    let day = DayStats.key(at(h))
+    let began = DayStats.key(at(h - 2))
+    check(all[day]?.sessions.contains("cowork-s1") == true && all[began]?.sessions.contains("cowork-t3") == true
+          && (all[began]?.tokens ?? 0) >= 2000 && all[began]?.models["Opus 5.5"] == 2000,
+          "Stats: old plugin days and a task counted from its card, side by side")
+}
+
 // MARK: The plugin and Claude Code's settings
 
 do {
