@@ -132,7 +132,8 @@ Everything it does, in full. The [README](../README.md) has the short version.
 
 **And**
 - A **tour** on first launch (and behind the ? in Settings): what to
-  connect where — Claude Code, VS Code, claude.ai for Cowork, Codex — then
+  connect where — Claude Code, VS Code, claude.ai for Cowork (optional, at
+  your own risk), Codex — then
   the widget, the Touch Bar and your buttons. It dims the settings window but
   for one thing at a time, a card says what it does, and Cloud hops onto it.
 - **Everything is optional**: each number, detail and control has its own
@@ -148,7 +149,9 @@ Everything it does, in full. The [README](../README.md) has the short version.
   version 1.2.20 on. What older versions reported stays.
 - **Cowork** tasks and claude.ai / Claude Desktop chats show up too, through
   your claude.ai account: Settings → General → Claude → claude.ai →
-  **Sign In…**. The chats list shows each one's name and whether it's
+  **Sign In…** (it goes against Anthropic's terms for third-party apps, at
+  your own risk: [privacy.md](privacy.md#the-claudeai-sign-in-optional)).
+  The chats list shows each one's name and whether it's
   working, done or waiting for you (a permission or a question); for Cowork
   tasks also the context and the model. Click one to open it in Claude
   Desktop. A Cowork task's questions and permissions come to the bar, and
