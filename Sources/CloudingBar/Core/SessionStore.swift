@@ -152,13 +152,25 @@ final class SessionStore {
             session.remoteSession = chat.workspace
             if let model = chat.model { session.model = model }
             if session.desktopChat != chat.page { link(session, desktopChat: chat.page, title: nil) }
+            // A reply ended since the last read: one of a few seconds may never
+            // show as at work in between (owner, 30.10: no wake, no "done").
+            let ended = chat.settledAt.map { at in session.settledSeen.map { at > $0 } ?? false } ?? false
+            session.settledSeen = chat.settledAt ?? session.settledSeen
+            // Words sent from here and no reply ended since: at work.
+            if session.sentAt != nil && (chat.settledAt != session.sentSettled || now.timeIntervalSince(session.sentAt!) > 600) {
+                session.sentAt = nil
+            }
+            let working = chat.running || chat.needsInput != nil || session.sentAt != nil
             // Working or waiting is now, however long ago it began.
-            session.lastEvent = max(session.lastEvent, chat.running || chat.needsInput != nil ? now : active)
+            session.lastEvent = max(session.lastEvent, working ? now : active)
             // Waiting for you, as with a hook's Notification: the turn isn't over.
-            let activity: Activity = chat.running || chat.needsInput != nil ? .work : .sleep
+            let activity: Activity = working ? .work : .sleep
             if session.activity != activity {
                 session.activity = activity
                 if activity == .work, let since = chat.runningSince { session.activitySince = min(since, now) }
+                changed = true
+            } else if ended && activity == .sleep {
+                session.finishedAt = now
                 changed = true
             }
             if session.waitingNotice != (chat.needsInput != nil) {
@@ -192,6 +204,20 @@ final class SessionStore {
         guard !ids.isEmpty else { return }
         for id in ids { sessions[id] = nil }
         scheduleSave()
+        onChange?()
+    }
+
+    /// Words just went to a claude.ai chat from here: at work at once, till
+    /// claude.ai says a reply ended.
+    func markSent(_ id: String, now: Date = Date()) {
+        guard let session = sessions[id], session.fromClaudeAI else { return }
+        session.sentAt = now
+        session.sentSettled = session.settledSeen
+        session.lastEvent = now
+        if session.activity != .work {
+            session.activity = .work
+            session.activitySince = now
+        }
         onChange?()
     }
 

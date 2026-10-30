@@ -2423,6 +2423,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remoteSending.insert(id)
         let sent = { [weak self] in
             guard let self else { return }
+            self.store.markSent(id)
             self.queueSentAt = Date()
             self.claudeAI.lookSoon()
             self.setNeedsRefresh()

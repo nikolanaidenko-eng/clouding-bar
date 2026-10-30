@@ -49,6 +49,10 @@ final class ClaudeAI {
     /// each chat without one was last asked about.
     private var found: [String: String] = [:]
     private var lookedUp: [String: Date] = [:]
+    /// What each Cowork task's card said last, and when words last went to
+    /// it: read every 4 s while it works, waits or was just written to.
+    private var cardState: [String: (working: Bool, waiting: String?)] = [:]
+    private var nudged: [String: Date] = [:]
     /// Requests on their way, so a slow answer isn't asked for twice.
     private var asking: Set<String> = []
     /// One more at each stop: an answer to a request from before is dropped.
@@ -137,6 +141,8 @@ final class ClaudeAI {
         cardRead = [:]
         found = [:]
         lookedUp = [:]
+        cardState = [:]
+        nudged = [:]
         nextOrg = .distantPast
         nextUsage = .distantPast
         nextChats = .distantPast
@@ -180,6 +186,16 @@ final class ClaudeAI {
         }
         let due = readChats ? bridges.filter { now.timeIntervalSince(cardRead[$0] ?? .distantPast) >= 30 } : []
         if !due.isEmpty { fetchCards(Array(due.prefix(5)), org: org, key: key) }
+        // Cowork tasks of the last half hour: their cards, whatever the list
+        // says — at work, a question, done (owner, 30.10: "everything from
+        // claude.ai"; a task started in Claude Desktop woke nothing).
+        let tasks = readChats ? chats.filter { $0.isCowork && !$0.archived && now.timeIntervalSince($0.lastActive ?? .distantPast) < ClaudeAIChats.recent }
+            .compactMap(\.workspace) : []
+        let cards = tasks.filter { ws in
+            let hot = cardState[ws].map { $0.working || $0.waiting != nil } == true || now.timeIntervalSince(nudged[ws] ?? .distantPast) < 120
+            return now.timeIntervalSince(cardRead[ws] ?? .distantPast) >= (hot ? 4 : 15)
+        }
+        if !cards.isEmpty { fetchCards(Array(cards.prefix(3)), org: org, key: key) }
     }
 
     /// Signed in, the account known, and the key given for the chats too:
@@ -229,7 +245,7 @@ final class ClaudeAI {
             let first = ClaudeAIChats.items(json).first
             self.note("chats: \(chats.count) read, fields \(first?.keys.sorted().joined(separator: ",") ?? "none")")
             self.chats = chats
-            self.onChats?(chats)
+            self.onChats?(ClaudeAIChats.withCards(chats, self.cardState))
             self.lookUpSessions(org: org, key: key)
             self.fetchContexts(org: org, key: key)
             // What a Cowork task waiting on you asks: only its card has it.
@@ -251,6 +267,12 @@ final class ClaudeAI {
                 guard let self else { return }
                 if status == 200, let card = ClaudeAIChats.remote(session: json) {
                     self.onRemote?(id, card)
+                    let state = (working: card.working, waiting: card.pending.map { $0.tool == "AskUserQuestion" ? "question" : "permission" })
+                    if self.chats.contains(where: { $0.workspace == id }),
+                       self.cardState[id]?.working != state.working || self.cardState[id]?.waiting != state.waiting {
+                        self.cardState[id] = state
+                        self.onChats?(ClaudeAIChats.withCards(self.chats, self.cardState))
+                    }
                     return
                 }
                 // Read but not a card: which fields came, names only, never values.
@@ -283,7 +305,7 @@ final class ClaudeAI {
                 self.found[chat.uuid] = cse
                 self.note("cowork: a task found by its chat")
                 self.chats = ClaudeAIChats.merged(self.chats, previous: [], found: self.found)
-                self.onChats?(self.chats)
+                self.onChats?(ClaudeAIChats.withCards(self.chats, self.cardState))
                 self.fetchContexts(org: org, key: key)
                 let waiting = self.chats.filter { $0.needsInput != nil && $0.uuid == chat.uuid }.compactMap(\.workspace)
                 if !waiting.isEmpty { self.fetchCards(waiting, org: org, key: key) }
@@ -309,6 +331,7 @@ final class ClaudeAI {
     /// Your words into a Cowork task or a Remote Control session, as Claude
     /// Code sends them; Claude there echoes them into its chat as yours.
     func send(_ content: [[String: Any]], to session: String, done: @escaping (Sent) -> Void) {
+        nudged[session] = Date()
         post("/v1/code/sessions/\(session)/events", body: ClaudeAIChats.message(content, session: session), done: done)
     }
 
@@ -324,6 +347,7 @@ final class ClaudeAI {
             return
         }
         mutationSeq += 1
+        if let ws = chats.first(where: { $0.uuid == uuid })?.workspace { nudged[ws] = Date() }
         let body = ClaudeAIChats.chatMessage(text, chat: uuid, mutation: (mutationSession, mutationSeq))
         postProto("/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction", body: body, chat: uuid, done: done)
     }

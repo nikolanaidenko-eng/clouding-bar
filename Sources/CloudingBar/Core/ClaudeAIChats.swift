@@ -71,6 +71,17 @@ enum ClaudeAIChats {
         }
     }
 
+    /// The list with what the tasks' cards say: at work, or waiting on you.
+    static func withCards(_ chats: [Chat], _ cards: [String: (working: Bool, waiting: String?)]) -> [Chat] {
+        chats.map { chat in
+            guard let ws = chat.workspace, let card = cards[ws] else { return chat }
+            var c = chat
+            c.running = c.running || card.working
+            if c.needsInput == nil { c.needsInput = card.waiting }
+            return c
+        }
+    }
+
     /// The Cowork session of a chat, from claude.ai's list of sessions asked
     /// by the chat's tag (`bard-conversation:<uuid>`): a new task's chat
     /// comes in the chat list without it for minutes (29.10).
@@ -151,6 +162,9 @@ enum ClaudeAIChats {
         var contextUsed: Int?
         var contextMax: Int?
         var costUSD: Double?
+        /// Claude is at it (`worker_status` "running"): the list says so only
+        /// now and then, and a reply of a few seconds slipped by (30.10).
+        var working = false
     }
 
     /// A question or permission waiting there (`pending_action`).
@@ -173,6 +187,7 @@ enum ClaudeAIChats {
         r.bridge = o["environment_kind"] as? String == "bridge"
         r.connected = o["connection_status"] as? String != "disconnected"
         r.archived = o["status"] as? String == "archived"
+        r.working = o["worker_status"] as? String == "running"
         let meta = o["external_metadata"] as? [String: Any]
         if let usage = meta?["context_usage"] as? [String: Any] {
             let used = clamp(usage["used_tokens"] as? NSNumber), max = clamp(usage["max_tokens"] as? NSNumber)
