@@ -529,6 +529,9 @@ final class WidgetController: NSObject {
         frame.origin.x = min(max(frame.minX, bounds.minX), bounds.maxX - frame.width)
         frame.origin.y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
         panel.level = level
+        // In the notch it's flush with the screen's top: its shadow would
+        // fall on a monitor above, the notch's shape there (owner, 30.10).
+        if panel.hasShadow == docked { panel.hasShadow = !docked }
         if panel.frame != frame {
             panel.setFrame(frame, display: true)
             panel.invalidateShadow()

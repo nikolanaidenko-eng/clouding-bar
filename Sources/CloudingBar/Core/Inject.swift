@@ -36,6 +36,30 @@ enum Inject {
         return try? JSONSerialization.data(withJSONObject: message)
     }
 
+    /// What the queue keeps as text, apart again: your words, and the files
+    /// dropped for the chat, whose paths follow them (quoted if they have
+    /// spaces). Queued, a screenshot went on as its path, and Cowork asked
+    /// for that folder (owner, 29.10).
+    static func split(_ text: String, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> (words: String, files: [String]) {
+        var rest = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var files: [String] = []
+        while true {
+            let path: String, length: Int
+            if rest.hasSuffix("\""), let open = rest.dropLast().lastIndex(of: "\""),
+               open == rest.startIndex || rest[rest.index(before: open)].isWhitespace {
+                path = String(rest[rest.index(after: open)..<rest.index(before: rest.endIndex)])
+                length = path.count + 2
+            } else if let last = rest.split(whereSeparator: \.isWhitespace).last {
+                path = String(last)
+                length = path.count
+            } else { break }
+            guard path.hasPrefix("/"), exists(path) else { break }
+            files.insert(path, at: 0)
+            rest = String(rest.dropLast(length)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (rest, files)
+    }
+
     /// The message's content: your words, then the pictures (claude.ai's
     /// sessions take the same).
     static func content(_ text: String, files: [String] = []) -> [[String: Any]]? {

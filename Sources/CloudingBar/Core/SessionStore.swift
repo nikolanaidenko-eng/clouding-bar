@@ -389,7 +389,11 @@ final class SessionStore {
     /// title, or the only one of that project. Nil when it can't be told
     /// (two chats of one project, the window on a file): typing there
     /// could land anywhere.
-    func session(inWindow title: String?, tty: String? = nil) -> Session? {
+    /// `naming`: keys go there, so the title must name the chat itself if
+    /// another could be the one open: its folder in the title says nothing
+    /// of which tab is in front (owner, 30.10: words for one chat went into
+    /// another open in that window).
+    func session(inWindow title: String?, tty: String? = nil, naming: Bool = false) -> Session? {
         if let tty {
             // A terminal tab in front that's no chat's we know (a shell,
             // Codex): none, whatever its title says (review, 27.10).
@@ -402,6 +406,7 @@ final class SessionStore {
         // Nor one from claude.ai's list: it lives in Claude Desktop.
         let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient && !$0.fromClaudeAI })
         guard let top = ranked.first else { return nil }
+        if naming, top.score < 3, alive.filter({ !$0.ambient && !$0.fromClaudeAI && $0.tty == nil }).count > 1 { return nil }
         // Short names made two chats' titles equal: words go only to the one chat
         // the title tells, at any score (review, 27.10).
         return ranked.filter { $0.score == top.score }.count == 1 ? top.session : nil

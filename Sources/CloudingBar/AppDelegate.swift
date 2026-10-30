@@ -1071,6 +1071,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         desktopChat.readPrompt(of: app) { [weak self] prompt in self?.syncDesktopPrompt(prompt) }
     }
 
+    /// When the window's question was first read.
+    private var desktopPromptSeen: (key: String, at: Date)?
+
     /// The window's question on the bar and in the widget, as long as it's there.
     private func syncDesktopPrompt(_ prompt: DesktopChat.Prompt?) {
         desktopPrompt = prompt
@@ -1082,6 +1085,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let a = desktopAnswered, a.key == prompt.key, Date().timeIntervalSince(a.at) < 6 { return }
         // The chat open there: the one it asks in.
         let session = desktopShown.flatMap { shown in store.alive.first { $0.desktopChat == shown.chat } }?.id
+        // A Cowork task's comes from its card within seconds, with all it says;
+        // the window's reading first, then that, showed the card twice (owner,
+        // 30.10). The window's only if its card has nothing to say.
+        if let s = session.flatMap({ store.sessions[$0] }), s.entrypoint == "cowork", s.remoteSession != nil, claudeAI.canSend {
+            if desktopPromptSeen?.key != prompt.key { desktopPromptSeen = (prompt.key, Date()) }
+            if let seen = desktopPromptSeen, Date().timeIntervalSince(seen.at) < 8 { return }
+        }
         let request = prompt.kind == .question
             ? PendingRequest(desktopQuestion: prompt.text, options: prompt.options, multiSelect: prompt.multiSelect,
                              sessionId: session, key: prompt.key)
@@ -2210,7 +2220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let files = session.flatMap { attachments.removeValue(forKey: $0.id) } ?? []
         let full = ([text] + files.map(FileDrop.quoted)).filter { !$0.isEmpty }.joined(separator: " ")
         guard !full.isEmpty else { return nil }
-        if let s = session, Delivery.route(direct: straightIn(s), free: isFree(s),
+        if let s = session, Delivery.route(direct: straightIn(s, files: files), free: isFree(s),
                                            queuedBefore: queue.contains(where: { $0.sessionId == s.id }), waits: true) == .now {
             DebugLog.tap("send straight to " + (s.entrypoint == "codex" ? "Codex" : "Claude") + (files.isEmpty ? "" : " with \(files.count) file(s)"))
             inject(text, files: files, into: s) { [weak self] in
@@ -2288,12 +2298,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for (i, next) in queue.enumerated() {
             guard let id = next.sessionId, let session = store.sessions[id], seen.insert(id).inserted,
                   isFree(session), Date().timeIntervalSince(session.activitySince) > 1.5 else { continue }
-            if straightIn(session) {
+            // Files dropped for it wait at its end, as paths: they go as files.
+            let parts = Inject.split(next.text)
+            if straightIn(session, files: parts.files) {
                 queue.remove(at: i)
                 saveQueue()
                 queueSentAt = Date()
                 DebugLog.note("queue: sent straight to \(session.displayName), \(queue.count) left")
-                inject(next.text, into: session) { [weak self] in
+                inject(parts.words, files: parts.files, into: session) { [weak self] in
                     self?.queue.insert(next, at: 0)
                     self?.saveQueue()
                     self?.setNeedsRefresh()
@@ -2328,8 +2340,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
         guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
         DebugLog.tap("queue: send now → \(session.displayName)")
-        if straightIn(session) {
-            inject(item.text, into: session) { [weak self] in
+        let parts = Inject.split(item.text)
+        if straightIn(session, files: parts.files) {
+            inject(parts.words, files: parts.files, into: session) { [weak self] in
                 self?.queue.insert(item, at: 0)
                 self?.saveQueue()
                 self?.refresh()
@@ -2350,8 +2363,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Its words go straight in: Claude's input (VS Code, through the
     /// wrapper), Codex's own server for a chat it has loaded, or claude.ai.
-    private func straightIn(_ session: Session) -> Bool {
-        Delivery.direct(session, codexLoaded: codexDirect(session), remote: remoteDirect(session) != nil)
+    private func straightIn(_ session: Session, files: [String] = []) -> Bool {
+        Delivery.direct(session, codexLoaded: codexDirect(session),
+                        remote: remoteDirect(session) != nil || (files.isEmpty && chatDirect(session)))
+    }
+
+    /// A plain claude.ai chat (Chrome, Claude Desktop's Chat tab): words alone
+    /// go into it as its page sends them, whatever window is in front (owner,
+    /// 30.10). Turned down: keys, for 10 minutes. Pictures: keys, for now.
+    private func chatDirect(_ session: Session) -> Bool {
+        claudeAI.canSend && session.entrypoint == "claude-ai" && session.id.hasPrefix("claudeai-")
+            && Date().timeIntervalSince(remoteRefused[session.id] ?? .distantPast) > 600
+    }
+
+    private func sendToPlainChat(_ text: String, into session: Session, fallback: @escaping () -> Void) {
+        let name = session.displayName, id = session.id
+        handedAt[id] = Date()
+        remoteSending.insert(id)
+        claudeAI.sendToChat(text, chat: String(id.dropFirst("claudeai-".count))) { [weak self] result in
+            guard let self else { return }
+            self.remoteSending.remove(id)
+            switch result {
+            case .sent:
+                DebugLog.note("sent into its chat on claude.ai (\(name))")
+                self.store.markSent(id)
+                self.queueSentAt = Date()
+                self.claudeAI.lookSoon()
+                self.setNeedsRefresh()
+            case .kept(let why):
+                self.remoteRefused[id] = Date()
+                DebugLog.note("its chat didn't take it (\(name)): \(why) — kept, typed once its chat is in front")
+                fallback()
+            case .unsure(let why):
+                NSSound.beep()
+                DebugLog.note("claude.ai's chat: \(why) (\(name)) — maybe sent, not sent again")
+            }
+        }
     }
 
     private let remoteControlQueue = DispatchQueue(label: "cloudingbar.remote-control")
@@ -2543,6 +2590,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             sendToClaudeAI(text, files: files, into: session, remote: remote, fallback: fallback)
             return
         }
+        if files.isEmpty, chatDirect(session) {
+            sendToPlainChat(text, into: session, fallback: fallback)
+            return
+        }
         if codexDirect(session) {
             handedAt[session.id] = Date()
             sendToCodex(text, files: files, into: session, fallback: fallback)
@@ -2668,7 +2719,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Another app in front (a browser): the window title read last is
         // its editor's from before, and keys would go to that other app.
         guard isTerminal(app) else { return false }
-        return store.session(inWindow: frontTitle, tty: frontTTY)?.id == id
+        return store.session(inWindow: frontTitle, tty: frontTTY, naming: true)?.id == id
     }
 
     /// A message for this chat (the widget's box, the bar, the voice card):
