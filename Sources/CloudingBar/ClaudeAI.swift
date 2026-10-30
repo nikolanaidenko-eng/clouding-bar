@@ -312,6 +312,28 @@ final class ClaudeAI {
         post("/v1/code/sessions/\(session)/events", body: ClaudeAIChats.message(content, session: session), done: done)
     }
 
+    /// This run's mutations, as claude.ai's page numbers its own.
+    private let mutationSession = "sess_" + (0..<8).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+    private var mutationSeq = 0
+
+    /// Your words into the chat itself, as its page sends them: shown there,
+    /// passed on to its Cowork task by claude.ai (signed, as typed). Its
+    /// latest message known from the list; none yet: not sent this way.
+    func sendToChat(_ text: String, chat uuid: String, done: @escaping (Sent) -> Void) {
+        guard let i = chats.firstIndex(where: { $0.uuid == uuid }), let parent = chats[i].leaf else {
+            done(.kept("its latest message isn't known yet"))
+            return
+        }
+        mutationSeq += 1
+        let message = UUID().uuidString.lowercased()
+        let body = ClaudeAIChats.chatMessage(text, chat: uuid, after: parent, mutation: (mutationSession, mutationSeq), message: message)
+        postProto("/claudeai-rpc/anthropic.bard.api.v1alpha.ConversationService/PerformAction", body: body, chat: uuid) { [weak self] result in
+            // The next follows this one, before the list says so.
+            if result == .sent, let self, let j = self.chats.firstIndex(where: { $0.uuid == uuid }) { self.chats[j].leaf = message }
+            done(result)
+        }
+    }
+
     /// Your answer to what it waits on (its card's request id).
     func answer(_ decision: [String: Any], request: String, in session: String, done: @escaping (Sent) -> Void) {
         post("/v1/code/sessions/\(session)/events", body: ClaudeAIChats.answer(decision, request: request), done: done)
@@ -420,6 +442,43 @@ final class ClaudeAI {
     /// A POST to claude.ai with the session cookie — only what you send.
     /// Calls back on the main queue: taken, refused (with claude.ai's
     /// reason), or no telling.
+    /// A POST of protobuf to claude.ai's RPC, as its page makes it.
+    private func postProto(_ path: String, body: Data, chat: String, done: @escaping (Sent) -> Void) {
+        guard let key = Self.readKey(), let org = orgId, canSend else {
+            done(.kept("not signed in to claude.ai"))
+            return
+        }
+        guard let u = URL(string: "https://claude.ai" + path), u.host == "claude.ai", ClaudeAIChats.isId(chat) else {
+            done(.kept("nothing to send"))
+            return
+        }
+        var request = URLRequest(url: u, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("sessionKey=\(key)", forHTTPHeaderField: "Cookie")
+        request.setValue("application/proto", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+        request.setValue(org, forHTTPHeaderField: "x-organization-uuid")
+        request.setValue("web_claude_ai", forHTTPHeaderField: "anthropic-client-platform")
+        request.setValue(chat, forHTTPHeaderField: "anthropic-chat-conversation-uuid")
+        request.httpShouldHandleCookies = false
+        Self.session.dataTask(with: request) { data, response, error in
+            let status = error == nil ? (response as? HTTPURLResponse)?.statusCode ?? 0 : 0
+            // Connect's error: {"code", "message"}.
+            let reason = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                .flatMap { $0["message"] as? String }
+                .map { " — " + String($0.prefix(200)) } ?? ""
+            DispatchQueue.main.async {
+                switch status {
+                case 200..<300: done(.sent)
+                case 0: done(.unsure("no answer from claude.ai"))
+                case 500...: done(.unsure("claude.ai answered HTTP \(status)" + reason))
+                default: done(.kept("HTTP \(status)" + reason))
+                }
+            }
+        }.resume()
+    }
+
     private func post(_ path: String, body: [String: Any], done: @escaping (Sent) -> Void) {
         guard let key = Self.readKey(), let org = orgId, canSend else {
             done(.kept("not signed in to claude.ai"))

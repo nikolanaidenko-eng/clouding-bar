@@ -19,6 +19,8 @@ enum ClaudeAIChats {
         var needsInput: String?
         /// When its last reply ended.
         var settledAt: Date?
+        /// Its latest message: what a new one follows (`current_leaf_message_uuid`).
+        var leaf: String?
         var updatedAt: Date?
         /// Archived in claude.ai or Claude Desktop: not shown.
         var archived = false
@@ -52,6 +54,7 @@ enum ClaudeAIChats {
                 chat.needsInput = kind == "permission" || kind == "question" ? kind : "input"
             }
             chat.settledAt = date(o["last_settled_at"])
+            chat.leaf = (o["current_leaf_message_uuid"] as? String).flatMap { isId($0) ? $0 : nil }
             chat.updatedAt = date(o["updated_at"])
             chat.archived = o["is_archived"] as? Bool == true
             return chat
@@ -259,6 +262,42 @@ enum ClaudeAIChats {
         let rest = s[s.index(after: dot)...].dropFirst(digits.count)
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f.date(from: String(s[..<dot]) + "." + digits.prefix(3) + rest)
+    }
+
+    /// Your words into a chat as claude.ai's own page sends them (owner,
+    /// 30.10: sent to a Cowork task's session they reached Claude but not
+    /// the chat, which showed only its answers). ConversationService's
+    /// PerformAction, as protobuf (`application/proto`), read off the page:
+    /// 1 the chat — 1 the mutation (this app's `sess_…` and a count; the
+    /// server wants one), 2 its uuid, 3 and 7 as the page sets them, 14 the
+    /// locale; 2 the message — 1 its new uuid, 2 the one it follows, 3 the
+    /// words, 12 the time zone, 13 the language.
+    static func chatMessage(_ text: String, chat: String, after parent: String, mutation: (session: String, seq: Int),
+                            message: String = UUID().uuidString.lowercased(),
+                            timeZone: String = TimeZone.current.identifier,
+                            language: String = String((Locale.preferredLanguages.first ?? "en").prefix(2))) -> Data {
+        let flags = [1, 2, 3, 6, 8, 10, 22, 24, 28, 33].flatMap { Proto.varint($0, 1) }
+        let context = Proto.message(1, Proto.message(1, Proto.string(1, mutation.session) + Proto.varint(2, mutation.seq))
+            + Proto.string(2, chat) + Proto.varint(3, 3) + Proto.message(7, flags) + Proto.string(14, "en-US"))
+        let send = Proto.message(2, Proto.string(1, message) + Proto.string(2, parent) + Proto.string(3, text)
+            + Proto.string(12, timeZone) + Proto.string(13, language) + Proto.varint(18, 1))
+        return Data(context + send)
+    }
+
+    /// Protobuf's wire format, the little of it PerformAction needs.
+    enum Proto {
+        static func varint(_ value: Int) -> [UInt8] {
+            var v = UInt64(max(0, value)), out: [UInt8] = []
+            while v > 127 {
+                out.append(UInt8(v & 127) | 128)
+                v >>= 7
+            }
+            return out + [UInt8(v)]
+        }
+        static func varint(_ field: Int, _ value: Int) -> [UInt8] { varint(field << 3) + varint(value) }
+        static func bytes(_ field: Int, _ b: [UInt8]) -> [UInt8] { varint(field << 3 | 2) + varint(b.count) + b }
+        static func string(_ field: Int, _ s: String) -> [UInt8] { bytes(field, Array(s.utf8)) }
+        static func message(_ field: Int, _ inner: [UInt8]) -> [UInt8] { bytes(field, inner) }
     }
 
     private static func clamp(_ n: NSNumber?) -> Int {
