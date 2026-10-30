@@ -497,7 +497,7 @@ final class WidgetController: NSObject {
                 model.setConfig("pillWidth", Double(min(max(PillLayout.minWidth, r.raw.width), natural)))
             } else {
                 // Pulled all the way: everything, now and whatever's added later.
-                model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(0, r.raw.width)))
+                model.setConfig("pillWidth", r.raw.width >= r.most ? 10_000 : Double(max(PillLayout.minWidth, r.raw.width)))
             }
             model.setConfig("pillHeight", Double(height))
             // Snap to what it shows, the opposite sides still in place.
