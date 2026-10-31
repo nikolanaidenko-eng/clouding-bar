@@ -184,7 +184,11 @@ final class Session {
     }
 
     /// A chat of the Claude desktop app: Cowork, a claude.ai chat, or Code in the app.
-    var inDesktopApp: Bool { fromClaudeAI || entrypoint == "claude-desktop" }
+    var inDesktopApp: Bool { fromList || entrypoint == "claude-desktop" }
+    /// A Cowork task on this Mac (LocalCowork), from Claude Desktop's files.
+    var isLocalCowork: Bool { entrypoint == "cowork-local" }
+    /// Known from a list, claude.ai's or Claude Desktop's files, not from hooks.
+    var fromList: Bool { fromClaudeAI || isLocalCowork }
     /// Known from claude.ai's list of the account's chats (a Cowork task or
     /// a chat), not from a hook.
     var fromClaudeAI: Bool { entrypoint == "cowork" || entrypoint == "claude-ai" }
@@ -243,7 +247,7 @@ final class Session {
             return now.timeIntervalSince(lastSeen) < (activity == .work ? CodexRollouts.freshness : CodexRollouts.freshness / 4)
         }
         // A chat from claude.ai's list: shown while it was active in the last half hour.
-        return now.timeIntervalSince(lastSeen) < (fromClaudeAI ? ClaudeAIChats.recent : 12 * 3600)
+        return now.timeIntervalSince(lastSeen) < (fromList ? ClaudeAIChats.recent : 12 * 3600)
     }
 
     // MARK: Persistence

@@ -57,6 +57,90 @@ final class DesktopChat {
         }
     }
 
+    // MARK: Words, with its window where it is
+
+    /// `unsure`: its button was pressed and the words are still in the field.
+    /// They may have gone: never sent again, they stay there for you to see.
+    enum Quiet { case sent, notShown, refused, unsure }
+
+    /// Your words into the chat its window shows, written into its field and
+    /// sent by its button, through Accessibility: nothing comes to the front,
+    /// no keys. Only into `page`, an empty field, with no question open, and
+    /// that's looked at again just before the button. Up to the button
+    /// nothing has gone, and what it wrote is taken out again (`notShown`,
+    /// `refused`); only its own words, not what you've typed since.
+    func sendQuietly(_ text: String, page wanted: String, in app: NSRunningApplication, completion: @escaping (Quiet) -> Void) {
+        let pid = app.processIdentifier
+        func done(_ result: Quiet) { DispatchQueue.main.async { completion(result) } }
+        func same(_ field: AXUIElement) -> Bool { Self.words(field)?.trimmingCharacters(in: .whitespacesAndNewlines) == text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        func takeBack(_ field: AXUIElement) {
+            if same(field) { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
+        }
+        queue.async {
+            guard self.shown(pid: pid)?.chat == wanted, let page = self.page, self.findPrompt(pid: pid) == nil,
+                  let field = self.composer(in: page),
+                  Self.words(field)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true else { return done(.notShown) }
+            guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
+            // Chromium's tree follows a moment later; its send button shows once there are words.
+            self.queue.asyncAfter(deadline: .now() + 0.5) {
+                guard same(field), self.shown(pid: pid)?.chat == wanted, self.findPrompt(pid: pid) == nil,
+                      let send = self.sendButton(in: page) else {
+                    takeBack(field)
+                    return done(.refused)
+                }
+                guard AXUIElementPerformAction(send, kAXPressAction as CFString) == .success else {
+                    takeBack(field)
+                    return done(.refused)
+                }
+                func gone(_ tries: Int) {
+                    self.queue.asyncAfter(deadline: .now() + 0.5) {
+                        if !same(field) { return done(.sent) }
+                        if tries > 0 { gone(tries - 1) } else { done(.unsure) }
+                    }
+                }
+                gone(5)
+            }
+        }
+    }
+
+    /// What's in a field; nil if it can't be told (not the same as empty).
+    private static func words(_ field: AXUIElement) -> String? {
+        var value: CFTypeRef?
+        switch AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &value) {
+        case .success: return value as? String
+        case .noValue: return ""
+        default: return nil
+        }
+    }
+
+    /// The field at the foot of the chat: from the end of the page, the first
+    /// that can take words.
+    private func composer(in page: AXUIElement) -> AXUIElement? {
+        fromEnd(of: page) { e in
+            guard Self.string(e, kAXRoleAttribute) == "AXTextArea" else { return false }
+            var settable: DarwinBoolean = false
+            return AXUIElementIsAttributeSettable(e, kAXValueAttribute as CFString, &settable) == .success && settable.boolValue
+        }
+    }
+
+    private func sendButton(in page: AXUIElement) -> AXUIElement? {
+        fromEnd(of: page) { e in
+            Self.string(e, kAXRoleAttribute) == "AXButton" && ["send", "send message"].contains(Self.label(e)?.lowercased() ?? "")
+        }
+    }
+
+    private func fromEnd(of page: AXUIElement, where wanted: (AXUIElement) -> Bool) -> AXUIElement? {
+        var seen = 0
+        var stack: [(AXUIElement, Int)] = [(page, 0)]
+        while let (e, depth) = stack.popLast(), seen < 1500 {
+            seen += 1
+            if wanted(e) { return e }
+            guard depth < 45 else { continue }
+            stack.append(contentsOf: Self.children(e).map { ($0, depth + 1) }) // the last child comes up first
+        }
+        return nil
+    }
+
     // MARK: What the chat asks
 
     /// A question or a permission in the open chat, as Claude Desktop shows

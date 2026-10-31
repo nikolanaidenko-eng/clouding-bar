@@ -24,7 +24,7 @@ enum ClaudeAINotice {
         Signing in here goes against them and could put your account at risk, including suspension. \
         Anthropic hasn't approved Clouding Bar.
 
-        Without this sign-in everything else keeps working, except Cowork tasks, claude.ai chats, the account-wide limit \
+        Without this sign-in everything else keeps working, except Cowork tasks on claude.ai, claude.ai chats, the account-wide limit \
         and sending to a Claude Desktop or Terminal chat through Remote Control without switching windows.
 
         Use it at your own risk.

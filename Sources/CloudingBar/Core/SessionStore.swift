@@ -124,12 +124,12 @@ final class SessionStore {
     /// that runs, waits for you or was active in the last half hour is a
     /// session of its own, known by its chat in Claude Desktop. One the
     /// list no longer has, or has archived, is gone at once.
-    func apply(claudeAI chats: [ClaudeAIChats.Chat], now: Date = Date()) {
+    func apply(claudeAI chats: [ClaudeAIChats.Chat], local: Bool = false, now: Date = Date()) {
         var changed = false
         // Left to `prune`, which also drops what was asked in them. An empty
         // list (or one not read right) takes nothing away (review, 28.10).
         let listed = Set(chats.filter { !$0.archived }.map(ClaudeAIChats.sessionId))
-        for s in sessions.values where s.fromClaudeAI && !listed.contains(s.id) && !chats.isEmpty {
+        for s in sessions.values where local ? s.isLocalCowork && !listed.contains(s.id) : s.fromClaudeAI && !listed.contains(s.id) && !chats.isEmpty {
             s.lastEvent = .distantPast
             changed = true
         }
@@ -148,7 +148,7 @@ final class SessionStore {
                 session.listed = plain.listed
                 onRenamed?(plain.id, id)
             }
-            session.entrypoint = chat.isCowork ? "cowork" : "claude-ai"
+            session.entrypoint = chat.local ? "cowork-local" : chat.isCowork ? "cowork" : "claude-ai"
             session.cwd = chat.isCowork ? "/Cowork" : "/claude.ai"
             session.title = chat.name ?? session.title
             session.remoteSession = chat.workspace
@@ -218,7 +218,7 @@ final class SessionStore {
     /// Words just went to a claude.ai chat from here: at work at once, till
     /// claude.ai says a reply ended.
     func markSent(_ id: String, now: Date = Date()) {
-        guard let session = sessions[id], session.fromClaudeAI else { return }
+        guard let session = sessions[id], session.fromList else { return }
         session.sentAt = now
         session.sentSettled = session.settledSeen
         session.endAhead = false
@@ -244,6 +244,38 @@ final class SessionStore {
         if let cost = card.costUSD, session.costUSD != cost {
             session.costUSD = cost
             changed = true
+        }
+        guard changed else { return }
+        scheduleSave()
+        onChange?()
+    }
+
+    /// Cowork tasks on this Mac, as read from Claude Desktop's files.
+    func apply(localCowork tasks: [LocalCowork.Task], now: Date = Date()) {
+        apply(claudeAI: tasks.map(\.chat), local: true, now: now)
+        var changed = false
+        for task in tasks {
+            guard let session = sessions[ClaudeAIChats.sessionId(task.chat)] else { continue }
+            if let window = task.window, session.cardWindow != window {
+                session.cardWindow = window
+                changed = true
+            }
+            if let cost = task.costUSD, session.costUSD != cost {
+                session.costUSD = cost
+                changed = true
+            }
+            guard let c = task.context else { continue }
+            let size = session.cardWindow ?? Cowork.window(model: session.model)
+            if session.contextTokens != c.tokens || session.contextWindowSize != size {
+                session.contextTokens = c.tokens
+                session.contextWindowSize = size
+                changed = true
+            }
+            // Its answer, once the turn is over: read while it works, it's a step on the way.
+            if let a = c.answer, session.activity == .sleep, session.answer != a {
+                session.answer = a
+                changed = true
+            }
         }
         guard changed else { return }
         scheduleSave()
@@ -302,7 +334,7 @@ final class SessionStore {
         let candidates = alive
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return s }
         // A chat from claude.ai's list lives in Claude Desktop, never in this window.
-        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromClaudeAI }, halves: true) } ?? []
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromList }, halves: true) } ?? []
         if let top = ranked.first {
             // The same name on two chats ("Review"): not told apart by it, so on to
             // the one picked or last seen, never the first found (review, 27.10).
@@ -328,7 +360,7 @@ final class SessionStore {
         }
         let candidates = alive
         if let tty, let s = candidates.first(where: { $0.tty == tty }) { return [s.id] }
-        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromClaudeAI }, halves: true) } ?? []
+        let ranked = windowTitle.map { Self.ranked(title: $0, in: candidates.filter { !$0.fromList }, halves: true) } ?? []
         guard let top = ranked.first else { return [] }
         return Set(ranked.filter { $0.score == top.score }.map(\.session.id))
     }
@@ -405,7 +437,7 @@ final class SessionStore {
         // its window by: a folder's name alone matched a shell or an editor
         // there, and words went into it. Never in front.
         // Nor one from claude.ai's list: it lives in Claude Desktop.
-        let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient && !$0.fromClaudeAI })
+        let ranked = Self.ranked(title: title, in: alive.filter { !$0.ambient && !$0.fromList })
         guard let top = ranked.first else { return nil }
         if naming, top.score < 3, ranked.count > 1 { return nil }
         // Short names made two chats' titles equal: words go only to the one chat

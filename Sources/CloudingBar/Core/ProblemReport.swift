@@ -16,7 +16,7 @@ enum ProblemReport {
         "note: claude.ai sign-in:", "note: claude.ai key:", "note: claude.ai session card:",
         "note: claude.ai cowork events:", "note: claude.ai cowork:",
         "claude.ai signed", "note: setup:", "note: update", "note: screens:", "note: widget: put", "note: pull:",
-        "note: the socket", "note: desktop prompt: no claude.ai page", "note: desktop prompt: answered",
+        "note: the socket", "note: local cowork:", "note: desktop prompt: no claude.ai page", "note: desktop prompt: answered",
         "note: desktop prompt: couldn't", "note: problem:",
     ]
 
@@ -44,7 +44,7 @@ enum ProblemReport {
         ("~/[^\\s,:;)]+", "<path>"),
         ("\\b(cse|local|session)_[A-Za-z0-9_-]+", "<id>"),
         ("\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b", "<id>"),
-        ("\\b[0-9a-f]{8}\\b", "<id>"),
+        ("(?<![.\\d])\\b[0-9a-f]{8}\\b", "<id>"),
     ]
 
     /// No address, no name in a path, no id.

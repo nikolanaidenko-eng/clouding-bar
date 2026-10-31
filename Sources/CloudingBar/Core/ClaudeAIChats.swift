@@ -23,10 +23,13 @@ enum ClaudeAIChats {
         /// Archived in claude.ai or Claude Desktop: not shown.
         var archived = false
 
-        var isCowork: Bool { workspace != nil }
+        /// A task on this Mac (LocalCowork), not on claude.ai.
+        var local = false
+
+        var isCowork: Bool { workspace != nil || local }
         var lastActive: Date? { [updatedAt, settledAt, runningSince].compactMap { $0 }.max() }
         /// Its page in Claude Desktop, as DesktopChat reads it.
-        var page: String { "/chat/" + uuid }
+        var page: String { (local ? "/cowork/" : "/chat/") + uuid }
     }
 
     /// How long a chat that's done is shown after it was last active (3 hours
@@ -62,7 +65,7 @@ enum ClaudeAIChats {
     }
 
     /// What claude.ai shows a chat in, by the session id the app keeps.
-    static func sessionId(_ chat: Chat) -> String { (chat.isCowork ? "cowork-" : "claudeai-") + chat.uuid }
+    static func sessionId(_ chat: Chat) -> String { (chat.local ? "coworklocal-" : chat.isCowork ? "cowork-" : "claudeai-") + chat.uuid }
 
     /// The list: an array, or `{"data": [...]}` (chat_conversations_v2).
     static func chats(_ json: Any?) -> [Chat] {

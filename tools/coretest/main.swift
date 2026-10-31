@@ -2451,6 +2451,75 @@ do {
     check(rubber.width == 920, "pull: past what it can show, it gives a little")
 }
 
+// MARK: Cowork tasks on this Mac, from Claude Desktop's files
+
+do {
+    let now = Date()
+    let id = "local_24fa398a-c155-408f-b889-6efdb96c7e5f"
+    let file: [String: Any] = ["sessionId": id, "initialMessage": "Sort my invoices\nand more", "model": "claude-opus-5",
+                               "isArchived": false, "lastActivityAt": (now.timeIntervalSince1970 - 60) * 1000]
+    func reply(_ tokens: Int, _ text: String, parent: String? = nil) -> [String: Any] {
+        ["type": "assistant", "parent_tool_use_id": parent ?? NSNull(), "timestamp": "2026-10-31T10:00:00.000Z",
+         "message": ["id": text, "model": "claude-opus-5", "content": [["type": "text", "text": text]],
+                     "usage": ["input_tokens": tokens, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0]]]
+    }
+    let user: [String: Any] = ["type": "user", "timestamp": "2026-10-31T10:05:00Z"]
+    let result: [String: Any] = ["type": "result", "timestamp": "2026-10-31T10:01:00Z", "total_cost_usd": 0.25,
+                                 "modelUsage": ["claude-opus-5": ["contextWindow": 1_000_000]]]
+    let done = LocalCowork.task(file: file, events: [reply(1000, "first"), result], changed: now, now: now)
+    check(done?.chat.local == true && done?.chat.isCowork == true && done?.chat.running == false && done?.chat.settledAt != nil,
+          "local cowork: a turn over is no work")
+    check(done?.chat.name == "Sort my invoices" && done?.window == 1_000_000 && done?.costUSD == 0.25 && done?.context?.tokens == 1000,
+          "local cowork: its name, window, cost and context")
+    let working = LocalCowork.task(file: file, events: [reply(1000, "first"), result, user, reply(5000, "second")], changed: now, now: now)
+    check(working?.chat.running == true && working?.chat.runningSince != nil && working?.context?.tokens == 5000 && working?.context?.answer == "second",
+          "local cowork: after the last turn's end it's at work, on its newest reply")
+    let sub = LocalCowork.task(file: file, events: [reply(1000, "mine"), reply(9000, "a subagent's", parent: "toolu_1")], changed: now, now: now)
+    check(sub?.context?.tokens == 1000, "local cowork: a subagent's reply isn't the task's context")
+    let stale = LocalCowork.task(file: file, events: [user], changed: now.addingTimeInterval(-LocalCowork.quiet - 1), now: now)
+    check(stale?.chat.running == false, "local cowork: long without a word, it isn't at work")
+    var asks = reply(1000, "a tool")
+    asks["message"] = ["content": [["type": "tool_use", "name": "AskUserQuestion"]]]
+    let tool = LocalCowork.task(file: file, events: [user, asks], changed: now.addingTimeInterval(-LocalCowork.quiet - 1), now: now)
+    check(tool?.chat.running == true, "local cowork: a tool or a question takes as long as it takes")
+    check(LocalCowork.task(file: ["sessionId": "local_x", "sessionType": "radar"], events: [], changed: now, now: now) == nil, "local cowork: what Desktop keeps off its list isn't shown")
+    check(LocalCowork.task(file: ["sessionId": "local_ditto_abc"], events: [], changed: now, now: now) == nil
+          && LocalCowork.task(file: ["sessionId": "../x"], events: [], changed: now, now: now) == nil && LocalCowork.task(file: "no", events: [], changed: now, now: now) == nil,
+          "local cowork: Dispatch's own session, a bad id and a broken file are no task")
+    let tail = Data("}cut\n{\"type\":\"user\"}\nnot json\n{\"type\":\"result\"}\n".utf8)
+    check(LocalCowork.events(tail: tail, cut: true).count == 2, "local cowork: a line cut short and a bad line are left out")
+
+    let store2 = SessionStore()
+    store2.apply(localCowork: [working!], now: now)
+    let session = store2.sessions["coworklocal-" + id]
+    check(session?.isLocalCowork == true && session?.inDesktopApp == true && session?.fromClaudeAI == false
+          && session?.desktopChat == "/cowork/" + id && session?.activity == .work && session?.displayName == "Sort my invoices",
+          "local cowork: a session of the Desktop app, at work")
+    check(session?.contextTokens == 5000 && session?.contextWindowSize == 1_000_000 && session?.isAlive(now: now) == true,
+          "local cowork: its context, of the window it reports")
+    store2.apply(claudeAI: ClaudeAIChats.chats([["uuid": "cf0e4a6e-7a4d-4d6e-9c8a-111111111111", "updated_at": ISO8601DateFormatter().string(from: now)]]), now: now)
+    check(store2.sessions["coworklocal-" + id]?.isAlive(now: now) == true, "local cowork: claude.ai's list doesn't take it away")
+    store2.forgetClaudeAI()
+    check(store2.sessions["coworklocal-" + id] != nil, "local cowork: signing out of claude.ai doesn't either")
+    let gone = SessionStore()
+    gone.apply(localCowork: [working!], now: now)
+    gone.apply(localCowork: [], now: now)
+    check(gone.sessions["coworklocal-" + id]?.isAlive(now: now) == false, "local cowork: its file gone, it's gone")
+    store2.apply(localCowork: [done!], now: now)
+    check(store2.sessions["coworklocal-" + id]?.activity == .sleep && store2.sessions["coworklocal-" + id]?.answer == "first", "local cowork: done, with its answer")
+
+    // On disk, as Claude Desktop keeps them.
+    let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("local-sessions")
+    let org = base.appendingPathComponent("account/org")
+    try? FileManager.default.createDirectory(at: org.appendingPathComponent(id), withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: file).write(to: org.appendingPathComponent(id + ".json"))
+    try? Data(#"{"type":"user","timestamp":"2026-10-31T10:05:00Z"}"#.utf8).write(to: org.appendingPathComponent(id + "/audit.jsonl"))
+    let reader = LocalCowork.Reader()
+    check(reader.read(in: base).first?.chat.running == true && reader.read(in: base).count == 1, "local cowork: found on disk, at work")
+    check(reader.read(in: base, now: now.addingTimeInterval(ClaudeAIChats.recent + 60)).isEmpty, "local cowork: after half an hour it's gone")
+    check(reader.read(in: base.appendingPathComponent("none")).isEmpty, "local cowork: no folder, no tasks")
+}
+
 // MARK: Problem reports (public once sent: nothing of yours in them)
 
 do {
@@ -2484,6 +2553,7 @@ do {
     check(!safe.contains("nothing asked"), "report: not the noise")
     check(safe.components(separatedBy: "screens:").count == 2, "report: the same line in a row is said once")
     check(ProblemReport.scrub("me.name+x@corp.example.com /Users/a b cse_01ABC local_x-1") == "<email> <path> b <id> <id>", "report: address, path and ids scrubbed")
+    check(ProblemReport.scrub("(43.12345678, 8.0)") == "(43.12345678, 8.0)", "report: a position isn't an id")
     check(ProblemReport.scrub("in ~/Clients/Acme and /Volumes/Acme/x") == "in <path> and <path>", "report: the rest of a path goes too")
     check(ProblemReport.worthOffering(status: 400) && ProblemReport.worthOffering(status: 422), "report: asked wrongly is offered")
     check(![0, 200, 401, 403, 404, 429, 500, 503].contains(where: ProblemReport.worthOffering), "report: its own trouble, no network, a key gone aren't")
