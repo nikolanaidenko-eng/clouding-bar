@@ -66,23 +66,28 @@ final class DesktopChat {
         let pid = app.processIdentifier
         func done(_ result: Bool) { DispatchQueue.main.async { completion(result) } }
         queue.async {
-            guard let root = self.root(pid: pid), self.shown(pid: pid)?.chat != wanted else { return done(false) }
+            guard self.shown(pid: pid)?.chat != wanted else { return done(false) }
             let asking = self.findPrompt(pid: pid) != nil
             let field = self.page.flatMap { self.composer(in: $0) }
             guard LocalCowork.mayLeave(asking: asking, draft: field == nil ? "" : field.flatMap { Self.words($0) }) else {
                 DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
                 return done(false)
             }
-            var rows: [(AXUIElement, String)] = []
-            self.walk(root, into: { _ in true }) { e in
-                if Self.string(e, kAXRoleAttribute) == "AXButton", let t = Self.label(e) { rows.append((e, t)) }
-                return true
+            // Links in its list (measured, Desktop 4.29); a link says where it goes.
+            var rows: [(element: AXUIElement, label: String, path: String?)] = []
+            for window in self.windows(pid: pid) {
+                self.walk(window, into: { _ in true }) { e in
+                    if ["AXLink", "AXButton"].contains(Self.string(e, kAXRoleAttribute) ?? "") {
+                        rows.append((e, Self.label(e) ?? "", (Self.value(e, "AXURL") as? URL)?.path))
+                    }
+                    return true
+                }
             }
-            guard let i = LocalCowork.onlyRow(rows.map(\.1), title: title) else {
-                DebugLog.note("local cowork: no one row of its name (\(rows.filter { SessionStore.titleScore($0.1, title) == 3 }.count) exact, \(rows.filter { SessionStore.sameTitle($0.1, title) }.count) alike)")
+            guard let i = LocalCowork.onlyRow(rows.map { ($0.label, $0.path) }, title: title, page: wanted) else {
+                DebugLog.note("local cowork: no one row for it (\(rows.count) in its window, \(rows.filter { SessionStore.titleScore($0.label, title) == 3 }.count) exact, \(rows.filter { SessionStore.sameTitle($0.label, title) }.count) alike)")
                 return done(false)
             }
-            done(AXUIElementPerformAction(rows[i].0, kAXPressAction as CFString) == .success)
+            done(AXUIElementPerformAction(rows[i].element, kAXPressAction as CFString) == .success)
         }
     }
 
@@ -437,21 +442,53 @@ final class DesktopChat {
         // Look for the page, at most every few seconds. It isn't entered:
         // what's in it (a long chat) can be a big tree. The app's own shell
         // page, which may hold it, is.
-        guard Date().timeIntervalSince(lastSearch) > 3, let root = root(pid: pid) else { return nil }
+        guard Date().timeIntervalSince(lastSearch) > 3 else { return nil }
         lastSearch = Date()
-        walk(root, into: { Self.string($0, kAXRoleAttribute) != "AXWebArea" || Self.read($0) == nil }) { e in
-            if Self.string(e, kAXRoleAttribute) == "AXWebArea", Self.read(e) != nil {
-                page = e
-                return false
+        for window in windows(pid: pid) where page == nil {
+            walk(window, into: { Self.string($0, kAXRoleAttribute) != "AXWebArea" || Self.read($0) == nil }) { e in
+                if Self.string(e, kAXRoleAttribute) == "AXWebArea", Self.read(e) != nil {
+                    page = e
+                    return false
+                }
+                return true
             }
-            return true
         }
-        return page.flatMap(Self.read)
+        guard page == nil else { return page.flatMap(Self.read) }
+        tellWhyNoPage(pid: pid)
+        // Its tree can go off on the way (its own log says so) or not have
+        // come on: asked again at the next look.
+        enabled.remove(pid)
+        return nil
+    }
+
+    private var lastWhy: (at: Date, why: String)?
+
+    /// For debug.log, at most once a minute: what its windows hold. No names.
+    private func tellWhyNoPage(pid: pid_t) {
+        guard Date().timeIntervalSince(lastWhy?.at ?? .distantPast) > 60 else { return }
+        var buttons = 0, areas: [String] = []
+        let windows = windows(pid: pid)
+        for window in windows {
+            walk(window, into: { _ in true }) { e in
+                let role = Self.string(e, kAXRoleAttribute)
+                if role == "AXButton" { buttons += 1 }
+                if role == "AXWebArea" {
+                    let url = Self.value(e, "AXURL") as? URL
+                    areas.append("\(url?.host ?? "-")/\(url?.pathComponents.dropFirst().first ?? "-") (\(url?.pathComponents.count ?? 0))")
+                }
+                return true
+            }
+        }
+        let version = NSRunningApplication(processIdentifier: pid)?.bundleURL.flatMap { Bundle(url: $0)?.infoDictionary?["CFBundleShortVersionString"] as? String } ?? "?"
+        let why = "Desktop \(version), tree switch \(switchResult), \(windows.count) window(s), \(buttons) button(s), pages \(areas)"
+        guard why != lastWhy?.why else { return }
+        lastWhy = (Date(), why)
+        DebugLog.note("desktop page: none. " + why)
     }
 
     /// A claude.ai page: its chat and title.
     private static func read(_ page: AXUIElement) -> Shown? {
-        guard let url = value(page, "AXURL") as? URL, url.host?.hasSuffix("claude.ai") == true,
+        guard let url = value(page, "AXURL") as? URL, ["claude.ai", "claude.com"].contains(where: { url.host?.hasSuffix($0) == true }),
               url.pathComponents.count >= 3 else { return nil }
         var title = string(page, kAXTitleAttribute) ?? ""
         if title.hasSuffix(" - Claude") { title = String(title.dropLast(" - Claude".count)) }
@@ -459,16 +496,34 @@ final class DesktopChat {
         return Shown(title: title.isEmpty || title == "Claude" ? nil : title, chat: url.path)
     }
 
-    /// The front window, with Chromium's tree turned on.
-    private func root(pid: pid_t) -> AXUIElement? {
+    /// The app, with Chromium's tree turned on. Busy, it may not hear that
+    /// in time: only an answer counts.
+    private func application(pid: pid_t) -> AXUIElement {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
         if !enabled.contains(pid) {
-            _ = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-            enabled.insert(pid)
+            let result = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            switchResult = result.rawValue
+            if result == .success { enabled.insert(pid) }
         }
-        return element(app, kAXFocusedWindowAttribute)
-            ?? (Self.value(app, kAXWindowsAttribute) as? [AXUIElement])?.first
+        return app
+    }
+
+    /// The last answer to turning its tree on, for debug.log.
+    private var switchResult: Int32 = 0
+
+    /// The front window.
+    private func root(pid: pid_t) -> AXUIElement? { windows(pid: pid).first }
+
+    /// Its windows, the front one first. On another Space or behind, one is
+    /// in none of the lists but the focused or the main (measured, 31.10).
+    private func windows(pid: pid_t) -> [AXUIElement] {
+        let app = application(pid: pid)
+        var found: [AXUIElement] = []
+        let all = [element(app, kAXFocusedWindowAttribute), element(app, kAXMainWindowAttribute)].compactMap { $0 }
+            + ((Self.value(app, kAXWindowsAttribute) as? [AXUIElement]) ?? [])
+        for window in all where !found.contains(where: { CFEqual($0, window) }) { found.append(window) }
+        return found
     }
 
     private func element(_ e: AXUIElement, _ name: String) -> AXUIElement? { Self.element(e, name) }
