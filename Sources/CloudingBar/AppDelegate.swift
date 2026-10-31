@@ -2461,7 +2461,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Its words into Claude Desktop's window, if it shows this task. Busy
     /// meanwhile, so the keys don't overtake.
-    private func sendQuietly(_ words: String, into session: Session, done: @escaping (QuietResult) -> Void) {
+    private func sendQuietly(_ words: String, into session: Session, again: Bool = true, done: @escaping (QuietResult) -> Void) {
         let id = session.id
         guard let page = session.desktopChat,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
@@ -2490,6 +2490,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.fieldTaken[id] = Date().addingTimeInterval(15)
                 done(.fieldTaken)
             case .notShown:
+                // Its window shows another task, and you aren't in it: over to
+                // this one by its row, nothing brought up. Once; the page is
+                // looked at again before a word is written.
+                if again, self.frontApp?.bundleIdentifier != Self.desktopBundle, let title = session.title,
+                   let session = self.store.sessions[id] {
+                    self.remoteSending.insert(id)
+                    self.desktopChat.open(title: title, in: app) { [weak self] pressed in
+                        DebugLog.note("local cowork: its row \(pressed ? "pressed" : "not found")")
+                        guard let self else { return }
+                        self.remoteSending.remove(id)
+                        guard pressed else {
+                            self.quietHeld[id] = Date().addingTimeInterval(15)
+                            done(.notSent)
+                            return
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                            self?.sendQuietly(words, into: session, again: false, done: done)
+                        }
+                    }
+                    return
+                }
                 self.quietHeld[id] = Date().addingTimeInterval(15)
                 done(.notSent)
             case .refused:
