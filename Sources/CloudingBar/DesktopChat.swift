@@ -61,17 +61,19 @@ final class DesktopChat {
 
     /// Its window over to the task called `title`, by its row, for words
     /// waiting for it: not while the task it shows asks you something or has
-    /// words in its field. Calls back on the main queue with whether it went.
-    func switchTo(title: String, from wanted: String, in app: NSRunningApplication, completion: @escaping (Bool) -> Void) {
+    /// words in its field. Calls back on the main queue with what came of it.
+    enum Switched: Equatable { case went, stays(String), noRow }
+
+    func switchTo(title: String, from wanted: String, in app: NSRunningApplication, completion: @escaping (Switched) -> Void) {
         let pid = app.processIdentifier
-        func done(_ result: Bool) { DispatchQueue.main.async { completion(result) } }
+        func done(_ result: Switched) { DispatchQueue.main.async { completion(result) } }
         queue.async {
-            guard self.shown(pid: pid)?.chat != wanted else { return done(false) }
+            guard self.shown(pid: pid)?.chat != wanted else { return done(.noRow) }
             let asking = self.findPrompt(pid: pid) != nil
             let field = self.page.flatMap { self.composer(in: $0) }
             guard LocalCowork.mayLeave(asking: asking, draft: field == nil ? "" : field.flatMap { Self.words($0) }) else {
                 DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
-                return done(false)
+                return done(.stays(asking ? "Another task asks something in Desktop: these wait" : "Words in another task's field in Desktop: these wait"))
             }
             // Links in its list (measured, Desktop 4.29); a link says where it goes.
             var rows: [(element: AXUIElement, label: String, path: String?)] = []
@@ -85,17 +87,21 @@ final class DesktopChat {
             }
             guard let i = LocalCowork.onlyRow(rows.map { ($0.label, $0.path) }, title: title, page: wanted) else {
                 DebugLog.note("local cowork: no one row for it (\(rows.count) in its window, \(rows.filter { SessionStore.titleScore($0.label, title) == 3 }.count) exact, \(rows.filter { SessionStore.sameTitle($0.label, title) }.count) alike)")
-                return done(false)
+                return done(.noRow)
             }
-            done(AXUIElementPerformAction(rows[i].element, kAXPressAction as CFString) == .success)
+            done(AXUIElementPerformAction(rows[i].element, kAXPressAction as CFString) == .success ? .went : .noRow)
         }
     }
 
     /// `unsure`: its button was pressed and the words are still in the field.
     /// They may have gone: never sent again, they stay there for you to see.
     /// `busy`: something's in its field already, yours: left alone, and no
-    /// keys either, they'd go off with it.
-    enum Quiet { case sent, notShown, refused, unsure, busy }
+    /// keys either, they'd go off with it. `asking`: the task it shows asks
+    /// you something: first that.
+    enum Quiet { case sent, notShown, refused, unsure, busy(Int), asking }
+
+    /// On `queue`: the words sent last.
+    private var lastSent: (words: String, at: Date)?
 
     /// Your words into the chat its window shows, written into its field and
     /// sent by its button, through Accessibility: nothing comes to the front,
@@ -111,12 +117,20 @@ final class DesktopChat {
         func takeBack(_ field: AXUIElement) {
             if same(field) { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
         }
-        queue.async {
-            guard self.shown(pid: pid)?.chat == wanted, let page = self.page, self.findPrompt(pid: pid) == nil,
-                  let field = self.composer(in: page), let before = Self.words(field) else { return done(.notShown) }
-            guard bare(before).isEmpty else { return done(.busy) }
+        func start(_ tries: Int) {
+            guard self.shown(pid: pid)?.chat == wanted, let page = self.page else { return done(.notShown) }
+            guard self.findPrompt(pid: pid) == nil else { return done(.asking) }
+            guard let field = self.composer(in: page), let before = Self.words(field) else { return done(.notShown) }
+            switch LocalCowork.field(before, sent: self.lastSent) {
+            case .empty: break
+            case .late where tries > 0:
+                self.queue.asyncAfter(deadline: .now() + 0.5) { start(tries - 1) }
+                return
+            default: return done(.busy(before.count))
+            }
             guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
             let written = Date()
+            self.lastSent = nil
             func gone(_ tries: Int) {
                 self.queue.asyncAfter(deadline: .now() + 0.5) {
                     if !same(field) { return done(.sent) }
@@ -147,11 +161,13 @@ final class DesktopChat {
                         takeBack(field)
                         return done(.refused)
                     }
+                    self.lastSent = (text, Date())
                     gone(19)
                 }
             }
             press(11)
         }
+        queue.async { start(24) }
     }
 
     /// What's in a field; nil if it can't be told (not the same as empty).
