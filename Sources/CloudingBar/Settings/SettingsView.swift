@@ -980,6 +980,10 @@ struct GeneralTab: View {
                     }
                 }
                 .tourAnchor("claudeai")
+                SettingsRow(title: "Cowork on this Mac", hint: "Shows without signing in, read from Claude Desktop's files. " + LocalCowork.limits) {
+                    EmptyView()
+                }
+                .tourAnchor("general.localcowork")
                 SettingsRow(title: "Accessibility",
                             hint: model.accessibilityTrusted
                                 ? "On: the bar's buttons type into your chats, and the chat in front and Claude Desktop's questions are found. Privacy & Security → Accessibility"

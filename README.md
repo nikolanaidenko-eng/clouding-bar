@@ -48,7 +48,7 @@ must. A first version for **Windows** is in [windows/](windows/README.md).
 - **Send.** Write to a chat from the widget, typed or dictated (hold the right
   ⌥ key). Screenshot an area, or drop files on the widget. Your own buttons:
   phrases, slash commands, key presses, links.
-- **Cowork and chats.** Cowork tasks that run on your Mac show by themselves. After **Sign In…** to claude.ai, its Cowork tasks and claude.ai
+- **Cowork and chats.** Cowork tasks that run on your Mac show by themselves; Claude Desktop has no way in from outside, so words to them go through its window, which has to be open. After **Sign In…** to claude.ai, its Cowork tasks and claude.ai
   chats show up — working, done or waiting for you, with their context. A Cowork
   task's questions and permissions come to the bar, and your messages go to it.
   (The sign-in goes against Anthropic's terms: see [Private by design](#private-by-design).)

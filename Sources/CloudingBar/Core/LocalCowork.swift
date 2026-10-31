@@ -19,6 +19,9 @@ enum LocalCowork {
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
     }
 
+    /// What the bar can't do for these tasks, and why: Settings and the tour say it.
+    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window: it has to be open. If it shows another task, the bar switches it there, unless you're using Desktop; closed, words wait, and Send Now opens it. Questions and permissions can be answered from the bar only for the task it shows."
+
     /// No word from a task at work for this long: not at work any more. (It
     /// may be waiting on you: no event says so, Desktop's window does.)
     static let quiet: TimeInterval = 600
@@ -49,6 +52,10 @@ enum LocalCowork {
         if !after.isEmpty, now.timeIntervalSince(changed) < (waiting ? ClaudeAIChats.recent : quiet) {
             chat.running = true
             chat.runningSince = ClaudeAIChats.date(after.first?["timestamp"])
+            // Asked you something, in whichever task the window shows. No event says "may I".
+            let asks = ((after.last?["message"] as? [String: Any])?["content"] as? [Any])?
+                .contains { ($0 as? [String: Any])?["name"] as? String == "AskUserQuestion" } == true
+            if asks { chat.needsInput = "question" }
         }
         var task = Task(chat: chat)
         task.context = ClaudeAIChats.context(events: Array(events.reversed()))

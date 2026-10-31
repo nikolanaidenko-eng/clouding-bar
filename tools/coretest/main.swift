@@ -2482,6 +2482,8 @@ do {
     asks["message"] = ["content": [["type": "tool_use", "name": "AskUserQuestion"]]]
     let tool = LocalCowork.task(file: file, events: [user, asks], changed: now.addingTimeInterval(-LocalCowork.quiet - 1), now: now)
     check(tool?.chat.running == true, "local cowork: a tool or a question takes as long as it takes")
+    check(tool?.chat.needsInput == "question", "local cowork: a question shows, whichever task the window has")
+    check(working?.chat.needsInput == nil, "local cowork: a reply asks nothing")
     check(LocalCowork.task(file: ["sessionId": "local_x", "sessionType": "radar"], events: [], changed: now, now: now) == nil, "local cowork: what Desktop keeps off its list isn't shown")
     check(LocalCowork.task(file: ["sessionId": "local_ditto_abc"], events: [], changed: now, now: now) == nil
           && LocalCowork.task(file: ["sessionId": "../x"], events: [], changed: now, now: now) == nil && LocalCowork.task(file: "no", events: [], changed: now, now: now) == nil,
