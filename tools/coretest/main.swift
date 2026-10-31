@@ -2534,6 +2534,34 @@ do {
     check(reader.read(in: base).first?.chat.running == true && reader.read(in: base).count == 1, "local cowork: found on disk, at work")
     check(reader.read(in: base, now: now.addingTimeInterval(ClaudeAIChats.recent + 60)).isEmpty, "local cowork: after half an hour it's gone")
     check(reader.read(in: base.appendingPathComponent("none")).isEmpty, "local cowork: no folder, no tasks")
+
+    // Desktop's newer tasks: the folder of the first 8 digits of the id alone (owner's Mac, 31.10).
+    let newer = "local_c7faf1d6-e160-4aeb-905a-1c60386f0ed8"
+    let shortBase = base.appendingPathComponent("short"), shortOrg = shortBase.appendingPathComponent("account/org")
+    try? FileManager.default.createDirectory(at: shortOrg.appendingPathComponent("c7faf1d6"), withIntermediateDirectories: true)
+    var newerFile = file
+    newerFile["sessionId"] = newer
+    try? JSONSerialization.data(withJSONObject: newerFile).write(to: shortOrg.appendingPathComponent(newer + ".json"))
+    let lines = [reply(1000, "first"), result].compactMap { try? JSONSerialization.data(withJSONObject: $0) }
+    try? Data(lines.joined(separator: Data("\n".utf8))).write(to: shortOrg.appendingPathComponent("c7faf1d6/audit.jsonl"))
+    let found = LocalCowork.Reader().read(in: shortBase).first
+    check(found?.context?.tokens == 1000 && found?.context?.answer == "first" && found?.costUSD != nil && found?.window != nil,
+          "local cowork: a task in a folder of the short name: its context, answer, cost and window")
+    check(found?.seen == "c7faf1d6: events read, context true, window true, cost true, answer true", "local cowork: what debug.log says, no name and no words")
+    try? FileManager.default.createDirectory(at: shortOrg.appendingPathComponent(newer), withIntermediateDirectories: true)
+    check(LocalCowork.auditFile(of: shortOrg.appendingPathComponent(newer + ".json")).path.hasSuffix(newer + "/audit.jsonl"),
+          "local cowork: a folder of the full name wins, as in Desktop")
+    check(LocalCowork.auditFile(of: base.appendingPathComponent("local_ditto_abc.json")).path.hasSuffix("local_ditto_abc/audit.jsonl"),
+          "local cowork: Dispatch's has no short name")
+
+    // Pressing a row on its own (review, 31.10).
+    check(LocalCowork.onlyRow(["New task", "New task for the invoices"], title: "New task for the invoices") == 1
+          && LocalCowork.onlyRow(["New task"], title: "New task for the invoices") == nil,
+          "local cowork: a button that only starts the same isn't its row")
+    check(LocalCowork.onlyRow(["Same", "Other", "Same"], title: "Same") == nil, "local cowork: two rows of its name: neither pressed")
+    check(!LocalCowork.mayLeave(asking: true, draft: "") && !LocalCowork.mayLeave(asking: false, draft: "half") && !LocalCowork.mayLeave(asking: false, draft: nil)
+          && LocalCowork.mayLeave(asking: false, draft: " \n"),
+          "local cowork: its window stays on a task that asks, has a draft or can't be told")
 }
 
 // MARK: Problem reports (public once sent: nothing of yours in them)

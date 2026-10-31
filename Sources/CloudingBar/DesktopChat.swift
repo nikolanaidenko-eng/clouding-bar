@@ -59,6 +59,33 @@ final class DesktopChat {
 
     // MARK: Words, with its window where it is
 
+    /// Its window over to the task called `title`, by its row, for words
+    /// waiting for it: not while the task it shows asks you something or has
+    /// words in its field. Calls back on the main queue with whether it went.
+    func switchTo(title: String, from wanted: String, in app: NSRunningApplication, completion: @escaping (Bool) -> Void) {
+        let pid = app.processIdentifier
+        func done(_ result: Bool) { DispatchQueue.main.async { completion(result) } }
+        queue.async {
+            guard let root = self.root(pid: pid), self.shown(pid: pid)?.chat != wanted else { return done(false) }
+            let asking = self.findPrompt(pid: pid) != nil
+            let field = self.page.flatMap { self.composer(in: $0) }
+            guard LocalCowork.mayLeave(asking: asking, draft: field == nil ? "" : field.flatMap { Self.words($0) }) else {
+                DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
+                return done(false)
+            }
+            var rows: [(AXUIElement, String)] = []
+            self.walk(root, into: { _ in true }) { e in
+                if Self.string(e, kAXRoleAttribute) == "AXButton", let t = Self.label(e) { rows.append((e, t)) }
+                return true
+            }
+            guard let i = LocalCowork.onlyRow(rows.map(\.1), title: title) else {
+                DebugLog.note("local cowork: no one row of its name (\(rows.filter { SessionStore.titleScore($0.1, title) == 3 }.count) exact, \(rows.filter { SessionStore.sameTitle($0.1, title) }.count) alike)")
+                return done(false)
+            }
+            done(AXUIElementPerformAction(rows[i].0, kAXPressAction as CFString) == .success)
+        }
+    }
+
     /// `unsure`: its button was pressed and the words are still in the field.
     /// They may have gone: never sent again, they stay there for you to see.
     /// `busy`: something's in its field already, yours: left alone, and no
@@ -84,25 +111,41 @@ final class DesktopChat {
                   let field = self.composer(in: page), let before = Self.words(field) else { return done(.notShown) }
             guard bare(before).isEmpty else { return done(.busy) }
             guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
-            // Chromium's tree follows a moment later; its send button shows once there are words.
-            self.queue.asyncAfter(deadline: .now() + 0.5) {
-                guard same(field), self.shown(pid: pid)?.chat == wanted, self.findPrompt(pid: pid) == nil,
-                      let send = self.sendButton(in: page) else {
-                    takeBack(field)
-                    return done(.refused)
+            let written = Date()
+            func gone(_ tries: Int) {
+                self.queue.asyncAfter(deadline: .now() + 0.5) {
+                    if !same(field) { return done(.sent) }
+                    if tries > 0 { gone(tries - 1) } else { done(.unsure) }
                 }
-                guard AXUIElementPerformAction(send, kAXPressAction as CFString) == .success else {
-                    takeBack(field)
-                    return done(.refused)
-                }
-                func gone(_ tries: Int) {
-                    self.queue.asyncAfter(deadline: .now() + 0.5) {
-                        if !same(field) { return done(.sent) }
-                        if tries > 0 { gone(tries - 1) } else { done(.unsure) }
-                    }
-                }
-                gone(5)
             }
+            // Chromium's tree follows late with its window in the background
+            // (owner's Mac, 31.10: gave up at 0.5 s, words gone only after 3.5 s);
+            // its send button shows once there are words.
+            func press(_ tries: Int) {
+                self.queue.asyncAfter(deadline: .now() + 0.3) {
+                    let shown = self.shown(pid: pid)
+                    let asking = self.findPrompt(pid: pid) != nil
+                    guard !asking, shown == nil || shown?.chat == wanted else {
+                        DebugLog.note("local cowork: not sent, \(asking ? "it asks something" : "its window went to another task")")
+                        takeBack(field)
+                        return done(.refused)
+                    }
+                    let there = same(field)
+                    guard shown != nil, there, let send = self.sendButton(in: page) else {
+                        if tries > 0 { return press(tries - 1) }
+                        DebugLog.note("local cowork: not sent, page \(shown != nil), words \(there), no Send after 3.6 s")
+                        takeBack(field)
+                        return done(.refused)
+                    }
+                    DebugLog.note("local cowork: Send pressed \(Int(Date().timeIntervalSince(written) * 1000)) ms after the words")
+                    guard AXUIElementPerformAction(send, kAXPressAction as CFString) == .success else {
+                        takeBack(field)
+                        return done(.refused)
+                    }
+                    gone(19)
+                }
+            }
+            press(11)
         }
     }
 
