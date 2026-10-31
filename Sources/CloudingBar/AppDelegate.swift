@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let touchBarStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let problems = Problems()
+    private var localCoworkTimer: Timer?
     private let updater = Updater()
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
     private let templatesItem = NSMenuItem(title: "Commands", action: nil, keyEquivalent: "")
@@ -147,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         problems.offers = { [weak self] in (self?.config.problemOffers ?? false) && self?.config.doNotDisturb != true }
         problems.stopOffers = { [weak self] in self?.setConfig("problemOffers", false) }
         problems.start()
+        startLocalCowork()
 
         // Hooks, the status line and the tap talk to the app here.
         let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in
@@ -1414,6 +1416,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// Cowork tasks on this Mac (LocalCowork): every 5 s, as claude.ai's when one is on.
+    private func startLocalCowork() {
+        let queue = DispatchQueue(label: "cloudingbar.local-cowork", qos: .utility)
+        let reader = LocalCowork.Reader()
+        var reading = false, said: Int?
+        let timer = Timer(timeInterval: ClaudeAIChats.Pace.active, repeats: true) { [weak self] _ in
+            guard !reading else { return }
+            reading = true
+            queue.async {
+                let tasks = reader.read()
+                DispatchQueue.main.async {
+                    reading = false
+                    if said != tasks.count {
+                        said = tasks.count
+                        DebugLog.note("local cowork: \(tasks.count) active on this Mac")
+                    }
+                    guard let self else { return }
+                    self.store.apply(localCowork: tasks)
+                    // Words waiting for a task keep it here: gone, they'd go with it.
+                    for item in self.queue {
+                        guard let session = item.sessionId.flatMap({ self.store.sessions[$0] }), session.isLocalCowork else { continue }
+                        session.lastEvent = Date()
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        localCoworkTimer = timer
+    }
+
     @objc private func reportProblem() {
         DebugLog.tap("report a problem")
         problems.reportNow()
@@ -1665,7 +1697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func place(of s: Session) -> String {
         let source: String
         switch s.entrypoint {
-        case "cowork": source = "Cowork"
+        case "cowork", "cowork-local": source = "Cowork"
         case "claude-ai": source = "claude.ai"
         case "claude-vscode": source = "VS Code"
         case "cli": source = "Terminal"
@@ -1675,13 +1707,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // A titled chat names its project too; an untitled one is its project.
         // claude.ai's chats have no project ("Cowork · Cowork" was).
-        return ([s.title != nil && !s.fromClaudeAI ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
+        return ([s.title != nil && !s.fromList ? s.projectName : nil, source] as [String?]).compactMap { $0 }.joined(separator: " · ")
     }
 
     /// A chat's name on the Touch Bar, Cowork's marked as such (its chats
     /// sit beside Claude Code's under the same names).
     static func barName(_ name: String, id: String) -> String {
-        (id.hasPrefix("cowork-") ? "Cowork · " : "") + short(name, 60)
+        (id.hasPrefix("cowork-") || id.hasPrefix("coworklocal-") ? "Cowork · " : "") + short(name, 60)
     }
 
     /// "Needs your OK", "Working · 3 min", "Done · your turn", "Idle · 12 min".
@@ -1872,6 +1904,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // background, activate() was ignored and nothing came up).
             if let chat = session.desktopChat, chat.hasPrefix("/chat/"),
                ClaudeAIChats.isId(String(chat.dropFirst("/chat/".count))),
+               let url = URL(string: "claude://claude.ai" + chat),
+               NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                NSWorkspace.shared.open(url)
+                DebugLog.note("desktop chat open by its link: \(chat)")
+                return
+            }
+            // A Cowork task on this Mac: its page in the app.
+            if let chat = session.desktopChat, chat.hasPrefix("/cowork/"), session.isLocalCowork,
+               DesktopSessions.isLocal(String(chat.dropFirst("/cowork/".count))),
                let url = URL(string: "claude://claude.ai" + chat),
                NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
                 NSWorkspace.shared.open(url)
@@ -2328,6 +2369,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                   isFree(session), Date().timeIntervalSince(session.activitySince) > 1.5 else { continue }
             // Files dropped for it wait at its end, as paths: they go as files.
             let parts = Inject.split(next.text)
+            // A Cowork task on this Mac: into its window if that shows it, its
+            // place in the queue kept till it's gone. Else keys, as below.
+            if parts.files.isEmpty, session.isLocalCowork, Date() >= (quietHeld[id] ?? .distantPast) {
+                sendQuietly(parts.words, into: session) { [weak self] gone in
+                    guard gone, let self else { return }
+                    self.queue.removeAll { $0.id == next.id }
+                    self.saveQueue()
+                    self.setNeedsRefresh()
+                }
+                continue
+            }
             if straightIn(session, files: parts.files) {
                 queue.remove(at: i)
                 saveQueue()
@@ -2369,6 +2421,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
         DebugLog.tap("queue: send now → \(session.displayName)")
         let parts = Inject.split(item.text)
+        if parts.files.isEmpty, session.isLocalCowork {
+            let id = session.id
+            sendQuietly(parts.words, into: session) { [weak self] gone in
+                guard !gone, let self else { return }
+                if !self.chatInFront(id) { self.openSession(id) }
+                self.typeWhenInFront(item, session: id, tries: 16, since: Date())
+            }
+            return
+        }
         if straightIn(session, files: parts.files) {
             inject(parts.words, files: parts.files, into: session) { [weak self] in
                 self?.queue.insert(item, at: 0)
@@ -2380,6 +2441,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // You asked for it: its chat brought forward, then typed into.
         if !chatInFront(session.id) { openSession(session.id) }
         typeWhenInFront(item, session: session.id, tries: 16, since: Date())
+    }
+
+    /// A local Cowork task: not tried again till then, after its window didn't
+    /// show it (soon) or its field turned the words down (for a while).
+    private var quietHeld: [String: Date] = [:]
+
+    /// Its words into Claude Desktop's window, if it shows this task: false if
+    /// nothing went. Busy meanwhile, so the keys don't overtake.
+    private func sendQuietly(_ words: String, into session: Session, done: @escaping (Bool) -> Void) {
+        let id = session.id
+        guard let page = session.desktopChat,
+              let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
+            quietHeld[id] = Date().addingTimeInterval(15)
+            done(false)
+            return
+        }
+        remoteSending.insert(id)
+        desktopChat.sendQuietly(words, page: page, in: app) { [weak self] result in
+            guard let self else { return }
+            self.remoteSending.remove(id)
+            DebugLog.note("local cowork: send \(result)")
+            switch result {
+            case .sent:
+                self.handedAt[id] = Date()
+                self.queueSentAt = Date()
+                self.store.markSent(id)
+                done(true)
+            case .unsure:
+                // Pressed: it may have gone. Not again; they're still in its field.
+                NSSound.beep()
+                self.handedAt[id] = Date()
+                self.queueSentAt = Date()
+                done(true)
+            case .notShown:
+                self.quietHeld[id] = Date().addingTimeInterval(15)
+                done(false)
+            case .refused:
+                self.quietHeld[id] = Date().addingTimeInterval(600)
+                done(false)
+            }
+            self.setNeedsRefresh()
+        }
     }
 
     /// A message into the queue for this chat.

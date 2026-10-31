@@ -41,6 +41,16 @@ identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, off until you sign in, the
 **claude.ai sign-in**, below.
 
+**Cowork tasks on this Mac.** Some accounts run Cowork on the Mac itself, and
+those tasks aren't on claude.ai. The app reads them, every 5 seconds, from Claude
+Desktop's own files in `~/Library/Application Support/Claude/local-agent-mode-sessions`:
+a task's first line or title, model, when it was active, and from its events how
+far its context has got, what it cost and how its last answer begins. This needs no
+sign-in, nothing leaves your Mac, and only names and numbers are kept, as for any
+chat. Words you send to such a task are written into Claude Desktop's window through
+Accessibility when that window shows the task; otherwise they wait, and are typed once
+it's in front. Stats doesn't count these tasks yet.
+
 ## Problem reports
 
 When the app crashes, or something fails that shouldn't (a helper can't be
@@ -85,7 +95,7 @@ cut down: delete it whenever you like.
 > to reach claude.ai automatically. Signing in here goes against them and
 > could put your account at risk, including suspension. Anthropic hasn't
 > approved Clouding Bar. Without this sign-in everything else keeps working,
-> except Cowork tasks, claude.ai chats, the account-wide limit and sending to
+> except Cowork tasks on claude.ai, claude.ai chats, the account-wide limit and sending to
 > a Claude Desktop or Terminal chat through Remote Control without switching
 > windows.
 >

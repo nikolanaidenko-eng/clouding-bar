@@ -48,7 +48,7 @@ must. A first version for **Windows** is in [windows/](windows/README.md).
 - **Send.** Write to a chat from the widget, typed or dictated (hold the right
   ⌥ key). Screenshot an area, or drop files on the widget. Your own buttons:
   phrases, slash commands, key presses, links.
-- **Cowork and chats.** After **Sign In…** to claude.ai, Cowork tasks and claude.ai
+- **Cowork and chats.** Cowork tasks that run on your Mac show by themselves. After **Sign In…** to claude.ai, its Cowork tasks and claude.ai
   chats show up — working, done or waiting for you, with their context. A Cowork
   task's questions and permissions come to the bar, and your messages go to it.
   (The sign-in goes against Anthropic's terms: see [Private by design](#private-by-design).)
@@ -64,7 +64,7 @@ One Mac app, installed once, whichever way you get it. What else each place need
 | Where you work with Claude | What it needs |
 |---|---|
 | Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
-| Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings (read the [warning](#private-by-design) first). The plugin isn't needed |
+| Cowork in Claude Desktop | the app. Tasks on claude.ai also need **Sign In…** in its Settings (read the [warning](#private-by-design) first); tasks that run on your Mac don't. The plugin isn't needed |
 | Codex | the app, then **Connect** for Codex in it |
 
 > **Cowork needs the claude.ai sign-in, and Anthropic's terms don't allow it.**
@@ -137,7 +137,7 @@ leaves your Mac, and when:
   third-party apps to collect or store claude.ai session keys, or to reach
   claude.ai automatically. Signing in could put your account at risk,
   including suspension, and Anthropic hasn't approved Clouding Bar. Without
-  it everything else keeps working, except Cowork tasks, claude.ai chats, the
+  it everything else keeps working, except Cowork tasks on claude.ai, claude.ai chats, the
   account-wide limit and sending to a Claude Desktop or Terminal chat through
   Remote Control without switching windows. If you sign in, the app reads
   your account's limit, Cowork tasks and chats from claude.ai (every 5 s while

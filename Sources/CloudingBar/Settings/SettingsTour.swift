@@ -81,7 +81,7 @@ enum SettingsTour {
         Section(tab: "general", name: "General", summary: "What Clouding Bar reads from, and how it behaves.", blocks: [
             general("hooks", "Claude Code", "Connect once, for Terminal and VS Code. Chats, permission requests and the 5-hour limit then come here. Your settings are backed up first.", group: "Claude"),
             general("vscode", "VS Code", "Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat. For chats opened after it.", group: "Claude", only: { Setup.hasVSCode }),
-            general("claudeai", "claude.ai", "Optional. Sign In for Cowork tasks, your recent chats and the whole account's limit. It goes against Anthropic's terms for third-party apps: at your own risk.", group: "Claude"),
+            general("claudeai", "claude.ai", "Optional. Sign In for Cowork tasks on claude.ai, your recent chats and the whole account's limit. It goes against Anthropic's terms for third-party apps: at your own risk. Tasks that run on this Mac show without it.", group: "Claude"),
             general("general.accessibility", "Accessibility", "Lets the bar's buttons type into your chats, and find Claude Desktop's questions. Open Settings takes you to the switch.", group: "Claude"),
             general("codex", "Codex", "Its chats, limits and context show by themselves. Connect adds hooks for permission requests: Codex asks you to trust them once.", group: "Codex", only: { Setup.hasCodex }),
             general("general.context", "Context", "The bar turns red and offers /compact when a chat fills up, at the share you pick.", group: "Context"),
