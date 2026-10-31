@@ -43,10 +43,12 @@ enum LocalCowork {
         return full.appendingPathComponent("audit.jsonl")
     }
 
-    /// The row to press for a task: the only one of exactly its name. Another
-    /// that merely starts the same, or a second of the name, is no way to tell.
-    static func onlyRow(_ labels: [String], title: String) -> Int? {
-        let same = labels.indices.filter { SessionStore.titleScore(labels[$0], title) == 3 }
+    /// The row to press for a task: a link to its very page; with none, the
+    /// only one of exactly its name. Another that merely starts the same, or a
+    /// second of the name, is no way to tell.
+    static func onlyRow(_ rows: [(label: String, path: String?)], title: String, page: String) -> Int? {
+        if let link = rows.firstIndex(where: { $0.path == page }) { return link }
+        let same = rows.indices.filter { rows[$0].path == nil && SessionStore.titleScore(rows[$0].label, title) == 3 }
         return same.count == 1 ? same[0] : nil
     }
 

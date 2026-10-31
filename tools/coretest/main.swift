@@ -2555,10 +2555,15 @@ do {
           "local cowork: Dispatch's has no short name")
 
     // Pressing a row on its own (review, 31.10).
-    check(LocalCowork.onlyRow(["New task", "New task for the invoices"], title: "New task for the invoices") == 1
-          && LocalCowork.onlyRow(["New task"], title: "New task for the invoices") == nil,
+    func rows(_ labels: [String]) -> [(label: String, path: String?)] { labels.map { ($0, nil) } }
+    check(LocalCowork.onlyRow(rows(["New task", "New task for the invoices"]), title: "New task for the invoices", page: "/cowork/local_b") == 1
+          && LocalCowork.onlyRow(rows(["New task"]), title: "New task for the invoices", page: "/cowork/local_b") == nil,
           "local cowork: a button that only starts the same isn't its row")
-    check(LocalCowork.onlyRow(["Same", "Other", "Same"], title: "Same") == nil, "local cowork: two rows of its name: neither pressed")
+    check(LocalCowork.onlyRow(rows(["Same", "Other", "Same"]), title: "Same", page: "/cowork/local_b") == nil, "local cowork: two rows of its name: neither pressed")
+    check(LocalCowork.onlyRow([("Same", "/cowork/local_a"), ("Same", "/cowork/local_b")], title: "Same", page: "/cowork/local_b") == 1,
+          "local cowork: of two of a name, the link to its page")
+    check(LocalCowork.onlyRow([("Same", "/cowork/local_a")], title: "Same", page: "/cowork/local_b") == nil,
+          "local cowork: a link elsewhere of the same name isn't its row")
     check(!LocalCowork.mayLeave(asking: true, draft: "") && !LocalCowork.mayLeave(asking: false, draft: "half") && !LocalCowork.mayLeave(asking: false, draft: nil)
           && LocalCowork.mayLeave(asking: false, draft: " \n"),
           "local cowork: its window stays on a task that asks, has a draft or can't be told")
