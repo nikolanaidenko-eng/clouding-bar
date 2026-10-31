@@ -3,8 +3,8 @@ import Foundation
 /// Cowork tasks that run on this Mac, as Claude Desktop keeps them (an
 /// organization on the API has them nowhere on claude.ai, owner, 31.10):
 /// local-agent-mode-sessions/<account>/<org>/local_<id>.json and, beside it,
-/// local_<id>/audit.jsonl, the task's events. Only read, nothing leaves this
-/// Mac, no sign-in. Unofficial: every field optional.
+/// its folder (`auditFile`) with audit.jsonl, the task's events. Only read,
+/// nothing leaves this Mac, no sign-in. Unofficial: every field optional.
 enum LocalCowork {
     struct Task {
         var chat: ClaudeAIChats.Chat
@@ -12,6 +12,8 @@ enum LocalCowork {
         var context: ClaudeAIChats.Context?
         var window: Int?
         var costUSD: Double?
+        /// What its events gave, for debug.log: no names, no words.
+        var seen = ""
     }
 
     static var folder: URL {
@@ -20,11 +22,39 @@ enum LocalCowork {
     }
 
     /// What the bar can't do for these tasks, and why: Settings and the tour say it.
-    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window: it has to be open. If it shows another task, the bar switches it there, unless you're using Desktop; closed, words wait, and Send Now opens it. Questions and permissions can be answered from the bar only for the task it shows."
+    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window, with Accessibility on: it has to be open. If it shows another task, the bar switches it there, unless you're using Desktop, it asks you something or you've started typing there; closed, words wait, and Send Now opens it. A screenshot can't go that way: it brings Desktop to the front. Questions and permissions can be answered from the bar only for the task it shows."
 
     /// No word from a task at work for this long: not at work any more. (It
     /// may be waiting on you: no event says so, Desktop's window does.)
     static let quiet: TimeInterval = 600
+
+    /// A task's events, beside its file. Desktop's own rule (4.29): a folder
+    /// of the file's name if there is one; newer tasks have one named after
+    /// the first 8 digits of their id alone. Dispatch's has no short name.
+    static func auditFile(of file: URL) -> URL {
+        let full = file.deletingPathExtension()
+        let name = full.lastPathComponent, fm = FileManager.default
+        var isFolder: ObjCBool = false
+        if !(fm.fileExists(atPath: full.path, isDirectory: &isFolder) && isFolder.boolValue),
+           name.range(of: "^local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", options: .regularExpression) != nil {
+            let short = full.deletingLastPathComponent().appendingPathComponent(String(name.dropFirst("local_".count).prefix(8)))
+            if fm.fileExists(atPath: short.path, isDirectory: &isFolder), isFolder.boolValue { return short.appendingPathComponent("audit.jsonl") }
+        }
+        return full.appendingPathComponent("audit.jsonl")
+    }
+
+    /// The row to press for a task: the only one of exactly its name. Another
+    /// that merely starts the same, or a second of the name, is no way to tell.
+    static func onlyRow(_ labels: [String], title: String) -> Int? {
+        let same = labels.indices.filter { SessionStore.titleScore(labels[$0], title) == 3 }
+        return same.count == 1 ? same[0] : nil
+    }
+
+    /// Its window may be taken off the task it shows: that one asks nothing,
+    /// and nothing's in its field (nil: can't be told).
+    static func mayLeave(asking: Bool, draft: String?) -> Bool {
+        !asking && draft?.allSatisfy(\.isWhitespace) == true
+    }
 
     /// A task, from its file and the end of its events (oldest first).
     /// Dispatch's own session isn't one of them, nor one Desktop keeps off its list.
@@ -63,6 +93,7 @@ enum LocalCowork {
         let usage = (result?["modelUsage"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
         task.window = usage.compactMap { ($0["contextWindow"] as? NSNumber)?.intValue }.max().flatMap { $0 > 0 ? $0 : nil }
         task.costUSD = (result?["total_cost_usd"] as? NSNumber)?.doubleValue
+        task.seen = "\(id.dropFirst("local_".count).prefix(8)): events \(events.isEmpty ? "none" : "read"), context \(task.context != nil), window \(task.window != nil), cost \(task.costUSD != nil), answer \(task.context?.answer != nil)"
         return task
     }
 
@@ -89,7 +120,7 @@ enum LocalCowork {
                     let places = [org, org.appendingPathComponent("agent")]
                     for file in places.flatMap({ (try? fm.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)) ?? [] })
                     where file.lastPathComponent.hasPrefix("local_") && file.pathExtension == "json" {
-                        let audit = file.deletingPathExtension().appendingPathComponent("audit.jsonl")
+                        let audit = LocalCowork.auditFile(of: file)
                         let changed = [file, audit].compactMap { Self.modified($0) }.max() ?? .distantPast
                         guard now.timeIntervalSince(changed) < ClaudeAIChats.recent else { continue }
                         seen.insert(file.path)

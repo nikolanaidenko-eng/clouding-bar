@@ -48,8 +48,8 @@ a task's first line or title, model, when it was active, and from its events how
 far its context has got, what it cost and how its last answer begins. This needs no
 sign-in, nothing leaves your Mac, and only names and numbers are kept, as for any
 chat. Words you send to such a task are written into Claude Desktop's window through
-Accessibility. If it shows another task and you aren't using it, the app presses this
-task's row there first; with the window closed they wait, and are typed once it's in front. Stats doesn't count these tasks yet.
+Accessibility. If it shows another task, you aren't using it, it asks you nothing there and
+its field is empty, the app presses this task's row there first; otherwise they wait; with the window closed they wait, and are typed once it's in front. Stats doesn't count these tasks yet.
 
 ## Problem reports
 

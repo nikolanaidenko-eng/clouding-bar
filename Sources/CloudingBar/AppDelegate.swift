@@ -1420,7 +1420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func startLocalCowork() {
         let queue = DispatchQueue(label: "cloudingbar.local-cowork", qos: .utility)
         let reader = LocalCowork.Reader()
-        var reading = false, said: Int?
+        var reading = false, said: Int?, told: [String: String] = [:]
         let timer = Timer(timeInterval: ClaudeAIChats.Pace.active, repeats: true) { [weak self] _ in
             guard !reading else { return }
             reading = true
@@ -1431,6 +1431,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     if said != tasks.count {
                         said = tasks.count
                         DebugLog.note("local cowork: \(tasks.count) active on this Mac")
+                    }
+                    for task in tasks where told[task.chat.uuid] != task.seen {
+                        told[task.chat.uuid] = task.seen
+                        DebugLog.note("local cowork: " + task.seen)
                     }
                     self?.store.apply(localCowork: tasks)
                 }
@@ -2495,14 +2499,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // looked at again before a word is written.
                 if again, self.frontApp?.bundleIdentifier != Self.desktopBundle, let title = session.title,
                    let session = self.store.sessions[id] {
+                    // Busy through the wait too: the queue's timer would send it again (review, 31.10).
                     self.remoteSending.insert(id)
-                    self.desktopChat.open(title: title, in: app) { [weak self] pressed in
-                        DebugLog.note("local cowork: its row \(pressed ? "pressed" : "not found")")
+                    self.desktopChat.switchTo(title: title, from: page, in: app) { [weak self] pressed in
+                        DebugLog.note("local cowork: its row \(pressed ? "pressed" : "not pressed")")
                         guard let self else { return }
-                        self.remoteSending.remove(id)
                         guard pressed else {
-                            self.quietHeld[id] = Date().addingTimeInterval(15)
+                            self.remoteSending.remove(id)
+                            self.quietHeld[id] = Date().addingTimeInterval(30)
                             done(.notSent)
+                            self.setNeedsRefresh()
                             return
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -2511,7 +2517,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                     return
                 }
-                self.quietHeld[id] = Date().addingTimeInterval(15)
+                // Pressed and it still doesn't show it: not pressed every few seconds.
+                self.quietHeld[id] = Date().addingTimeInterval(again ? 15 : 60)
                 done(.notSent)
             case .refused:
                 self.quietHeld[id] = Date().addingTimeInterval(60)
