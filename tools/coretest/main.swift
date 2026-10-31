@@ -2501,6 +2501,20 @@ do {
     check(store2.sessions["coworklocal-" + id]?.isAlive(now: now) == true, "local cowork: claude.ai's list doesn't take it away")
     store2.forgetClaudeAI()
     check(store2.sessions["coworklocal-" + id] != nil, "local cowork: signing out of claude.ai doesn't either")
+    let quietTask = SessionStore()
+    quietTask.apply(localCowork: [working!], now: now)
+    quietTask.apply(localCowork: [], now: now.addingTimeInterval(1800))
+    quietTask.keepLocalCowork("coworklocal-" + id, now: now.addingTimeInterval(1800))
+    check(quietTask.sessions["coworklocal-" + id]?.activity == .sleep && quietTask.sessions["coworklocal-" + id]?.isAlive(now: now.addingTimeInterval(1800)) == true,
+          "local cowork: kept for words, it isn't at work for ever")
+    let woken = SessionStore()
+    woken.keepLocalCowork("coworklocal-" + id, now: now)
+    let back = woken.sessions["coworklocal-" + id]
+    check(back?.isLocalCowork == true && back?.desktopChat == "/cowork/" + id && back?.activity == .sleep && back?.isAlive(now: now) == true,
+          "local cowork: gone over a sleep or a restart, words bring it back")
+    woken.keepLocalCowork("cowork-abc", now: now)
+    woken.keepLocalCowork("some-terminal-chat", now: now)
+    check(woken.sessions.count == 1, "local cowork: nothing else is kept this way")
     let gone = SessionStore()
     gone.apply(localCowork: [working!], now: now)
     gone.apply(localCowork: [], now: now)
