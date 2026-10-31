@@ -191,6 +191,8 @@ struct Config: Equatable {
     var widgetPosition: CGPoint?
     /// The tour has opened once (it does by itself on the first launch).
     var tourShown = false
+    /// After a crash or an error, a card offers the report (nothing goes unless you send it).
+    var problemOffers = true
     /// The settings window: "auto" (the system's), "light" or "dark".
     var appearance = "auto"
     /// Its buttons, tabs and icons: "color", or "gray" with no bright colours.
@@ -326,6 +328,7 @@ struct Config: Equatable {
         }
         if let v = obj["widgetAtNotch"] as? Bool { config.widgetAtNotch = v }
         if let v = obj["tourShown"] as? Bool { config.tourShown = v }
+        if let v = obj["problemOffers"] as? Bool { config.problemOffers = v }
         if let v = obj["appearance"] as? String, ["auto", "light", "dark"].contains(v) { config.appearance = v }
         if let v = obj["buttonColors"] as? String, ["color", "gray"].contains(v) { config.buttonColors = v }
         if let v = obj["setupDeclined"] as? Bool { config.setupDeclined = v }

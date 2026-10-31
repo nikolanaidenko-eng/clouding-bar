@@ -66,7 +66,7 @@ enum Setup {
                 changed += 1
             } catch {
                 try? fm.removeItem(at: temp)
-                DebugLog.note("setup: couldn't put \(name) in place — \(error.localizedDescription)")
+                DebugLog.problem("setup \(name)", "setup: couldn't put \(name) in place — \(error.localizedDescription)")
             }
         }
         if changed > 0 { DebugLog.note("setup: \(changed) helper(s) updated in \(dir.path)") }

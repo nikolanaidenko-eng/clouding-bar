@@ -32,7 +32,7 @@ Widget → More… → Start of the answer (or `"answerPreview": false` in
 `~/.cloudingbar/config.json`). A long question on the Touch Bar is put shorter
 (✦) by the same model, the same way.
 
-Three exceptions. **Dictation** is recognised on your Mac; only for a
+Three exceptions, besides a [problem report](#problem-reports) you send yourself. **Dictation** is recognised on your Mac; only for a
 language your Mac can't do offline, and only if you tick *Allow sending audio
 to Apple* (off by default, Settings → General → App), your voice goes to
 Apple's servers for recognition. The **update check**: once a day a plain request to
@@ -40,6 +40,43 @@ GitHub's public list of this project's releases — nothing about you, no
 identifier — and the download, when you install one (Settings → General →
 App → More… → Updates turns the check off). And, off until you sign in, the
 **claude.ai sign-in**, below.
+
+## Problem reports
+
+When the app crashes, or something fails that shouldn't (a helper can't be
+put in place, an update won't install, claude.ai says the app asked wrongly), a
+small card in the corner of the screen offers a report: once for each kind of
+problem in each version, and not while Do not disturb is on. You can also ask for
+one at any time: the menu bar icon → Report a Problem….
+
+The app sends none of this. The problem is kept in `~/.cloudingbar/reports`
+(the last 20). **Review…** shows the whole report in a text box, for you to
+change or delete anything. **Copy and Open GitHub…** puts it on your clipboard
+and opens an empty new issue in your browser, on the app's public repository,
+under your GitHub account: you paste it in and submit it, and it's public once
+you do. **Copy** only copies it. Read it first: the filtering below catches what
+it knows about, not anything you might not want public.
+
+A report has: the app's version, your macOS version and chip, how many screens
+you have, whether Accessibility, Claude Code, the VS Code wrapper and Codex are
+on, and, after a crash, what stopped the app, the exception's message and
+where in the code (from the report macOS writes to
+`~/Library/Logs/DiagnosticReports`, which the app reads for its own crashes
+only). It also has lines from `~/.cloudingbar/debug.log`, but only kinds of line
+that hold the app's own doings, such as update and setup messages and the size
+and position of your screens and the widget, with their times (UTC). Lines with chats', projects'
+or buttons' names are left out, and so are the app in front, addresses, paths
+and ids. Nothing about claude.ai goes in unless you tick **Include claude.ai
+details**: whether you're signed in, the account's capabilities, plan and billing
+type, how many chats and Cowork tasks were read, the fields and HTTP status codes
+of its answers. Public under your name, that shows you signed in, which
+[goes against Anthropic's terms](#the-claudeai-sign-in-optional).
+
+The app looks in DiagnosticReports and keeps problems in `reports` even with the
+card off (Settings → General → App → More… → Offer to report problems, or
+`"problemOffers": false` in `~/.cloudingbar/config.json`). `debug.log` itself isn't
+sent; it does hold chats' and projects' names and the app in front, and isn't
+cut down: delete it whenever you like.
 
 ## The claude.ai sign-in (optional)
 

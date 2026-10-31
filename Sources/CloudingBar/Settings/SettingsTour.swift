@@ -3,105 +3,122 @@ import SwiftUI
 /// The tour (owner's request, 20.10: the Spotlight direction of the
 /// design canvas), right in the settings window. Everything dims but one
 /// thing, ringed in blue; a white card by it says what it is; Cloud hops onto
-/// it. Rewritten 30.10 (owner: there's a lot in Settings, explain it properly):
-/// five stops, one for each tab, and on each what's inside it and what it does.
+/// it. Five stops, one for each tab; within a stop, one small block for each
+/// setting, lit up where it is (owner, 31.10: not a list on one card).
 struct TourStop {
-    /// One thing inside the tab: its name there, and what it does.
-    struct Point {
-        let name: String
-        let text: String
-        /// Only on a Mac that has it (VS Code, Codex): looked at as the tour starts.
-        var only: (() -> Bool)? = nil
-    }
-
     let tab: String
     /// The `tourAnchor` it lights up.
     let anchor: String
     let title: String
     let text: String
-    var points: [Point] = []
-    /// "Try it: …", and what counts as tried.
-    var tryText: String? = nil
-    var tried: Tried? = nil
     /// Lit up when `anchor` isn't there (the notch switch, with the widget off).
     var fallback: String? = nil
-    /// The General group the anchor sits in: opened for the stop (groups
+    /// The General group the anchor sits in: opened for the block (groups
     /// are folded, owner, 27.10).
     var group: String? = nil
+    /// Only on a Mac that has it (VS Code, Codex): looked at as the tour starts.
+    var only: (() -> Bool)? = nil
 
-    enum Tried { case notch, more }
+    /// Where it is, set as the tour starts: which tab of the five, which block of its.
+    var section = 0
+    var sectionName = ""
+    /// What the tab is for: on its first block.
+    var summary: String? = nil
+    var block = 0
+    var blocks = 1
 }
 
 enum SettingsTour {
-    /// This tour's stops, fixed as it starts (`begin`): nothing comes or goes midway.
-    private(set) static var stops: [TourStop] = all
+    struct Section {
+        let tab: String
+        let name: String
+        let summary: String
+        let blocks: [TourStop]
+    }
 
-    /// The stops for this Mac, before the first one shows.
-    static func begin() {
-        stops = all.map { stop in
-            var s = stop
-            s.points = stop.points.filter { $0.only?() ?? true }
-            return s
+    /// This tour's blocks in order, fixed as it starts (`begin`): nothing comes or goes midway.
+    private(set) static var stops: [TourStop] = lay(all)
+
+    /// The blocks for this Mac, before the first one shows.
+    static func begin() { stops = lay(all) }
+
+    private static func lay(_ sections: [Section]) -> [TourStop] {
+        sections.enumerated().flatMap { index, section -> [TourStop] in
+            let blocks = section.blocks.filter { $0.only?() ?? true }
+            return blocks.enumerated().map { i, block in
+                var s = block
+                s.section = index
+                s.sectionName = section.name
+                s.summary = i == 0 ? section.summary : nil
+                s.block = i
+                s.blocks = blocks.count
+                return s
+            }
         }
     }
 
-    static let all: [TourStop] = [
-        TourStop(tab: "general", anchor: "tabs", title: "General: connect it, and how it behaves",
-                 text: "Clouding Bar follows the chat in front and shows its limit and context. Here you connect what it reads from.",
-                 points: [
-                    .init(name: "Claude Code", text: "Connect, once, for Terminal and VS Code: chats, permission requests and the 5-hour limit come here. Your settings.json is backed up first."),
-                    .init(name: "VS Code", text: "Claude's panel there doesn't pass the limit on. Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat, no window switched. For chats opened after it.", only: { Setup.hasVSCode }),
-                    .init(name: "claude.ai", text: "Optional. Sign In for Cowork tasks, your chats of the last half hour and the whole account's limit. The key stays in Keychain. It goes against Anthropic's terms for third-party apps: at your own risk."),
-                    .init(name: "Accessibility", text: "Lets the bar's buttons type into your chats, and find the chat in front and Claude Desktop's questions. Shows On or Off; Open Settings takes you to it."),
-                    .init(name: "Codex", text: "Its chats, limits and context show by themselves, read from its own files. Connect adds hooks for permission requests: Codex asks you to trust them once.", only: { Setup.hasCodex }),
-                    .init(name: "Context", text: "The bar turns red and offers /compact when a chat fills up, at the share you pick. Compact by itself types it for you, when Claude is idle and its chat is in front."),
-                    .init(name: "App", text: "Open at login. Do not disturb: requests wait quietly. Voice language: hold the right ⌥ key alone to dictate; Check before sending lets you edit the words first. Under More: appearance, short chat names, colours, updates."),
-                 ],
-                 group: "Claude"),
-        TourStop(tab: "widget", anchor: "widget.preview", title: "Widget: the pill over your windows",
-                 text: "The chat, its limit and context. Click the pill for the panel: chats as tabs, a message line, screenshot, mic, your buttons.",
-                 points: [
-                    .init(name: "Arrange", text: "Here, and only here: drag an item onto another to swap them, an item's right edge to size it. Pill, Panel and Notch each have their own."),
-                    .init(name: "Size", text: "Pull the outline, here or on the widget. Taller than wide, it stands up as a column. Pulled all the way, it shows everything."),
-                    .init(name: "Place", text: "Drag the pill anywhere, on any screen: it stays there, and goes back when that monitor returns. Position → Reset brings it home."),
-                    .init(name: "In the notch", text: "Around the camera, or a drawn notch on a Mac without one. Drag it out to move it, back in to dock."),
-                    .init(name: "What it shows", text: "Numbers, details and controls: what's on is on the pill. Chat sends to the chat the widget shows, once Claude is free."),
-                    .init(name: "Under More", text: "Follow the chat at work. Tell when another chat is done: Cloud pops out and says which. Start of the answer: how the reply begins. Keep the pill visible: off, a thin line until you hover it."),
-                 ]),
-        TourStop(tab: "touchbar", anchor: "touchbar.preview", title: "Touch Bar: Claude under your fingers",
-                 text: "Only on a Mac with a Touch Bar. Without one, nothing here is needed.",
-                 points: [
-                    .init(name: "Arrange", text: "Drag a block to move it, pull its edge to size it. The chips below switch blocks on and off, for the whole bar and the short one."),
-                    .init(name: "What it does", text: "Tap the chat's name to switch chats. Write sends Claude a message, typed or dictated. Commands has all your buttons, the model switches it, the subagents show who's working."),
-                    .init(name: "Questions", text: "Claude's questions and permission requests always show here: answer with a tap."),
-                    .init(name: "In every app", text: "Not only while Claude Code, VS Code or Claude is in front."),
-                    .init(name: "Outside Claude", text: "Short: what you keep on it, beside Apple's brightness and volume. Whole: the full bar, with those hidden."),
-                 ]),
-        TourStop(tab: "buttons", anchor: "buttons.list", title: "Buttons: what you send over and over",
-                 text: "On the Touch Bar and in the panel. Click one in the list to change it.",
-                 points: [
-                    .init(name: "Kinds", text: "A phrase, a /command, a key or a link. A tap sends it to the chat you're in; a text button puts words in for you to finish."),
-                    .init(name: "Commands", text: "In the widget, on the Touch Bar and in the menu bar, it lists them all. A button kept only in Commands stays out of the row."),
-                    .init(name: "Filled in", text: "In a phrase or a text, {project}, {branch}, {clipboard} and {date} become what they say."),
-                    .init(name: "Hotkey", text: "A button can have its own key combination."),
-                    .init(name: "Profile", text: "A set of buttons for one project: change one under its name to give it its own; until then it uses the default."),
-                 ]),
-        TourStop(tab: "stats", anchor: "stats.limits", title: "Stats: where your limit and time went",
-                 text: "Read from your sessions on this Mac. This tour is here again behind ?.",
-                 points: [
-                    .init(name: "Limits", text: "The 5-hour and weekly limits, as Claude Code reports them, and how they moved."),
-                    .init(name: "Your Claude", text: "Sessions, active time, tokens and your streak, day by day. Both, Code or Cowork; week, month or all."),
-                    .init(name: "Where the time went", text: "The projects Claude worked on. More has the week hour by hour, the models and the tools."),
-                 ]),
+    private static func general(_ anchor: String, _ title: String, _ text: String, group: String, only: (() -> Bool)? = nil) -> TourStop {
+        TourStop(tab: "general", anchor: anchor, title: title, text: text, fallback: "hooks", group: group, only: only)
+    }
+
+    private static func widget(_ anchor: String, _ title: String, _ text: String, fallback: String? = "widget.preview") -> TourStop {
+        TourStop(tab: "widget", anchor: anchor, title: title, text: text, fallback: fallback)
+    }
+
+    private static func touchBar(_ anchor: String, _ title: String, _ text: String, fallback: String? = "touchbar.preview") -> TourStop {
+        TourStop(tab: "touchbar", anchor: anchor, title: title, text: text, fallback: fallback)
+    }
+
+    private static func buttons(_ anchor: String, _ title: String, _ text: String) -> TourStop {
+        TourStop(tab: "buttons", anchor: anchor, title: title, text: text, fallback: "buttons.list")
+    }
+
+    private static func stats(_ anchor: String, _ title: String, _ text: String) -> TourStop {
+        TourStop(tab: "stats", anchor: anchor, title: title, text: text, fallback: "stats.limits")
+    }
+
+    static let all: [Section] = [
+        Section(tab: "general", name: "General", summary: "What Clouding Bar reads from, and how it behaves.", blocks: [
+            general("hooks", "Claude Code", "Connect once, for Terminal and VS Code. Chats, permission requests and the 5-hour limit then come here. Your settings are backed up first.", group: "Claude"),
+            general("vscode", "VS Code", "Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat. For chats opened after it.", group: "Claude", only: { Setup.hasVSCode }),
+            general("claudeai", "claude.ai", "Optional. Sign In for Cowork tasks, your recent chats and the whole account's limit. It goes against Anthropic's terms for third-party apps: at your own risk.", group: "Claude"),
+            general("general.accessibility", "Accessibility", "Lets the bar's buttons type into your chats, and find Claude Desktop's questions. Open Settings takes you to the switch.", group: "Claude"),
+            general("codex", "Codex", "Its chats, limits and context show by themselves. Connect adds hooks for permission requests: Codex asks you to trust them once.", group: "Codex", only: { Setup.hasCodex }),
+            general("general.context", "Context", "The bar turns red and offers /compact when a chat fills up, at the share you pick.", group: "Context"),
+            general("general.app", "Login and quiet", "Open at login. Do not disturb keeps requests waiting quietly: nothing pops open.", group: "App"),
+            general("general.voice", "Voice", "Hold the right ⌥ key alone, or use the mic, and speak in the language set here.", group: "App"),
+            general("app.more", "Under More…", "Appearance, short chat names, colours, updates, problem reports. Every box here keeps its rarer settings behind More….", group: "App"),
+        ]),
+        Section(tab: "widget", name: "Widget", summary: "The pill over your windows: the chat, its limit and context.", blocks: [
+            widget("widget.preview", "Arrange it", "Here, and only here: drag an item onto another to swap them, an item's right edge to size it. Pill, Panel and Notch each have their own.", fallback: nil),
+            widget("widget.preview", "Resize it", "Pull the outline, here or on the widget itself. Taller than wide, it stands up as a column. Pulled all the way, it shows everything.", fallback: nil),
+            widget("widget.show", "Show the widget", "Click the pill for the panel: chats as tabs, a message line, screenshot, mic, your buttons."),
+            widget("widget.notch", "In the notch", "Around the camera, or a drawn notch on a Mac without one. Drag it out to move it, back in to dock.", fallback: "widget.show"),
+            widget("widget.position", "Place it", "Drag the pill anywhere, on any screen: it stays, and goes back when that monitor returns. Reset brings it home.", fallback: "widget.show"),
+            widget("widget.more", "Under More…", "Follow the chat at work, tell when another is done, the start of the answer, and whether the pill stays visible.", fallback: "widget.show"),
+            widget("widget.shows", "What it shows", "Numbers, details and controls: what's on is on the pill. Chat sends to the chat the widget shows, once Claude is free.", fallback: "widget.show"),
+        ]),
+        Section(tab: "touchbar", name: "Touch Bar", summary: "Only on a Mac with a Touch Bar. Without one, nothing here is needed.", blocks: [
+            touchBar("touchbar.preview", "Arrange it", "Drag a block to move it, pull its edge to size it.", fallback: nil),
+            touchBar("touchbar.chips", "What's on it", "These chips switch blocks on and off, for the whole bar and for the short one."),
+            touchBar("touchbar.more", "In every app", "Under More…: not only while Claude's apps are in front. Outside them, the short bar beside Apple's keys, or the whole bar.", fallback: "touchbar.chips"),
+            touchBar("touchbar.note", "Using it", "Tap the chat's name to switch chats. Write sends a message, typed or dictated. Questions and permission requests always show: answer with a tap."),
+        ]),
+        Section(tab: "buttons", name: "Buttons", summary: "What you send over and over: on the Touch Bar and in the panel.", blocks: [
+            TourStop(tab: "buttons", anchor: "buttons.list", title: "Your buttons", text: "Click one to change it, + adds one. A phrase, a /command, a key or a link: a tap sends it to the chat you're in. A text button puts words in for you to finish."),
+            TourStop(tab: "buttons", anchor: "buttons.list", title: "Filled in, and hotkeys", text: "In a phrase or a text, {project}, {branch}, {clipboard} and {date} become what they say. A button can also have its own key combination."),
+            buttons("buttons.commands", "Commands", "In the widget, on the Touch Bar and in the menu bar, it lists them all. A button kept only in Commands stays out of the row."),
+            buttons("buttons.profile", "Profile", "A set of buttons for one project: change one under its name to give it its own. Until then it uses the default."),
+        ]),
+        Section(tab: "stats", name: "Stats", summary: "Where your limit and time went, read from your sessions on this Mac.", blocks: [
+            TourStop(tab: "stats", anchor: "stats.limits", title: "Limits", text: "The 5-hour and weekly limits, as Claude Code reports them, and how they moved."),
+            stats("stats.map", "Your Claude", "Sessions, active time, tokens and your streak, day by day. Both, Code or Cowork; week, month or all."),
+            stats("stats.time", "Where the time went", "The projects Claude worked on. More has the week hour by hour, the models and the tools. This tour is here again behind ?."),
+        ]),
     ]
 }
 
 private struct TourCardHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
-private struct TourPointsHeight: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
@@ -116,7 +133,8 @@ private struct TourAnchorKey: PreferenceKey {
 extension View {
     /// Something the tour can light up.
     func tourAnchor(_ id: String) -> some View {
-        anchorPreference(key: TourAnchorKey.self, value: .bounds) { [id: $0] }
+        // Added to what's inside, not over it: a block inside a block keeps its own.
+        transformAnchorPreference(key: TourAnchorKey.self, value: .bounds) { $0[id] = $1 }
             .id("tour." + id) // to scroll it into view
     }
 
@@ -156,10 +174,7 @@ struct TourOverlay: View {
     let target: CGRect?
     let size: CGSize
     @Environment(\.grayButtons) private var gray
-    @AppStorage("settings.more.app") private var appMore = false
     @State private var spot: CGRect = .zero
-    @State private var tried = false
-    @State private var startConfig: Config?
     @State private var ring = false
     /// The stop already scrolled into view.
     @State private var revealed: Int?
@@ -169,12 +184,9 @@ struct TourOverlay: View {
     private var accent: Color { gray ? Color(hex: 0x6E6E73) : Color(hex: 0x0A64D0) }
     private var ringColor: Color { gray ? Color(hex: 0x98989D) : Color(hex: 0x0A84FF) }
 
-    static let cardWidth: CGFloat = 448
-    /// The card and what's listed in it, as drawn.
-    @State private var cardHeight: CGFloat = 300
-    @State private var pointsHeight: CGFloat = 0
-    /// Over the list: the stop's number, title, line and buttons.
-    private let cardChrome: CGFloat = 150
+    static let cardWidth: CGFloat = 340
+    /// The card, as drawn.
+    @State private var cardHeight: CGFloat = 170
 
     var body: some View {
         let s = spot.insetBy(dx: -4, dy: -4)
@@ -208,74 +220,43 @@ struct TourOverlay: View {
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .animation(.timingCurve(0.34, 1.22, 0.64, 1, duration: 0.62), value: spot)
         .onAppear {
-            startConfig = model.config
             cloud.touring = true
             arrive(target)
             withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { ring = true }
         }
         .onDisappear { cloud.touring = false; cloud.goHome() }
         .onChange(of: target) { arrive($0) }
-        .onChange(of: step) { _ in
-            tried = false
-            startConfig = model.config
-        }
-        .onChange(of: model.config) { config in
-            guard stop.tried == .notch, !tried, let start = startConfig,
-                  config.widgetAtNotch != start.widgetAtNotch else { return }
-            didTry()
-        }
-        .onChange(of: appMore) { open in
-            if open, stop.tried == .more, !tried { didTry() }
-        }
     }
 
-    /// The white card: which stop, what it is, what to try, and the way on.
+    /// The white card: which tab and block, what it is, and the way on.
     private var card: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text("\(step + 1) OF \(SettingsTour.stops.count)")
-                        .font(.system(size: 11, weight: .semibold)).tracking(0.5)
-                        .foregroundColor(accent)
-                    Spacer(minLength: 0)
-                    if tried {
-                        Text("Nice!").font(.system(size: 11, weight: .bold)).foregroundColor(Color(hex: 0x1D7A3A))
-                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
+            VStack(alignment: .leading, spacing: 7) {
+                Text("\(stop.sectionName.uppercased()) · \(stop.block + 1) OF \(stop.blocks)")
+                    .font(.system(size: 11, weight: .semibold)).tracking(0.5)
+                    .foregroundColor(accent)
+                if let summary = stop.summary {
+                    Text(summary).font(.system(size: 12)).foregroundColor(Color(hex: 0x6E6E73)).lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(stop.title).font(.system(size: 15, weight: .semibold)).foregroundColor(Color(hex: 0x1C1C1E))
                 Text(stop.text).font(.system(size: 12)).foregroundColor(Color(hex: 0x48484A)).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
-                if !stop.points.isEmpty {
-                    // A short window scrolls the list; the buttons stay.
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(stop.points, id: \.name) { point in
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(point.name).font(.system(size: 12, weight: .semibold)).foregroundColor(Color(hex: 0x1C1C1E))
-                                    Text(point.text).font(.system(size: 12)).foregroundColor(Color(hex: 0x48484A)).lineSpacing(2)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .background(GeometryReader { Color.clear.preference(key: TourPointsHeight.self, value: $0.size.height) })
-                    }
-                    .onPreferenceChange(TourPointsHeight.self) { pointsHeight = $0 }
-                    .frame(height: min(pointsHeight, max(120, size.height - 16 - cardChrome)))
-                }
-                if let t = stop.tryText {
-                    Text(t).font(.system(size: 12, weight: .semibold)).foregroundColor(accent)
-                }
             }
             .id(step)
             .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)).combined(with: .scale(scale: 0.97)),
                                     removal: .opacity))
             HStack(spacing: 6) {
+                // The five tabs; the one you're in fills as its blocks go by.
                 HStack(spacing: 3) {
-                    ForEach(SettingsTour.stops.indices, id: \.self) { i in
-                        Capsule().fill(i <= step ? accent : Color(hex: 0xD1D1D6))
-                            .frame(width: i == step ? 12 : 4, height: 4)
+                    ForEach(0..<SettingsTour.all.count, id: \.self) { i in
+                        let wide: CGFloat = i == stop.section ? 26 : 8
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color(hex: 0xD1D1D6))
+                            Capsule().fill(accent)
+                                .frame(width: i < stop.section ? wide : i == stop.section ? wide * CGFloat(stop.block + 1) / CGFloat(stop.blocks) : 0)
+                        }
+                        .frame(width: wide, height: 4)
                     }
                 }
                 Spacer(minLength: 2)
@@ -321,14 +302,6 @@ struct TourOverlay: View {
         }
         // Its own seat: it waves from there; anything else, it hops onto.
         if stop.anchor == "cloud" { cloud.goHome(hop: true); cloud.cheer(times: 1) } else { cloud.visit(rect) }
-    }
-
-    /// Tried it: "Nice!", a cheer, and on.
-    private func didTry() {
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.56)) { tried = true }
-        cloud.cheer(times: 2)
-        let at = step
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { if model.tourStep == at { go(at + 1) } }
     }
 
     private func go(_ next: Int) {

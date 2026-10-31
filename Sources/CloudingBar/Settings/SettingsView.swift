@@ -860,12 +860,15 @@ struct GeneralTab: View {
     private var groups: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(title: "App", icon: "gearshape.fill", tint: 0x8E8E93) {
-                SettingsRow(title: "Open at login") {
-                    CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
+                VStack(spacing: 0) {
+                    SettingsRow(title: "Open at login") {
+                        CBSwitch(title: "Open at login", on: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
+                    }
+                    SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
+                        CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
+                    }
                 }
-                SettingsRow(title: "Do not disturb", hint: "Requests wait quietly: nothing pops open or pulses") {
-                    CBSwitch(title: "Do not disturb", on: binding("doNotDisturb") { $0.doNotDisturb })
-                }
+                .tourAnchor("general.app")
                 SettingsRow(title: "Voice language", hint: "Hold the right ⌥ key alone, or use the mic") {
                     Picker("", selection: Binding(get: { model.config.voiceLanguage },
                                                   set: { model.setConfig("voiceLanguage", $0) })) {
@@ -877,6 +880,7 @@ struct GeneralTab: View {
                     .frame(width: 210)
                     .accessibilityLabel("Voice language")
                 }
+                .tourAnchor("general.voice")
                 if !model.voiceOffline {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top, spacing: 8) {
@@ -892,7 +896,11 @@ struct GeneralTab: View {
                     .padding(12)
                     .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                 }
-                MoreRows("app", count: 4 + (model.pluginActive ? 1 : 0) + (model.updatesPossible ? 1 : 0)) {
+                MoreRows("app", count: 5 + (model.pluginActive ? 1 : 0) + (model.updatesPossible ? 1 : 0)) {
+                    SettingsRow(title: "Offer to report problems",
+                                hint: "After a crash or an error, a card asks (not with Do not disturb on). Reports are kept on this Mac and go only if you send one") {
+                        CBSwitch(title: "Offer to report problems", on: binding("problemOffers") { $0.problemOffers })
+                    }
                     SettingsRow(title: "Appearance", hint: "Of this window; the widget stays dark") {
                         SettingsSegments(options: [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")],
                                          selected: model.config.appearance, tint: 0x5E5CE6) { model.setConfig("appearance", $0) }
@@ -986,6 +994,7 @@ struct GeneralTab: View {
                         Button("Open Settings") { model.openAccessibility() }
                     }
                 }
+                .tourAnchor("general.accessibility")
             }
 
             if model.hasCodex {
@@ -1032,6 +1041,7 @@ struct GeneralTab: View {
                     }
                 }
             }
+            .tourAnchor("general.context")
             .animation(.spring(response: 0.36, dampingFraction: 0.86), value: model.config.contextWarning)
         }
     }
@@ -1073,6 +1083,7 @@ struct WidgetTab: View {
                         Button("Reset") { model.resetWidgetPosition() }
                             .disabled(model.config.widgetPosition == nil)
                     }
+                    .tourAnchor("widget.position")
                 }
                 MoreRows("widget", count: model.config.widget ? 4 : 0) {
                     if model.config.widget {
@@ -1121,6 +1132,7 @@ struct WidgetTab: View {
                             .overlay(Rectangle().fill(Color.sLine).frame(height: 0.5), alignment: .bottom)
                     }
                 }
+                .tourAnchor("widget.shows")
                 .transition(.opacity.combined(with: .offset(y: -8)))
             }
         }
@@ -1236,6 +1248,7 @@ struct TouchBarTab: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(model.config.touchBar != "off" ? Rectangle().fill(Color.sLine).frame(height: 0.5) : nil, alignment: .bottom)
+                .tourAnchor("touchbar.chips")
                 // The rarer switches; nothing behind More… with the bar off.
                 MoreRows("touchbar", count: model.config.touchBar == "off" ? 0 : model.config.touchBarEverywhere ? 2 : 1) {
                     SettingsRow(title: "In every app",
@@ -1262,6 +1275,7 @@ struct TouchBarTab: View {
                 .font(.system(size: 11)).foregroundColor(.sMuted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
+                .tourAnchor("touchbar.note")
         }
         // Arranging the short bar: the Touch Bar shows that one meanwhile.
         .onChange(of: model.editingShortBar) { _ in noRoom = nil }
@@ -1746,11 +1760,13 @@ struct ButtonsTab: View {
                     .accessibilityLabel("Profile")
                 }
                 .padding(.horizontal, 4).padding(.vertical, 2)
+                .tourAnchor("buttons.profile")
             }
             .tourAnchor("buttons.list")
             Text("Commands, in the widget, on the Touch Bar and in the menu bar, lists them all; one kept only in Commands stays out of the row. In a phrase or a text, {project}, {branch}, {clipboard} and {date} are filled in.")
                 .font(.system(size: 11)).foregroundColor(.sSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .tourAnchor("buttons.commands")
             if !profile.isEmpty {
                 Text(model.config.profiles[profile] == nil
                      ? "\(profile) uses the default buttons. Change one here to give it its own set."

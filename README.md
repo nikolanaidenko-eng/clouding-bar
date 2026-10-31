@@ -120,6 +120,9 @@ Clouding Bar talks to Claude Code on your Mac. It has no account of its own,
 no analytics and no server, and it never reads Claude Code's credentials. What
 leaves your Mac, and when:
 
+- **Problem reports, only if you send one.** After a crash or an error a card
+  offers a report. You read it first, then paste it into a public GitHub issue
+  in your browser and submit it; the app sends nothing. Chats' names and words are left out.
 - **Short chat names.** Once per chat the app runs your own `claude -p` (Haiku)
   to name it in a word or two: the chat's title and the first 400 letters of
   its first message go to Anthropic through it, where the chat already goes.

@@ -17,6 +17,22 @@ enum DebugLog {
         append("\(Date()) note: \(text)\n")
     }
 
+    /// Something's wrong that isn't the world's fault: logged, and offered
+    /// as a report once (Problems). `kind` tells one problem from another.
+    static var onProblem: ((_ kind: String, _ text: String) -> Void)?
+    /// Written once a run: one that goes on would fill the log.
+    private static var problems: Set<String> = []
+    private static let problemsLock = NSLock()
+
+    static func problem(_ kind: String, _ text: String) {
+        problemsLock.lock()
+        let first = problems.insert(kind).inserted
+        problemsLock.unlock()
+        guard first else { return }
+        note("problem: \(text)")
+        onProblem?(kind, text)
+    }
+
     private static func append(_ line: String) {
         let url = Config.directory.appendingPathComponent("debug.log")
         guard let data = line.data(using: .utf8) else { return }

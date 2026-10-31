@@ -119,7 +119,7 @@ final class ClaudeAI {
         try? stdin.fileHandleForWriting.close()
         let data = stdout.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
-        if p.terminationStatus >= 2 { DebugLog.note("claude.ai key: \(command) failed (\(p.terminationStatus))") }
+        if p.terminationStatus >= 2 { DebugLog.problem("key \(command)", "claude.ai key: \(command) failed (\(p.terminationStatus))") }
         return (p.terminationStatus, data)
     }
 
@@ -277,6 +277,7 @@ final class ClaudeAI {
             }
             guard status == 200 else {
                 self.note("chats: HTTP \(status)")
+                self.offer("chats", status)
                 return
             }
             self.found.merge(self.known?() ?? [:]) { mine, _ in mine }
@@ -428,6 +429,7 @@ final class ClaudeAI {
                 guard let self else { return }
                 guard status == 200 else {
                     self.note("cowork events: HTTP \(status)")
+                    self.offer("cowork events", status)
                     return
                 }
                 if let context = ClaudeAIChats.context(events: json) {
@@ -451,9 +453,17 @@ final class ClaudeAI {
             onState?("Signed out by claude.ai (HTTP \(status)). Sign in again.")
             stop()
             onRejected?()
-        default: onState?("claude.ai answered HTTP \(status) (\(what))")
+        default:
+            onState?("claude.ai answered HTTP \(status) (\(what))")
+            offer(what, status)
         }
         return false
+    }
+
+    /// claude.ai says the app asked wrongly: offered as a report.
+    private func offer(_ what: String, _ status: Int) {
+        guard ProblemReport.worthOffering(status: status) else { return }
+        DebugLog.problem("claude.ai \(what) \(status)", "claude.ai answered HTTP \(status) to \(what)")
     }
 
     private func note(_ line: String) {
