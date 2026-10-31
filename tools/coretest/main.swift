@@ -2554,6 +2554,12 @@ do {
     check(LocalCowork.auditFile(of: base.appendingPathComponent("local_ditto_abc.json")).path.hasSuffix("local_ditto_abc/audit.jsonl"),
           "local cowork: Dispatch's has no short name")
 
+    // Its window in the background shows what was sent there a while longer (owner's Mac, 31.10).
+    check(LocalCowork.field(" \n", sent: nil) == .empty, "local cowork: an empty field")
+    check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(10)) == .late, "local cowork: just sent and still showing: not yours")
+    check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(31)) == .yours, "local cowork: long after, the same words are yours")
+    check(LocalCowork.field("my draft", sent: ("sent words", now), now: now) == .yours && LocalCowork.field("my draft", sent: nil) == .yours, "local cowork: other words are yours")
+
     // Pressing a row on its own (review, 31.10).
     func rows(_ labels: [String]) -> [(label: String, path: String?)] { labels.map { ($0, nil) } }
     check(LocalCowork.onlyRow(rows(["New task", "New task for the invoices"]), title: "New task for the invoices", page: "/cowork/local_b") == 1
