@@ -53,6 +53,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // A closed window's views don't all hear of it: the Touch Bar goes
         // back to its usual self here.
         model.editingShortBar = false
+        model.tourStep = nil // closed midway: Settings opens as Settings next time
         SettingsFolds.shared.reset() // General's groups are folded again next time (owner, 27.10)
         NSApp.setActivationPolicy(.accessory)
     }

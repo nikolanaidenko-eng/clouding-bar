@@ -128,6 +128,7 @@ final class Updater {
                         DebugLog.note("update: \(release.version) installed, reopening")
                         Self.relaunch(target)
                     case .failure(let error):
+                        DebugLog.problem("update install", "update: \(release.version) not installed: \(error.localizedDescription)")
                         self.fail("Not installed: \(error.localizedDescription)", open: release.page)
                     }
                 }

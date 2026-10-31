@@ -2451,5 +2451,60 @@ do {
     check(rubber.width == 920, "pull: past what it can show, it gives a little")
 }
 
+// MARK: Problem reports (public once sent: nothing of yours in them)
+
+do {
+    let log = """
+    2026-10-31 10:01:44 +0000 note: claude.ai organizations: d2f434d9 [raven+chat] enterprise aws_marketplace; taken d2f434d9
+    2026-10-31 10:01:45 +0000 note: active session: My secret project (0fb5b1f9)
+    2026-10-31 10:01:46 +0000 note: desktop chat: Secret chat - Claude Code /epitaxy/local_24fa398a-c155-408f-b889-6efdb96c7e5f → Secret chat
+    2026-10-31 10:01:47 +0000 open session Secret chat trusted=true front=com.google.Chrome
+    2026-10-31 10:01:48 +0000 dropped 1 file(s) for secret-project, 1 waiting trusted=true front=x
+    2026-10-31 10:01:49 +0000 note: setup: 2 helper(s) updated in /Users/lehandr/.cloudingbar
+    2026-10-31 10:01:50 +0000 note: desktop prompt: nothing asked (… looked at)
+    2026-10-31 10:01:51 +0000 note: screens: (0.0, 0.0, 1496.0, 967.0) notch
+    2026-10-31 10:01:52 +0000 note: screens: (0.0, 0.0, 1496.0, 967.0) notch
+    2026-10-31 10:01:53 +0000 note: some kind of line nobody listed yet: Secret chat
+    a line with no date at all: Secret chat
+    2026-10-31 10:01:54 +0000 note: claude.ai cowork: asked by its chat 24fa398a: HTTP 200, no task
+    2026-10-31 10:01:55 +0000 note: claude.ai send: timed out (Secret chat) — maybe sent, not sent again
+    2026-10-31 10:01:56 +0000 note: claude.ai's chat: timed out (Secret chat) — maybe sent, not sent again
+    2026-10-31 10:01:57 +0000 note: claude.ai didn't take it (Secret chat): no — kept, typed once its chat is in front
+    2026-10-31 10:01:58 +0000 launch trusted=true front=ru.keepcoder.Telegram
+    2026-10-31 10:01:59 +0000 note: update: Can't write to /Volumes/Secret SSD/Apps: download it from GitHub instead
+    """
+    let safe = ProblemReport.safeLog(log, claudeAI: true).joined(separator: "\n")
+    let quiet = ProblemReport.safeLog(log).joined(separator: "\n")
+    check(!quiet.contains("claude.ai") && quiet.contains("screens:"), "report: nothing about claude.ai unless you ask for it")
+    check(!safe.contains("Telegram") && safe.contains("launch trusted=true"), "report: not the app in front")
+    check(!safe.lowercased().contains("secret chat") && !safe.contains("My secret") && !safe.contains("secret-project"), "report: no chat or project name gets through the log")
+    check(!safe.contains("lehandr"), "report: no name in a path")
+    check(!safe.contains("d2f434d9") && !safe.contains("24fa398a"), "report: no ids")
+    check(safe.contains("enterprise aws_marketplace") && safe.contains("HTTP 200, no task"), "report: what tells the problem stays")
+    check(!safe.contains("nothing asked"), "report: not the noise")
+    check(safe.components(separatedBy: "screens:").count == 2, "report: the same line in a row is said once")
+    check(ProblemReport.scrub("me.name+x@corp.example.com /Users/a b cse_01ABC local_x-1") == "<email> <path> b <id> <id>", "report: address, path and ids scrubbed")
+    check(ProblemReport.scrub("in ~/Clients/Acme and /Volumes/Acme/x") == "in <path> and <path>", "report: the rest of a path goes too")
+    check(ProblemReport.worthOffering(status: 400) && ProblemReport.worthOffering(status: 422), "report: asked wrongly is offered")
+    check(![0, 200, 401, 403, 404, 429, 500, 503].contains(where: ProblemReport.worthOffering), "report: its own trouble, no network, a key gone aren't")
+
+    let head = #"{"app_name":"CloudingBar","app_version":"1.2.24","os_version":"macOS 26.1 (25B1)","name":"CloudingBar"}"#
+    let body = #"{"exception":{"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},"faultingThread":1,"procPath":"/Users/lehandr/Applications/x","asi":{"libswiftCore.dylib":["Fatal error at /Users/lehandr/x.swift"]},"usedImages":[{"name":"libsystem","path":"/usr/lib/libsystem"},{"name":"CloudingBar","path":"/Users/lehandr/Applications/CloudingBar"}],"threads":[{"frames":[{"imageIndex":0,"imageOffset":1}]},{"triggered":true,"frames":[{"imageIndex":0,"imageOffset":16},{"imageIndex":1,"imageOffset":255,"symbol":"AppDelegate.tick()"}]}]}"#
+    let crash = ProblemReport.crash(ips: head + "\n" + body)
+    check(crash?.text.contains("EXC_BREAKPOINT SIGTRAP") == true && crash?.text.contains("1.2.24") == true, "crash: what stopped it, in which version")
+    check(crash?.text.contains("CloudingBar +0xff AppDelegate.tick()") == true, "crash: where, in the thread that crashed")
+    check(crash?.text.contains("lehandr") == false, "crash: no name in it, from the message or the paths")
+    check(crash?.kind == ProblemReport.crash(ips: head + "\n" + body)?.kind && crash?.kind.contains("0xff") == true, "crash: the same crash is the same kind")
+    check(ProblemReport.crash(ips: "not a report") == nil && ProblemReport.crash(ips: head) == nil, "crash: what can't be read is no crash")
+
+    let long = ProblemReport.text(detail: "Crash: x", about: ["Clouding Bar 1"], log: (0..<3000).map { "line \($0) +%&=?" })
+    check(long.firstIndex(of: "2") != nil && long.contains("line 2999") && long.range(of: "line 2999")!.lowerBound < long.range(of: "line 0 ")!.lowerBound, "report: the newest of the log first")
+    let url = ProblemReport.issueURL(repo: "o/r", version: "1.2.24")?.absoluteString ?? ""
+    check(url.hasPrefix("https://github.com/o/r/issues/new?") && url.contains("1.2.24"), "report: a new issue, for you to submit")
+    check(!url.contains("body"), "report: none of its text in the address")
+    let hidden = ProblemReport.text(detail: "claude.ai answered HTTP 400 to chats", about: [], log: [])
+    check(!hidden.contains("HTTP 400") && ProblemReport.text(detail: "claude.ai answered HTTP 400", about: [], log: [], claudeAI: true).contains("HTTP 400"), "report: a problem about claude.ai only if you ask")
+}
+
 print(failures == 0 ? "\nall passed" : "\n\(failures) failed")
 exit(failures == 0 ? 0 : 1)

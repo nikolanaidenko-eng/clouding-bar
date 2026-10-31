@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menuBarCloud: NSStatusItem?
     private let touchBarStatusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
+    private let problems = Problems()
     private let updater = Updater()
     private let touchBarToggleItem = NSMenuItem(title: "Show on Touch Bar", action: nil, keyEquivalent: "")
     private let templatesItem = NSMenuItem(title: "Commands", action: nil, keyEquivalent: "")
@@ -142,6 +143,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DebugLog.note("queue: its chat is a Cowork task — its words go through claude.ai")
         }
 
+        problems.about = { [weak self] in self?.aboutThisMac() ?? [] }
+        problems.offers = { [weak self] in (self?.config.problemOffers ?? false) && self?.config.doNotDisturb != true }
+        problems.stopOffers = { [weak self] in self?.setConfig("problemOffers", false) }
+        problems.start()
+
         // Hooks, the status line and the tap talk to the app here.
         let socket = SocketServer(path: Config.socketPath) { [weak self] message, responder in
             self?.handle(message, responder: responder)
@@ -153,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             unlink(old)
             symlink("cloudingbar.sock", old)
         } else {
-            DebugLog.note("the socket couldn't be opened: hooks can't reach the app")
+            DebugLog.problem("socket", "the socket couldn't be opened: hooks can't reach the app")
         }
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -1120,7 +1126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Your words may need typing in Claude's window: not into the widget's field.
         if own != nil { widget.releaseKey() }
         desktopChat.answer(prompt, choices: choices, own: own, in: app) { [weak self] done in
-            DebugLog.note("desktop prompt: " + (done ? "answered in Claude's window" : "couldn't press the answer"))
+            if done { DebugLog.note("desktop prompt: answered in Claude's window") } else { DebugLog.problem("desktop answer", "desktop prompt: couldn't press the answer") }
             if !done { NSSound.beep() }
             self?.setNeedsRefresh()
         }
@@ -1185,6 +1191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menuEntry("Show or Hide the Island", #selector(toggleIsland)),
             menuEntry("Settings…", #selector(openSettings), key: ","),
             menuEntry("Take the Tour…", #selector(showTour)),
+            menuEntry("Report a Problem…", #selector(reportProblem)),
             updateItem,
             menuEntry("Reset Widget Position", #selector(resetWidgetPosition)),
             nil,
@@ -1405,6 +1412,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             setConfig("setupDeclined", true)
         }
+    }
+
+    @objc private func reportProblem() {
+        DebugLog.tap("report a problem")
+        problems.reportNow()
+    }
+
+    /// What a report says about this Mac: how it's set up, nothing of yours.
+    private func aboutThisMac() -> [String] {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        #if arch(arm64)
+        let chip = "Apple silicon"
+        #else
+        let chip = "Intel"
+        #endif
+        func on(_ value: Bool) -> String { value ? "yes" : "no" }
+        return ["Clouding Bar " + version, "macOS " + ProcessInfo.processInfo.operatingSystemVersionString, chip,
+                "Screens: \(NSScreen.screens.count)", "Accessibility: " + on(model.accessibilityTrusted),
+                "Claude Code connected: " + on(model.claudeConnected), "VS Code wrapper: " + on(model.vscodeWrapped),
+                "Codex connected: " + on(model.codexConnected), "claude.ai signed in: " + on(model.hasLiveKey)]
     }
 
     /// The tour runs in the settings window.
@@ -2500,7 +2527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     fallback()
                 case .unsure(let why):
                     NSSound.beep()
-                    DebugLog.note("claude.ai: \(why) (\(name)) — maybe sent, not sent again")
+                    DebugLog.note("claude.ai send: \(why) (\(name)) — maybe sent, not sent again")
                 }
             }
         }
