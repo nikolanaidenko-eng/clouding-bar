@@ -131,6 +131,11 @@ final class SessionStore {
         let listed = Set(chats.filter { !$0.archived }.map(ClaudeAIChats.sessionId))
         for s in sessions.values where local ? s.isLocalCowork && !listed.contains(s.id) : s.fromClaudeAI && !listed.contains(s.id) && !chats.isEmpty {
             s.lastEvent = .distantPast
+            // Quiet for half an hour, or gone: not at work, whatever keeps it here.
+            if local {
+                s.activity = .sleep
+                s.waitingNotice = false
+            }
             changed = true
         }
         for chat in chats where !chat.archived {
@@ -248,6 +253,21 @@ final class SessionStore {
         guard changed else { return }
         scheduleSave()
         onChange?()
+    }
+
+    /// A local Cowork task words wait for: here as long as they do, over a
+    /// sleep or a restart, or they'd be dropped with it.
+    func keepLocalCowork(_ id: String, now: Date = Date()) {
+        guard id.hasPrefix("coworklocal-") else { return }
+        let session = sessions[id] ?? newSession(id, now: now)
+        if sessions[id] == nil {
+            sessions[id] = session
+            session.entrypoint = "cowork-local"
+            session.cwd = "/Cowork"
+            session.activity = .sleep
+            link(session, desktopChat: "/cowork/" + id.dropFirst("coworklocal-".count), title: nil)
+        }
+        session.lastEvent = now
     }
 
     /// Cowork tasks on this Mac, as read from Claude Desktop's files.

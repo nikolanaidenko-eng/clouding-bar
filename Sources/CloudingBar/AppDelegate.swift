@@ -1432,13 +1432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         said = tasks.count
                         DebugLog.note("local cowork: \(tasks.count) active on this Mac")
                     }
-                    guard let self else { return }
-                    self.store.apply(localCowork: tasks)
-                    // Words waiting for a task keep it here: gone, they'd go with it.
-                    for item in self.queue {
-                        guard let session = item.sessionId.flatMap({ self.store.sessions[$0] }), session.isLocalCowork else { continue }
-                        session.lastEvent = Date()
-                    }
+                    self?.store.apply(localCowork: tasks)
                 }
             }
         }
@@ -2356,6 +2350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// window is in front (like a button). Each chat's own in order; one
     /// chat waiting doesn't hold up another's.
     private func dispatchQueue() {
+        for id in queue.compactMap(\.sessionId) { store.keepLocalCowork(id) }
         let gone = queue.filter { $0.sessionId.flatMap { store.sessions[$0] } == nil }
         if !gone.isEmpty {
             queue.removeAll { $0.sessionId.flatMap { store.sessions[$0] } == nil }
@@ -2371,9 +2366,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let parts = Inject.split(next.text)
             // A Cowork task on this Mac: into its window if that shows it, its
             // place in the queue kept till it's gone. Else keys, as below.
+            if Date() < (fieldTaken[id] ?? .distantPast) { continue }
             if parts.files.isEmpty, session.isLocalCowork, Date() >= (quietHeld[id] ?? .distantPast) {
-                sendQuietly(parts.words, into: session) { [weak self] gone in
-                    guard gone, let self else { return }
+                sendQuietly(parts.words, into: session) { [weak self] result in
+                    guard result == .gone, let self else { return }
                     self.queue.removeAll { $0.id == next.id }
                     self.saveQueue()
                     self.setNeedsRefresh()
@@ -2415,6 +2411,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// back to the head of the queue.
     private func sendQueuedNow(_ id: UUID) {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return }
+        // On its way already: the queue is sending this very one.
+        if let chat = queue[i].sessionId, chat.hasPrefix("coworklocal-"), remoteSending.contains(chat) {
+            NSSound.beep()
+            return
+        }
         let item = queue.remove(at: i)
         saveQueue()
         refresh()
@@ -2423,10 +2424,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let parts = Inject.split(item.text)
         if parts.files.isEmpty, session.isLocalCowork {
             let id = session.id
-            sendQuietly(parts.words, into: session) { [weak self] gone in
-                guard !gone, let self else { return }
+            sendQuietly(parts.words, into: session) { [weak self] result in
+                guard result != .gone, let self else { return }
                 if !self.chatInFront(id) { self.openSession(id) }
-                self.typeWhenInFront(item, session: id, tries: 16, since: Date())
+                if result == .fieldTaken {
+                    // Yours in its field: shown to you, the words wait.
+                    self.queue.insert(item, at: 0)
+                    self.saveQueue()
+                    self.setNeedsRefresh()
+                } else {
+                    self.typeWhenInFront(item, session: id, tries: 16, since: Date())
+                }
             }
             return
         }
@@ -2446,15 +2454,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A local Cowork task: not tried again till then, after its window didn't
     /// show it (soon) or its field turned the words down (for a while).
     private var quietHeld: [String: Date] = [:]
+    /// Something of yours in its field: neither way for now.
+    private var fieldTaken: [String: Date] = [:]
 
-    /// Its words into Claude Desktop's window, if it shows this task: false if
-    /// nothing went. Busy meanwhile, so the keys don't overtake.
-    private func sendQuietly(_ words: String, into session: Session, done: @escaping (Bool) -> Void) {
+    enum QuietResult { case gone, notSent, fieldTaken }
+
+    /// Its words into Claude Desktop's window, if it shows this task. Busy
+    /// meanwhile, so the keys don't overtake.
+    private func sendQuietly(_ words: String, into session: Session, done: @escaping (QuietResult) -> Void) {
         let id = session.id
         guard let page = session.desktopChat,
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
             quietHeld[id] = Date().addingTimeInterval(15)
-            done(false)
+            done(.notSent)
             return
         }
         remoteSending.insert(id)
@@ -2467,19 +2479,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.handedAt[id] = Date()
                 self.queueSentAt = Date()
                 self.store.markSent(id)
-                done(true)
+                done(.gone)
             case .unsure:
                 // Pressed: it may have gone. Not again; they're still in its field.
                 NSSound.beep()
                 self.handedAt[id] = Date()
                 self.queueSentAt = Date()
-                done(true)
+                done(.gone)
+            case .busy:
+                self.fieldTaken[id] = Date().addingTimeInterval(15)
+                done(.fieldTaken)
             case .notShown:
                 self.quietHeld[id] = Date().addingTimeInterval(15)
-                done(false)
+                done(.notSent)
             case .refused:
-                self.quietHeld[id] = Date().addingTimeInterval(600)
-                done(false)
+                self.quietHeld[id] = Date().addingTimeInterval(60)
+                done(.notSent)
             }
             self.setNeedsRefresh()
         }

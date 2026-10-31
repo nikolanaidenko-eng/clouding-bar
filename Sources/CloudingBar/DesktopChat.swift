@@ -61,7 +61,9 @@ final class DesktopChat {
 
     /// `unsure`: its button was pressed and the words are still in the field.
     /// They may have gone: never sent again, they stay there for you to see.
-    enum Quiet { case sent, notShown, refused, unsure }
+    /// `busy`: something's in its field already, yours: left alone, and no
+    /// keys either, they'd go off with it.
+    enum Quiet { case sent, notShown, refused, unsure, busy }
 
     /// Your words into the chat its window shows, written into its field and
     /// sent by its button, through Accessibility: nothing comes to the front,
@@ -72,14 +74,15 @@ final class DesktopChat {
     func sendQuietly(_ text: String, page wanted: String, in app: NSRunningApplication, completion: @escaping (Quiet) -> Void) {
         let pid = app.processIdentifier
         func done(_ result: Quiet) { DispatchQueue.main.async { completion(result) } }
-        func same(_ field: AXUIElement) -> Bool { Self.words(field)?.trimmingCharacters(in: .whitespacesAndNewlines) == text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        func bare(_ s: String) -> String { s.filter { !$0.isWhitespace } }
+        func same(_ field: AXUIElement) -> Bool { Self.words(field).map(bare) == bare(text) }
         func takeBack(_ field: AXUIElement) {
             if same(field) { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
         }
         queue.async {
             guard self.shown(pid: pid)?.chat == wanted, let page = self.page, self.findPrompt(pid: pid) == nil,
-                  let field = self.composer(in: page),
-                  Self.words(field)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true else { return done(.notShown) }
+                  let field = self.composer(in: page), let before = Self.words(field) else { return done(.notShown) }
+            guard bare(before).isEmpty else { return done(.busy) }
             guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
             // Chromium's tree follows a moment later; its send button shows once there are words.
             self.queue.asyncAfter(deadline: .now() + 0.5) {
