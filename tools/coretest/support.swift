@@ -7,6 +7,9 @@ func runMoreChecks() {
     runWidgetRuleChecks()
     runBarChecks()
     runModelChecks()
+    runRequestChecks()
+    runSessionChecks()
+    runStoreChecks()
 }
 
 /// A real bug these checks found, not fixed here (only the checks changed):
