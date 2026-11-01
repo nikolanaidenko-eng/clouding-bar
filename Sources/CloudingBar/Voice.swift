@@ -30,21 +30,10 @@ final class VoiceInput {
     /// Everything heard so far.
     private var heard: String { Self.join(committed, best) }
 
-    private static func join(_ a: String, _ b: String) -> String {
-        [a, b].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-    }
+    private static func join(_ a: String, _ b: String) -> String { VoiceText.join(a, b) }
 
     /// The new transcription isn't a revision of the last one: it began again.
-    /// Punctuation aside: a comma the recognizer adds on second thought
-    /// ("Ну вот" → "Ну, вот") doesn't make it a new one.
-    private static func startedOver(_ new: String, after old: String) -> Bool {
-        let bare = { (s: String) in Array(s.lowercased().filter { !$0.isPunctuation }) }
-        let a = bare(new), b = bare(old)
-        guard !a.isEmpty, !b.isEmpty, a.count < b.count else { return false }
-        var same = 0
-        while same < min(a.count, b.count), a[same] == b[same] { same += 1 }
-        return same < min(4, a.count)
-    }
+    private static func startedOver(_ new: String, after old: String) -> Bool { VoiceText.startedOver(new, after: old) }
     private var silence: DispatchWorkItem?
 
     /// Stop by itself after a pause (tap-to-talk); nil: only stop() stops it.
@@ -434,10 +423,7 @@ private final class DictationSession {
         try engine.start()
     }
 
-    private func join(_ a: String, _ b: String) -> String {
-        guard !a.isEmpty, !b.isEmpty else { return a + b }
-        return a.last!.isWhitespace || b.first!.isWhitespace ? a + b : a + " " + b
-    }
+    private func join(_ a: String, _ b: String) -> String { VoiceText.glue(a, b) }
 
     /// Stops the microphone and waits for the last words. All of it, then.
     @MainActor

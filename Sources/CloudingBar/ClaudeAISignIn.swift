@@ -188,10 +188,7 @@ final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTP
         }
     }
 
-    private static func isClaudeAI(_ domain: String) -> Bool {
-        let d = domain.hasPrefix(".") ? String(domain.dropFirst()) : domain
-        return d == "claude.ai"
-    }
+    private static func isClaudeAI(_ domain: String) -> Bool { ClaudeAICookie.isClaudeAI(domain) }
 
     // MARK: The page
 

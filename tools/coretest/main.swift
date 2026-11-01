@@ -7,13 +7,20 @@ guard ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"] != nil else {
     print("run through `make test` (it sets CLOUDINGBAR_DIR)")
     exit(2)
 }
+// Nor anything else of yours: whatever asks for the home folder gets one that
+// isn't there (the status of your own chats, Claude Desktop's files, the tap's
+// socket), and a check that needs a home makes its own (withHome).
+let fakeHome = "/Users/me"
+setenv("CFFIXED_USER_HOME", fakeHome, 1)
 // Nothing here reads the real ~/.codex either.
 if ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"] == nil {
     setenv("CLOUDINGBAR_CODEX_HOME", ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]! + "/no-codex", 1)
 }
+// `make coverage` runs its own builds of the helpers, which count what they run.
+let helperBinaries = ProcessInfo.processInfo.environment["CLOUDINGBAR_TEST_HELPERS"] ?? "build"
 var failures = 0
-func check(_ ok: Bool, _ what: String, line: Int = #line) {
-    print(ok ? "ok   \(what)" : "FAIL \(what) (line \(line))")
+func check(_ ok: Bool, _ what: String, file: String = #fileID, line: Int = #line) {
+    print(ok ? "ok   \(what)" : "FAIL \(what) (\(file) line \(line))")
     if !ok { failures += 1 }
 }
 
@@ -174,9 +181,30 @@ check(named.modelName == "Opus 5.5 1M", "model name: \(named.modelName ?? "nil")
 named.model = "claude-sonnet-4-5-20250929"
 check(named.modelName == "Sonnet 4.5", "model name drops the date: \(named.modelName ?? "nil")")
 
-let repo = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent()
-check(Git.branch(at: repo.appendingPathComponent("Sources").path) == "clouding-bar",
-      "git branch from .git/HEAD of a parent folder")
+// A repository of its own: this one's branch, and whether it's a linked
+// worktree, depend on where the checks run from.
+do {
+    let fm = FileManager.default
+    let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("git-fixture")
+    let sub = root.appendingPathComponent("repo/Sources/deep")
+    try? fm.createDirectory(at: sub, withIntermediateDirectories: true)
+    try? fm.createDirectory(at: root.appendingPathComponent("repo/.git"), withIntermediateDirectories: true)
+    try? "ref: refs/heads/feature-y\n".write(to: root.appendingPathComponent("repo/.git/HEAD"), atomically: true, encoding: .utf8)
+    check(Git.branch(at: sub.path) == "feature-y", "git branch from .git/HEAD of a parent folder")
+    // A linked worktree: .git is a file naming where its HEAD is, relative or not.
+    let linked = root.appendingPathComponent("linked")
+    let gitDir = root.appendingPathComponent("repo/.git/worktrees/linked")
+    try? fm.createDirectory(at: linked, withIntermediateDirectories: true)
+    try? fm.createDirectory(at: gitDir, withIntermediateDirectories: true)
+    try? "gitdir: ../repo/.git/worktrees/linked\n".write(to: linked.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+    try? "ref: refs/heads/side\n".write(to: gitDir.appendingPathComponent("HEAD"), atomically: true, encoding: .utf8)
+    check(Git.branch(at: linked.path) == "side", "git branch: a linked worktree's, its .git being a file")
+    try? "0123456789abcdef\n".write(to: gitDir.appendingPathComponent("HEAD"), atomically: true, encoding: .utf8)
+    check(Git.branch(at: linked.path) == "0123456", "git branch: a detached HEAD shows its commit")
+    try? fm.removeItem(at: gitDir.appendingPathComponent("HEAD"))
+    check(Git.branch(at: linked.path) == nil, "git branch: a .git with no HEAD behind it, no branch")
+    try? fm.removeItem(at: root)
+}
 check(Git.branch(at: "/") == nil, "no repository, no branch")
 
 check(ButtonSpec.guessType("/compact") == .command, "guess: slash command")
@@ -575,9 +603,15 @@ do {
           "inject: nothing to send; no door, no sending that way")
 
     // Through the real relay (cloudingbar-tap --input): the door named by its
-    // parent's id (here this test's), lines kept whole and in order.
+    // parent's id (here this test's), lines kept whole and in order. In a short
+    // folder: a socket's path has room for 103 bytes, and a linked worktree's
+    // build/ can be deeper than that.
+    let shortHome = NSTemporaryDirectory() + "cb-inject-\(getpid())"
+    let longHome = ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!
+    setenv("CLOUDINGBAR_DIR", shortHome, 1)
+    defer { setenv("CLOUDINGBAR_DIR", longHome, 1); try? fm.removeItem(atPath: shortHome) }
     let tap = Process()
-    tap.executableURL = URL(fileURLWithPath: "build/cloudingbar-tap")
+    tap.executableURL = URL(fileURLWithPath: helperBinaries + "/cloudingbar-tap")
     tap.arguments = ["--input"]
     let input = Pipe(), output = Pipe()
     tap.standardInput = input
@@ -2123,7 +2157,7 @@ do { // short names for chats (owner, 27.10)
     check(Config().shortNames, "short names: on by default")
 
     // The real hook program: names handed back with the app not running (no socket here).
-    let hook = "build/cloudingbar-hook"
+    let hook = helperBinaries + "/cloudingbar-hook"
     func runHook(_ json: String, env: [String: String] = [:]) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: hook)
@@ -2768,6 +2802,8 @@ do {
     let hidden = ProblemReport.text(detail: "claude.ai answered HTTP 400 to chats", about: [], log: [])
     check(!hidden.contains("HTTP 400") && ProblemReport.text(detail: "claude.ai answered HTTP 400", about: [], log: [], claudeAI: true).contains("HTTP 400"), "report: a problem about claude.ai only if you ask")
 }
+
+runMoreChecks()
 
 print(failures == 0 ? "\nall passed" : "\n\(failures) failed")
 exit(failures == 0 ? 0 : 1)

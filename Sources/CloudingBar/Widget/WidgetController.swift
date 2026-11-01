@@ -219,8 +219,8 @@ final class WidgetController: NSObject {
         // Chats tab, whose composers write to any chat. Kept over that list:
         // giving it back hides the window and shows it again (releaseKey) —
         // the list blinked on opening (owner, 27.10).
-        let wants = state.mode == .panel && (model.request != nil || model.config.taskQueue) || state.mode == .chats
-            || state.mode == .pill && (state.pillTyping || model.dictated != nil)
+        let wants = WidgetRules.wantsKey(mode: state.mode, request: model.request != nil, taskQueue: model.config.taskQueue,
+                                         pillTyping: state.pillTyping, dictated: model.dictated != nil)
         panel.allowsKey = wants
         if !wants { releaseKey() }
     }
@@ -452,8 +452,7 @@ final class WidgetController: NSObject {
         case var .resize(r):
             // The pulled side follows the pointer.
             let dx = p.x - r.start.x, dy = p.y - r.start.y
-            r.raw = CGSize(width: r.size.width + CGFloat(r.h) * dx * (r.centered ? 2 : 1),
-                           height: r.size.height + CGFloat(r.v) * dy)
+            r.raw = WidgetRules.rawPull(from: r.size, h: r.h, v: r.v, dx: dx, dy: dy, centered: r.centered)
             // Down to the bottom of the screen: once taller than wide, it
             // stands up as a column.
             let low = atNotch ? CGSize(width: NotchView.compactWidth(camera: state.notchWidth), height: state.notchHeight)
@@ -521,15 +520,16 @@ final class WidgetController: NSObject {
             queueLayout()
         case let .resize(r) where atNotch:
             // The island: compact again if pulled in that far.
-            let compact = r.raw.width <= NotchView.compactWidth(camera: state.notchWidth) + 24
-            model.setConfig("notchWidth", compact ? 0 : Double(min(r.most, r.room.width, r.raw.width)))
-            model.setConfig("notchHeight", compact ? 0 : Double(min(r.room.height, max(PillLayout.height(rows: 1), r.raw.height))))
+            let saved = WidgetRules.notchRelease(raw: r.raw, compactWidth: NotchView.compactWidth(camera: state.notchWidth),
+                                                 most: r.most, room: r.room, rowHeight: PillLayout.height(rows: 1))
+            model.setConfig("notchWidth", saved.width)
+            model.setConfig("notchHeight", saved.height)
             withAnimation(.cb(0.2)) { state.pillEditSize = nil }
             queueLayout()
         case let .resize(r):
-            let height = min(r.room.height, max(PillLayout.height(rows: 1), r.raw.height))
             // What was shown when let go, not where the pointer went past the edge.
-            let width = max(PillLayout.minWidth, min(r.raw.width, r.room.width))
+            let kept = WidgetRules.pillRelease(raw: r.raw, room: r.room, minWidth: PillLayout.minWidth, rowHeight: PillLayout.height(rows: 1))
+            let width = kept.width, height = kept.height
             if PillLayout.isVertical(width: width, height: height) {
                 // A column keeps no spare width around what it shows.
                 let natural = PillLayout(model: model).arrange(width: width, height: height).natural
@@ -537,7 +537,7 @@ final class WidgetController: NSObject {
             } else {
                 // Pulled all the way: everything, now and whatever's added later.
                 // (Without the room for it, it would push its fixed end away.)
-                model.setConfig("pillWidth", r.raw.width >= r.most && r.room.width >= r.most ? 10_000 : Double(width))
+                model.setConfig("pillWidth", WidgetRules.savedWidth(raw: r.raw.width, shown: width, most: r.most, room: r.room.width))
             }
             model.setConfig("pillHeight", Double(height))
             // Snap to what it shows, the opposite sides still in place.
@@ -590,13 +590,8 @@ final class WidgetController: NSObject {
 
     /// The camera's width (0: no notch, one is drawn) and the notch's height.
     static func notch(of screen: NSScreen) -> (width: CGFloat, height: CGFloat) {
-        if #available(macOS 12, *), screen.safeAreaInsets.top > 0 {
-            if let l = screen.auxiliaryTopLeftArea, let r = screen.auxiliaryTopRightArea {
-                return (max(0, r.minX - l.maxX), screen.safeAreaInsets.top)
-            }
-            return (200, screen.safeAreaInsets.top)
-        }
-        return (0, 32)
+        guard #available(macOS 12, *) else { return NotchSizes.notch(safeTop: 0, leftMaxX: nil, rightMinX: nil) }
+        return NotchSizes.notch(safeTop: screen.safeAreaInsets.top, leftMaxX: screen.auxiliaryTopLeftArea?.maxX, rightMinX: screen.auxiliaryTopRightArea?.minX)
     }
 
     /// Near enough to the notch to dock there: around it, at the very top.

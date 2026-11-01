@@ -1,139 +1,5 @@
 import AppKit
 
-/// Everything the bar shows, as plain data.
-struct BarModel: Equatable {
-    enum Mode: Equatable {
-        case normal
-        case contextWarning
-        case permission(verb: String, detail: String)
-        case question(text: String, options: [String], multiSelect: Bool, picked: Set<Int>)
-        case typing(text: String)
-        /// The model and effort picker, opened from the model button.
-        case models
-        /// The subagents at work, opened from the subagents button.
-        case agents
-        /// The live chats, opened from the chat button: pick one to write to
-        /// it without following it (owner, 27.10).
-        case chats
-        /// Your templates, opened from the templates button: tap one to
-        /// type it into the chat.
-        case templates
-        /// Another chat than the one shown is done: Cloud says which, for
-        /// a few seconds (tap to go there).
-        case done(Chat)
-    }
-
-    /// A live chat, for the chat button and the chats panel.
-    struct Chat: Equatable {
-        let id: String
-        let name: String
-        let color: UInt32
-        let current: Bool
-        let waiting: Bool
-    }
-
-    var mode: Mode = .normal
-    var activity: Activity = .sleep
-    var sessionPercent: Double?
-    var resetCountdown: String?
-    var contextPercent: Double?
-    var buttons: [ButtonSpec] = []
-    /// Do not disturb: nothing pulses.
-    var quiet = false
-    /// The widget is open from Cloud's button: Cloud stays up (not asleep).
-    var awake = false
-    /// The chat's Cloud (its colorIndex); nil: the colour picked in Settings.
-    var cloudVariant: Int?
-    /// What shows besides the character: "session", "reset", "context",
-    /// "model", "buttons", "mic", "shot" (Settings → Touch Bar).
-    var shows: Set<String> = ["session", "reset", "context", "buttons"]
-    /// The model button: "Opus 5.5 1M · xhigh".
-    var modelLabel: String?
-    /// For the picker: the model's alias ("opus[1m]") and the effort.
-    var modelAlias: String?
-    var effort: String?
-    /// Subagents at work: "Explore · Find the hook code".
-    var agents: [String] = []
-    /// Every live chat; with more than one, the bar says which it shows.
-    var chats: [Chat] = []
-    /// The chat a request comes from (with several chats).
-    var requestChat: Chat?
-    /// "Always" beside Allow: Claude's, not Codex's (it can't remember an allow).
-    var offersAlways = true
-    /// The typing field's word before it and its placeholder: an answer
-    /// ("Other") or a message to the chat ("To Status bar").
-    var typingLabel = "Other"
-    var typingPlaceholder = "Type your answer"
-    /// Writing to the chat (not answering): your buttons and templates
-    /// stay at hand beside the field.
-    var typingCommands = false
-    /// The line is written for a chat picked from the list, not the one
-    /// followed: its chip before the words, ↗ to open it at the end. And
-    /// the files waiting for it (a screenshot taken from the line).
-    var typingTo: Chat?
-    var typingFiles = 0
-    /// Dictating into the line: the mic lit, the words arriving as you speak.
-    var listening = false
-    /// The chat the bar shows, for the chat field: "Status bar".
-    var chatName: String?
-    /// The chat's project: its first letter is the short bar's chat button.
-    var project: String?
-    /// The question as asked, when the bar shows it shorter.
-    var questionKey = ""
-    /// Done: the start of that chat's answer (✦: put shorter by Apple's
-    /// model); swapped in place when the short form comes.
-    var doneAnswer: String?
-    /// Beside Apple's buttons: everything smaller, the rest left out — and a
-    /// button that opens the whole bar (`expand`).
-    var short = false
-    /// Opened from short: a button folds it back, Apple's buttons return.
-    var expanded = false
-    /// Your templates, as they read.
-    var templates: [String] = []
-    /// What the widget can show too: "+120 −8", "main", "$1.20".
-    var lines: String?
-    var branch: String?
-    var cost: String?
-    /// Arranged in Settings: the blocks' order and their dragged widths.
-    var order: [String] = []
-    var widths: [String: CGFloat] = [:]
-
-    var current: Chat? { chats.count > 1 ? chats.first(where: \.current) : nil }
-}
-
-enum BarAction {
-    /// The character button where esc used to be (the keyboard has its own
-    /// Esc): brings the widget up from the bottom of the screen.
-    case widget, button(Int)
-    case allow, always, deny
-    case option(Int), other, sendPicked, send, mic
-    case compact, later
-    /// Normal mode's own mic and screenshot buttons.
-    case dictate, screenshot
-    /// The model button opens the picker; a pick types /model or /effort.
-    case models, pickModel(String), pickEffort(String)
-    /// The subagents button shows who's working.
-    case agents
-    /// The chat button shows the chats; a pick opens the message line for
-    /// that one (`writeTo`), without following it. `pickChat` follows a
-    /// chat and opens it (↗ on that line, "Open" on another's "done").
-    case chats, writeTo(String), pickChat(String)
-    /// Write: a message to the chat, typed on the keyboard or dictated,
-    /// sent when Claude is free (like the widget's message box).
-    case write, cancelTyping
-    /// The templates button lists them; a pick types one into the chat.
-    case templates, pickTemplate(Int)
-    /// Beside Apple's buttons: the whole bar for Claude, and back.
-    case expand, collapse
-    /// "OK" on another chat's "done": back to the chat shown.
-    case dismissDone
-    /// Done: back from the picker or the subagents.
-    case closePanel
-    /// A tap on a question or a command: the whole of it, in the widget's
-    /// panel or the island (owner, 26.10: the bar shows a question shorter).
-    case showRequest
-}
-
 /// The whole Touch Bar as one view, laid out like design/TB-*.dc.html:
 ///
 ///   normal      [character] · Session ─── · Context ── · buttons
@@ -190,11 +56,7 @@ final class BarView: NSView {
     private struct Slot {
         /// Left out, from the right, when even shrunk things don't fit.
         var droppable = false
-        enum Width {
-            case fixed(CGFloat)
-            case shrinkable(CGFloat)  // fixed, but gives way when space runs out
-            case flex(weight: CGFloat, min: CGFloat)
-        }
+        typealias Width = BarLayout.Width
         let view: NSView
         let width: Width
         /// The block's name in Settings' arrangement ("meters", "chat", …).
@@ -214,7 +76,7 @@ final class BarView: NSView {
     }
 
     func update(_ new: BarModel) {
-        let key = Self.structureKey(new)
+        let key = BarModel.structureKey(new)
         if new.mode != .models { pagedModels = false; effortPage = false }
         model = new
         if key != builtFor {
@@ -234,32 +96,6 @@ final class BarView: NSView {
     private(set) var widest: [String: CGFloat] = [:]
 
     // MARK: Building
-
-    /// What decides the set of subviews; values change without a rebuild.
-    private static func structureKey(_ m: BarModel) -> String {
-        let buttons = m.buttons.map(\.label).joined(separator: "\u{1}") + (m.quiet ? "|quiet" : "")
-            + "|" + m.shows.sorted().joined(separator: ",")
-        let chat = (m.current.map { "\($0.id)|\($0.name)" } ?? "") + "|" + (m.requestChat?.id ?? "")
-        switch m.mode {
-        case .normal:
-            let info = [m.lines, m.branch, m.cost, m.chatName, m.project].map { $0 ?? "" }.joined(separator: "|")
-            let arranged = m.order.joined(separator: ",") + "|" + m.widths.sorted { $0.key < $1.key }.map { "\($0.key)=\(Int($0.value))" }.joined(separator: ",")
-            return "normal|\(buttons)|\(m.modelLabel ?? "")|\(m.agents.count)|\(chat)|\(info)|\(m.templates.count)|\(m.short)|\(m.expanded)|\(arranged)"
-        case .templates: return "templates|" + m.templates.joined(separator: "\u{1}")
-        case .chats: return "chats|" + m.chats.map { "\($0.id)\($0.name)\($0.current)\($0.waiting)" }.joined(separator: "\u{1}")
-        case .models: return "models|\(m.modelAlias ?? "")|\(m.effort ?? "")"
-        case .agents: return "agents|" + m.agents.joined(separator: "\u{1}")
-        case .contextWarning: return "context"
-        case let .done(c): return "done|\(c.id)|\(c.name)|\(m.short)|\(m.doneAnswer != nil)"
-        case let .permission(verb, detail): return "permission|\(verb)|\(detail)|\(chat)|\(m.offersAlways)"
-        case let .question(text, options, multi, picked):
-            // The question as asked, not its short form: that swaps in place.
-            return "question|\(m.questionKey.isEmpty ? text : m.questionKey)|\(options.joined(separator: "\u{1}"))|\(multi)|\(picked.sorted())|\(chat)"
-        case .typing:
-            let to = m.typingTo.map { "\($0.id)|\($0.name)|\($0.color)|\(m.typingFiles)" } ?? ""
-            return "typing|\(m.typingLabel)|\(m.typingPlaceholder)|\(m.typingCommands)|\(buttons)|\(m.templates.count)|\(m.listening)|\(to)|\(m.short)"
-        }
-    }
 
     private func rebuild() {
         subviews.forEach { $0.removeFromSuperview() }
@@ -814,21 +650,8 @@ final class BarView: NSView {
         }
     }
 
-    /// Where each block goes: its place in your order; one not in it right
-    /// after the nearest block before it here that is (else first).
-    static func places(_ keys: [String], order: [String]) -> [Double] {
-        let rank = Dictionary(order.enumerated().map { ($1, Double($0)) }, uniquingKeysWith: { a, _ in a })
-        var last = -1.0, step = 0.0
-        return keys.map { key in
-            if let r = rank[key] {
-                last = r
-                step = 0
-                return r
-            }
-            step += 0.001
-            return last + 0.5 + step
-        }
-    }
+    /// Where each block goes (BarLayout).
+    static func places(_ keys: [String], order: [String]) -> [Double] { BarLayout.places(keys, order: order) }
 
     /// The reset block, its countdown set as it changes.
     private weak var resetBlock: BarButton?
@@ -841,40 +664,15 @@ final class BarView: NSView {
     /// the least room to tap and write.
     static let shortCloud: CGFloat = 44
     static let shortWhole: CGFloat = 36
-    static let shortChatMin: CGFloat = 120
+    static let shortChatMin = BarLayout.shortChatMin
     /// What the short bar has for its blocks, beside Cloud and "Whole bar".
     static var shortRoom: CGFloat { narrowWidth - Palette.edge * 2 - shortCloud - shortWhole }
 
     /// Each short-bar block's own size; the chat line takes what's left.
-    static func shortWidth(_ key: String, shows: Set<String>) -> CGFloat {
-        switch key {
-        case "name": return 34
-        case "meters": return shows.contains("session") && shows.contains("context") ? 180 : 90
-        case "reset": return 52
-        case "model": return 110
-        case "agents": return 96
-        case "lines": return 90
-        case "branch": return 100
-        case "cost": return 76
-        case "templates", "shot", "mic": return 40
-        case "chat": return shortChatMin
-        default: return 0
-        }
-    }
+    static func shortWidth(_ key: String, shows: Set<String>) -> CGFloat { BarLayout.shortWidth(key, shows: shows) }
 
-    /// Whether these fit on the short bar, each block at its size: a gap
-    /// after Cloud and after each block, and after the spacer that takes the
-    /// chat line's place when there's none.
-    static func shortFits(_ shows: Set<String>) -> Bool {
-        var widths: [CGFloat] = []
-        if shows.contains("name") { widths.append(shortWidth("name", shows: shows)) }
-        if shows.contains("session") || shows.contains("context") { widths.append(shortWidth("meters", shows: shows)) }
-        for key in ["reset", "model", "agents", "lines", "branch", "cost", "chat", "templates", "shot", "mic"] where shows.contains(key) {
-            widths.append(shortWidth(key, shows: shows))
-        }
-        let gaps = CGFloat(widths.count + (shows.contains("chat") ? 1 : 2))
-        return widths.reduce(0, +) + Palette.gap * gaps <= shortRoom
-    }
+    /// Whether these fit on the short bar, each block at its size.
+    static func shortFits(_ shows: Set<String>) -> Bool { BarLayout.shortFits(shows, room: shortRoom, gap: Palette.gap) }
 
     private func add(_ view: NSView, _ width: Slot.Width, droppable: Bool = false, key: String? = nil) {
         addSubview(view)
@@ -935,27 +733,8 @@ final class BarView: NSView {
     var onWidth: ((String) -> Void)?
     private var reportedWidth = ""
 
-    /// `widths` brought down to `total`: as many as possible keep theirs
-    /// (the narrowest first, while the others can still have `floor`), the
-    /// rest share what's left equally, none under `floor` (or its own width).
     static func fitWidths(_ widths: [CGFloat], total: CGFloat, floor: CGFloat = 72) -> [CGFloat] {
-        guard widths.reduce(0, +) > total else { return widths }
-        let least = widths.map { min($0, floor) }
-        let order = widths.indices.sorted { widths[$0] < widths[$1] }
-        var kept = 0
-        var used: CGFloat = 0
-        for (n, i) in order.enumerated() {
-            let others = order[(n + 1)...].reduce(CGFloat(0)) { $0 + least[$1] }
-            guard used + widths[i] + others <= total else { break }
-            used += widths[i]
-            kept += 1
-        }
-        var out = widths
-        let rest = order[kept...]
-        guard !rest.isEmpty else { return out }
-        let share = max(0, total - used) / CGFloat(rest.count)
-        for i in rest { out[i] = min(widths[i], max(least[i], share)) }
-        return out
+        BarLayout.fitWidths(widths, total: total, floor: floor)
     }
 
     override func layout() {
@@ -964,19 +743,8 @@ final class BarView: NSView {
         if report != reportedWidth { reportedWidth = report; onWidth?(report) }
         let available = bounds.width - Palette.edge * 2
         // Too much even when shrunk: leave out droppable things from the right.
-        var shown = Array(slots.indices)
-        func need(_ list: [Int]) -> CGFloat {
-            list.reduce(CGFloat(0)) { sum, i in
-                switch slots[i].width {
-                case let .fixed(w): return sum + w
-                case let .shrinkable(w): return sum + min(w, 72) // readable, not crammed
-                case let .flex(_, min): return sum + min
-                }
-            } + Palette.gap * CGFloat(max(0, list.count - 1))
-        }
-        while need(shown) > available, let last = shown.lastIndex(where: { slots[$0].droppable }) {
-            shown.remove(at: last)
-        }
+        func need(_ list: [Int]) -> CGFloat { BarLayout.need(list.map { slots[$0].width }, gap: Palette.gap) }
+        let shown = BarLayout.shown(slots.map { (width: $0.width, droppable: $0.droppable) }, available: available, gap: Palette.gap)
         // Dragged wider, a block is fixed at that width: it may take the room
         // left over plus what the others give way down to.
         let used = need(shown)
@@ -985,50 +753,14 @@ final class BarView: NSView {
         for i in slots.indices { slots[i].view.isHidden = !shown.contains(i) }
         let vis = shown.map { slots[$0] }
 
-        let gaps = Palette.gap * CGFloat(max(0, vis.count - 1))
-        var widths: [CGFloat] = vis.map {
-            switch $0.width {
-            case let .fixed(w), let .shrinkable(w): return w
-            case .flex: return 0
-            }
-        }
-        let fixed = widths.reduce(0, +)
-        let flexMin = vis.reduce(CGFloat(0)) {
-            if case let .flex(_, min) = $1.width { return $0 + min }
-            return $0
-        }
         // The model picker doesn't fit in one row: models and effort take turns.
-        if model.mode == .models && !pagedModels && fixed + gaps + flexMin > available && bounds.width > 0 {
+        if model.mode == .models && !pagedModels && BarLayout.overflow(vis.map(\.width), available: available, gap: Palette.gap) > 0 && bounds.width > 0 {
             pagedModels = true
             rebuild()
             layout()
             return
         }
-        // Not enough room: shrinkable slots give way first — as many as can
-        // keep their whole names do (the shortest first); the rest share
-        // what's left, and their names slide.
-        let overflow = fixed + gaps + flexMin - available
-        if overflow > 0 {
-            let shrinkable = vis.indices.filter { if case .shrinkable = vis[$0].width { return true }; return false }
-            let total = shrinkable.reduce(CGFloat(0)) { $0 + widths[$1] }
-            if total > 0 {
-                let fitted = Self.fitWidths(shrinkable.map { widths[$0] }, total: total - overflow)
-                for (i, w) in zip(shrinkable, fitted) { widths[i] = w }
-            }
-        }
-        // Flexible slots: each its minimum first, then the rest by weight.
-        let remaining = max(0, available - gaps - widths.reduce(0, +))
-        let weights = vis.reduce(CGFloat(0)) {
-            if case let .flex(w, _) = $1.width { return $0 + w }
-            return $0
-        }
-        let extra = max(0, remaining - flexMin)
-        let squeeze = flexMin > 0 ? min(1, remaining / flexMin) : 1
-        for (i, slot) in vis.enumerated() {
-            if case let .flex(w, min) = slot.width, weights > 0 {
-                widths[i] = min * squeeze + extra * w / weights
-            }
-        }
+        let widths = BarLayout.widths(vis.map(\.width), available: available, gap: Palette.gap)
 
         var x = Palette.edge
         for (slot, width) in zip(vis, widths) {

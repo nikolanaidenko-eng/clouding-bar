@@ -54,12 +54,7 @@ final class Updater {
         timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in tick() }
     }
 
-    private var lastCheck: Date? {
-        guard let data = try? Data(contentsOf: stamp),
-              let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let t = (o["t"] as? NSNumber)?.doubleValue else { return nil }
-        return Date(timeIntervalSince1970: t)
-    }
+    private var lastCheck: Date? { UpdateStamp.read(stamp) }
 
     /// Asks GitHub now (the daily check, or "Check now").
     func check() {
@@ -81,8 +76,7 @@ final class Updater {
                     DebugLog.note("update check: \(error?.localizedDescription ?? "HTTP \(status)")")
                     return
                 }
-                try? JSONSerialization.data(withJSONObject: ["t": Date().timeIntervalSince1970])
-                    .write(to: self.stamp, options: .atomic)
+                UpdateStamp.write(self.stamp)
                 if let newest = UpdateCheck.newest(in: data), UpdateCheck.isNewer(newest.version, than: Self.version) {
                     self.release = newest
                     self.state = .available(newest.version)

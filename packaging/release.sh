@@ -13,6 +13,8 @@
 # With the Xcode license not accepted (after a macOS update) make refuses
 # too: run this script directly, it finds Xcode's tools itself.
 #
+# `make test` runs first: a failed check, and no release is built.
+#
 # DRY=1 skips Apple's notary (checks everything else); DEVELOPER_ID and
 # NOTARY_PROFILE pick another certificate or credentials.
 set -euo pipefail
@@ -27,6 +29,19 @@ if ! xcrun --find swiftc >/dev/null 2>&1 && [ -d /Applications/Xcode.app/Content
   export PATH="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
   echo "Xcode license not accepted: building with Xcode's toolchain directly"
 fi
+
+# The checks, before anything is signed or built. Xcode's own make when its
+# license isn't accepted: the one in /usr/bin refuses then.
+MAKE_TOOL=make
+if [ -n "${DEVELOPER_DIR:-}" ] && [ -x "$DEVELOPER_DIR/usr/bin/make" ]; then MAKE_TOOL="$DEVELOPER_DIR/usr/bin/make"; fi
+mkdir -p build
+echo "Running the checks…"
+if ! "$MAKE_TOOL" test > build/checks.log 2>&1; then
+  grep -E '^FAIL|^[^ ]+: error: ' build/checks.log >&2 || tail -20 build/checks.log >&2
+  echo "make test failed (all of it in build/checks.log): no release." >&2
+  exit 1
+fi
+grep -E '^known bug' build/checks.log || true
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" packaging/Info.plist)
 # OUT=… to build elsewhere: in a folder iCloud syncs (Documents) the bundle gets

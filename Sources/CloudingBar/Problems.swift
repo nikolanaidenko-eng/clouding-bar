@@ -20,8 +20,7 @@ final class Problems: NSObject {
     private var reportView: NSTextView?
     private var reportDetail: String?
     private let folder = Config.directory.appendingPathComponent("reports")
-    private var offered: URL { folder.appendingPathComponent("offered") }
-    private var crashSeen: URL { folder.appendingPathComponent("crash-seen") }
+    private var files: ReportFiles { ReportFiles(folder: folder) }
     private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?" }
 
     func start() {
@@ -37,46 +36,23 @@ final class Problems: NSObject {
     private func caught(kind: String, text: String) {
         guard told.insert(kind).inserted else { return }
         let detail = ProblemReport.scrub(text)
-        keep(detail)
+        files.keep(detail)
         let key = "\(version) \(kind)"
-        let known = (try? String(contentsOf: offered, encoding: .utf8))?.split(separator: "\n").map(String.init) ?? []
         // Not with Do not disturb on: asked the next time it comes up.
-        guard !known.contains(key), offers() else { return }
-        try? (known + [key]).suffix(200).joined(separator: "\n").write(to: offered, atomically: true, encoding: .utf8)
+        guard !files.wasOffered(key), offers() else { return }
+        files.noteOffered(key)
         showCard(detail)
     }
 
     /// The newest crash macOS wrote down for this app since it last looked.
     /// The first time, only from now on: not one from long ago.
     private func lookForCrash() {
-        let fm = FileManager.default
-        let since = (try? fm.attributesOfItem(atPath: crashSeen.path))?[.modificationDate] as? Date
-        fm.createFile(atPath: crashSeen.path, contents: nil)
-        guard let since else { return }
-        let reports = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
-        let files = (try? fm.contentsOfDirectory(at: reports, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let newest = files
-            .filter { $0.lastPathComponent.hasPrefix("CloudingBar-") && $0.pathExtension == "ips" }
-            .map { (url: $0, at: (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast) }
-            .filter { $0.at > since }
-            .max { $0.at < $1.at }
-        guard let newest, let ips = try? String(contentsOf: newest.url, encoding: .utf8),
+        guard let since = files.crashesSeen() else { return }
+        let reports = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
+        guard let newest = ReportFiles.newestCrash(in: reports, since: since), let ips = try? String(contentsOf: newest, encoding: .utf8),
               let crash = ProblemReport.crash(ips: ips) else { return }
         DebugLog.note("problem: a crash found in the system's reports")
         caught(kind: crash.kind, text: crash.text)
-    }
-
-    /// On this Mac, the last 20.
-    private func keep(_ detail: String) {
-        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        try? detail.write(to: folder.appendingPathComponent(stamp + ".txt"), atomically: true, encoding: .utf8)
-        for old in savedReports().dropFirst(20) { try? FileManager.default.removeItem(at: old) }
-    }
-
-    /// Newest first (their names sort by time).
-    private func savedReports() -> [URL] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-        return files.filter { $0.pathExtension == "txt" }.sorted { $0.lastPathComponent > $1.lastPathComponent }
     }
 
     // MARK: Offered
@@ -142,15 +118,7 @@ final class Problems: NSObject {
     /// From the menu: anytime, a problem or not (a crash report wouldn't have
     /// caught Cowork showing nothing).
     func reportNow() {
-        review(detail: lastDetail(), offered: false)
-    }
-
-    /// The last one kept, if it's from today.
-    private func lastDetail() -> String? {
-        guard let file = savedReports().first,
-              let at = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-              Date().timeIntervalSince(at) < 86400 else { return nil }
-        return try? String(contentsOf: file, encoding: .utf8)
+        review(detail: files.lastDetail(), offered: false)
     }
 
     /// All that would go, in full, for you to change; you're the one who sends it.

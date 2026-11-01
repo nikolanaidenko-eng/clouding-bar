@@ -1400,9 +1400,7 @@ struct TouchBarEditor: View {
         begin(key)
         guard let start, let frame = start.frames[key] else { return }
         let mid = frame.midX + dx
-        var rest = start.order.filter { $0 != key }
-        let index = rest.firstIndex { (start.frames[$0]?.midX ?? 0) > mid } ?? rest.count
-        rest.insert(key, at: index)
+        let rest = BarLayout.moved(key, to: mid, order: start.order, middles: start.frames.mapValues(\.midX))
         if rest != order { order = rest }
     }
 
@@ -1410,11 +1408,9 @@ struct TouchBarEditor: View {
         begin(key)
         guard let start, let frame = start.frames[key] else { return }
         var w = start.widths
-        // Never past the bar: Cloud, "Whole bar" and a little room stay on it.
-        // Nor past where something would leave it: the edge just stops there,
-        // an invisible wall (owner, 27.10).
-        let most = min(barWidth - 120, start.widest[key] ?? .infinity)
-        w[key] = Double(min(max(frame.width + dx, 24), max(most, 24))).rounded(.down)
+        // Past where something would leave it the edge just stops, an
+        // invisible wall (owner, 27.10).
+        w[key] = BarLayout.pulled(width: frame.width, by: dx, barWidth: barWidth, widest: start.widest[key])
         if w != widths { widths = w }
     }
 

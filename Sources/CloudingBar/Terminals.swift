@@ -24,7 +24,7 @@ enum Terminals {
             let tty = run(script)
             DispatchQueue.main.async {
                 busy = false
-                completion(tty.flatMap { $0.hasPrefix("/dev/") ? $0 : nil })
+                completion(TerminalTabs.frontTTY(tty))
             }
         }
     }
@@ -34,7 +34,7 @@ enum Terminals {
     static func focus(tty: String, completion: @escaping (Bool) -> Void) {
         let running = [terminal, iterm].filter { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
         guard !running.isEmpty else { completion(false); return }
-        let safe = tty.replacingOccurrences(of: "\"", with: "")
+        let safe = TerminalTabs.safe(tty)
         queue.async {
             var found = false
             for app in running where !found {
@@ -107,11 +107,7 @@ enum Terminals {
                       return out
                     end tell
                     """
-                for line in (run(script) ?? "").split(separator: "\n") {
-                    let pair = line.split(separator: "\t", maxSplits: 1)
-                    guard pair.count == 2, pair[0].hasPrefix("/dev/") else { continue }
-                    list.append((String(pair[0]), String(pair[1])))
-                }
+                list += TerminalTabs.parse(run(script) ?? "")
             }
             DispatchQueue.main.async { completion(list) }
         }
