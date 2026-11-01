@@ -123,6 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpMainMenu()
         setUpMenuBarItem()
         _ = KeySender.ensureTrusted() // macOS's Accessibility prompt, the first time
+        if CommandLine.arguments.contains("--settings") {
+            DispatchQueue.main.async { [weak self] in self?.openSettings() }
+        }
         DebugLog.tap("launch")
 
         store.load()
@@ -318,6 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             readDesktopPrompt()
         }
         if ticks % 10 == 0 { refreshSetupStatus() }
+        restartOnceAllowed()
         if ticks % 5 == 0 { followRemoteControl() }
         // A closed chat leaves the list within 2 s (was 10, owner 28.10).
         if ticks % 2 == 0 {
@@ -1325,6 +1329,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// The Touch Bar character button's job, for Macs without one.
     @objc private func toggleIsland() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.drawer.toggle() }
+    }
+
+    /// Seen without Accessibility since it started.
+    private var accessRefused = false
+
+    /// Accessibility just allowed: only a new start takes it up. Settings come
+    /// back with it, so it doesn't look as if the app went away.
+    private func restartOnceAllowed() {
+        let trusted = AXIsProcessTrusted()
+        if !trusted { accessRefused = true }
+        let busy = !requests.isEmpty || typing.isActive || claudeAISignIn.isOpen || model.dictated != nil
+        guard Delivery.restartForAccess(sawRefused: accessRefused, trusted: trusted, busy: busy) else { return }
+        accessRefused = false
+        DebugLog.note("Accessibility allowed: starting again, it takes hold only then")
+        Updater.relaunch(Bundle.main.bundleURL, arguments: "--args --settings")
     }
 
     @objc private func openSettings() {

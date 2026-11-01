@@ -1601,6 +1601,10 @@ do { // writing to a chat picked by name (the Chats tab, the bar's line from its
           "write to: handed a message 3 s ago: busy till its hook says it took it (10 s at most)")
     check(!Delivery.free(vs, asking: true, handedAt: nil, sending: false, now: now) && !Delivery.free(cx, asking: false, handedAt: nil, sending: true, now: now),
           "write to: a request waiting, or words on their way to Codex: not free")
+    check(Delivery.restartForAccess(sawRefused: true, trusted: true, busy: false), "Accessibility allowed while it runs: started again")
+    check(!Delivery.restartForAccess(sawRefused: false, trusted: true, busy: false), "Accessibility there from the start: no restart, no loop")
+    check(!Delivery.restartForAccess(sawRefused: true, trusted: false, busy: false), "Accessibility still off: no restart")
+    check(!Delivery.restartForAccess(sawRefused: true, trusted: true, busy: true), "Accessibility allowed with a question open: waits")
     check(Delivery.keysFree(barTyping: false, ourKeyWindow: false), "queue: no window of ours has the keyboard: typed")
     check(!Delivery.keysFree(barTyping: false, ourKeyWindow: true),
           "queue: a window of ours has the keyboard — a dictation being checked, the cursor in an empty composer just after Send: not typed (review, 28.10)")

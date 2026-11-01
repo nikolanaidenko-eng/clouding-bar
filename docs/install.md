@@ -130,7 +130,7 @@ and only once — updates keep them.
 
 | Permission | Why | |
 |---|---|---|
-| Accessibility | to type your buttons and chat lines into Claude's chat, and to read window titles | needed |
+| Accessibility | to type your buttons and chat lines into Claude's chat, and to read window titles. The app starts again by itself once you allow it: that's when it takes hold | needed |
 | Automation (Terminal, iTerm) | to tell which tab is in front, and bring a chat's tab forward | only for chats in a terminal |
 | Microphone, Speech Recognition | dictation | only if you dictate |
 | Screen Recording | the screenshot button | only if you use it |

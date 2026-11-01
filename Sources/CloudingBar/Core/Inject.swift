@@ -175,6 +175,14 @@ enum Delivery: Equatable {
     /// an empty composer after Send, and the next words for that chat would
     /// land in another (review, 28.10). Nor is giving it back at Send: the
     /// next words typed go to the app in front (review, 29.10).
+    /// Accessibility allowed while the app runs: it's refused to the running
+    /// copy all the same till that starts again (owner's Mac, 01.11: allowed at
+    /// 15:58, nothing of Desktop's window read for 6 minutes; started again,
+    /// words went in 428 ms). Not with a question on the bar or you at work in it.
+    static func restartForAccess(sawRefused: Bool, trusted: Bool, busy: Bool) -> Bool {
+        sawRefused && trusted && !busy
+    }
+
     static func keysFree(barTyping: Bool, ourKeyWindow: Bool) -> Bool {
         !barTyping && !ourKeyWindow
     }

@@ -206,10 +206,10 @@ final class Updater {
     }
 
     /// Opens the new copy a moment after this one quits.
-    private static func relaunch(_ app: URL) {
+    static func relaunch(_ app: URL, arguments: String = "") {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", app.path]
+        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\" \(arguments)", app.path]
         try? p.run()
         NSApp.terminate(nil)
     }

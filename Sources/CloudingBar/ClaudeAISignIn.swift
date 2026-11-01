@@ -10,6 +10,7 @@ import WebKit
 /// until "I Understand" (owner, 30.10).
 final class ClaudeAISignIn: NSObject, WKNavigationDelegate, WKUIDelegate, WKHTTPCookieStoreObserver, NSWindowDelegate {
     private var window: NSWindow?
+    var isOpen: Bool { window != nil }
     private var webView: WKWebView?
     /// Windows the page opened (a Google or Apple sign-in), closed with it.
     private var popups: [NSWindow] = []
