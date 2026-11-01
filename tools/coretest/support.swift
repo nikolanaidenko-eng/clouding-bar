@@ -10,6 +10,8 @@ func runMoreChecks() {
     runRequestChecks()
     runSessionChecks()
     runStoreChecks()
+    runSocketChecks()
+    runHelperChecks()
 }
 
 /// A real bug these checks found, not fixed here (only the checks changed):
