@@ -8,10 +8,10 @@ you get it. What else each place needs:
 | Where you work with Claude | What it needs |
 |---|---|
 | Claude Code — terminal, VS Code, Claude Desktop's Code tab | the app, then **Connect** in it. The plugin is optional |
-| Cowork in Claude Desktop | the app, then **Sign In…** to claude.ai in its Settings (read the warning below first). The plugin isn't needed |
+| Cowork in Claude Desktop | the app. Tasks on claude.ai also need **Sign In…** in its Settings (read the warning below first); tasks that run on your Mac don't. The plugin isn't needed |
 | Codex | the app, then **Connect** for Codex in it |
 
-> **Cowork needs the claude.ai sign-in, and Anthropic's terms don't allow it.**
+> **Cowork tasks on claude.ai need the claude.ai sign-in, and Anthropic's terms don't allow it.**
 > Third-party apps may not collect or store claude.ai session keys, or reach
 > claude.ai automatically; signing in goes against that and could put your
 > account at risk, including suspension. Anthropic hasn't approved Clouding Bar.
@@ -49,9 +49,10 @@ Clouding Bar if it's closed (Settings → General → Open with Claude).
 1. Get the Mac app, if you haven't: the [.dmg](#download) below,
    `/clouding-bar:install` in Claude Code, or the plugin in Cowork (below).
    Open it, say **Connect**, allow Accessibility.
-2. Only if you accept the risk above: open **Settings → General → Claude →
-   claude.ai → Sign In…**, read the warning, press **I Understand** and sign
-   in to claude.ai in the window that opens. It closes by itself.
+2. Tasks that run on your Mac show up now, with nothing more to do. For tasks on
+   claude.ai, and only if you accept the risk above: open **Settings → General →
+   Claude → claude.ai → Sign In…**, read the warning, press **I Understand** and
+   sign in to claude.ai in the window that opens. It closes by itself.
 
 Cowork tasks then show up in the chats list. No plugin and no connected
 folder are needed. If you'd like Cowork to fetch the app for you, add the

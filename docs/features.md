@@ -72,7 +72,7 @@ Everything it does, in full. The [README](../README.md) has the short version.
 - A question that Cowork (or any chat in Claude Desktop) asks in its window
   shows up on the Touch Bar and in the widget, and your pick is pressed
   there for you — read from the window, so the chat has to be open in
-  Claude Desktop on the screen you're on.
+  Claude Desktop, in front or behind your other windows.
 
 **Talk to Claude**
 - **Screenshot an area** of the screen straight into the chat: no
@@ -148,6 +148,11 @@ Everything it does, in full. The [README](../README.md) has the short version.
   Cowork tasks count too, from their cards on claude.ai once you're signed
   in (tokens counted as for Claude Code; time while a task is working), from
   version 1.2.20 on. What older versions reported stays.
+- **Cowork tasks that run on your Mac** show by themselves, no sign-in: name,
+  model, context and how the last answer begins, from Claude Desktop's own files.
+  Words to them, and to a chat in Desktop's Code tab, go through its window,
+  which has to be open and can stay behind your others. A screenshot or a file
+  brings it to the front. Stats doesn't count these tasks yet.
 - **Cowork** tasks and claude.ai / Claude Desktop chats show up too, through
   your claude.ai account: Settings → General → Claude → claude.ai →
   **Sign In…** (it goes against Anthropic's terms for third-party apps, at

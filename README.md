@@ -48,9 +48,13 @@ must. A first version for **Windows** is in [windows/](windows/README.md).
 - **Send.** Write to a chat from the widget, typed or dictated (hold the right
   ⌥ key). Screenshot an area, or drop files on the widget. Your own buttons:
   phrases, slash commands, key presses, links.
-- **Cowork and chats.** Cowork tasks that run on your Mac show by themselves; Claude Desktop has no way in from outside, so words to them go through its window, which has to be open, and a screenshot brings it to the front. After **Sign In…** to claude.ai, its Cowork tasks and claude.ai
-  chats show up — working, done or waiting for you, with their context. A Cowork
-  task's questions and permissions come to the bar, and your messages go to it.
+- **Cowork and chats.** Cowork tasks that run on your Mac show by themselves.
+  Claude Desktop has no way in from outside, so words to them, and to a chat in
+  its Code tab, go through its window: it has to be open, but it can stay behind
+  your other windows. A screenshot or a file brings it to the front. After
+  **Sign In…** to claude.ai, its Cowork tasks and claude.ai chats show up —
+  working, done or waiting for you, with their context. A Cowork task's questions
+  and permissions come to the bar, and your messages go to it.
   (The sign-in goes against Anthropic's terms: see [Private by design](#private-by-design).)
 - **Codex.** Codex chats show up by themselves, with their limits and context.
   **Connect** adds permission requests on the bar.
@@ -67,7 +71,7 @@ One Mac app, installed once, whichever way you get it. What else each place need
 | Cowork in Claude Desktop | the app. Tasks on claude.ai also need **Sign In…** in its Settings (read the [warning](#private-by-design) first); tasks that run on your Mac don't. The plugin isn't needed |
 | Codex | the app, then **Connect** for Codex in it |
 
-> **Cowork needs the claude.ai sign-in, and Anthropic's terms don't allow it.**
+> **Cowork tasks on claude.ai need the claude.ai sign-in, and Anthropic's terms don't allow it.**
 > Third-party apps may not collect or store claude.ai session keys, or reach
 > claude.ai automatically; signing in goes against that and could put your
 > account at risk, including suspension. Anthropic hasn't approved Clouding Bar.
