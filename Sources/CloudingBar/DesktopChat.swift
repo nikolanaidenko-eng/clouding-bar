@@ -137,6 +137,7 @@ final class DesktopChat {
         // The tab its list is in: a Claude Code chat's is Code.
         let code = wanted.hasPrefix("/epitaxy/")
         let tabName = code ? "code" : "cowork"
+        let tabNames = code ? LocalCowork.codeTabNames : LocalCowork.coworkTabNames
         for window in windows(pid: pid) {
             walk(window, into: { _ in true }) { e in
                 let role = Self.string(e, kAXRoleAttribute) ?? ""
@@ -144,7 +145,7 @@ final class DesktopChat {
                 let path = (Self.value(e, "AXURL") as? URL)?.path
                 guard !label.isEmpty || path != nil else { return true }
                 // Only a likely row is asked whether it can be pressed: that's a call each.
-                let likely = path == wanted || (title.map { SessionStore.titleScore(label, $0) == 3 } ?? false) || label.lowercased() == tabName
+                let likely = path == wanted || (title.map { SessionStore.titleScore(label, $0) == 3 } ?? false) || tabNames.contains(label.lowercased())
                 let pressable = ["AXLink", "AXButton"].contains(role) || (likely && Self.canPress(e))
                 rows.append(LocalCowork.Row(role: role, label: label, path: path, pressable: pressable))
                 elements.append(e)
@@ -180,7 +181,7 @@ final class DesktopChat {
             DebugLog.note("local cowork: its sidebar opened by the menu: \(sidebarSeen == .open ? "open now" : "not seen open"), \(after.isEmpty ? "no row" : "its row found")")
             return after
         }
-        if again, let tab = LocalCowork.coworkTab(rows, named: tabName), shown(pid: pid)?.chat.hasPrefix(code ? "/epitaxy/" : "/cowork/") != true, !app.isActive,
+        if again, let tab = LocalCowork.coworkTab(rows, named: tabNames), shown(pid: pid)?.chat.hasPrefix(code ? "/epitaxy/" : "/cowork/") != true, !app.isActive,
            AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
             DebugLog.note("local cowork: its \(tabName) tab pressed, the list looked at again")
             nudge()
@@ -338,7 +339,7 @@ final class DesktopChat {
 
     private func sendButton(in page: AXUIElement) -> AXUIElement? {
         fromEnd(of: page) { e in
-            Self.string(e, kAXRoleAttribute) == "AXButton" && ["send", "send message"].contains(Self.label(e)?.lowercased() ?? "")
+            Self.string(e, kAXRoleAttribute) == "AXButton" && LocalCowork.isSend(label: Self.label(e))
         }
     }
 
@@ -730,8 +731,7 @@ final class DesktopChat {
 
     /// A claude.ai page: its chat and title.
     private static func read(_ page: AXUIElement) -> Shown? {
-        guard let url = value(page, "AXURL") as? URL, ["claude.ai", "claude.com"].contains(where: { url.host?.hasSuffix($0) == true }),
-              url.pathComponents.count >= 3 else { return nil }
+        guard let url = value(page, "AXURL") as? URL, LocalCowork.isPage(url) else { return nil }
         var title = string(page, kAXTitleAttribute) ?? ""
         if title.hasSuffix(" - Claude") { title = String(title.dropLast(" - Claude".count)) }
         title = title.trimmingCharacters(in: .whitespaces)

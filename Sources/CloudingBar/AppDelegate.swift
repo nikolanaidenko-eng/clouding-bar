@@ -2572,6 +2572,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if Date() < (fieldTaken[id] ?? .distantPast) { continue }
             let quiet = parts.files.isEmpty && session.quietDesktop && !straightIn(session)
             if quiet, Date() >= (quietHeld[id] ?? .distantPast) {
+                // One at a time: Desktop has the one window (review 01.11).
+                if desktopWindowTaken { continue }
                 sendQuietly(parts.words, into: session) { [weak self] result in
                     guard let self else { return }
                     if case .held(let why) = result { self.sayHeld(why, for: session) }
@@ -2580,7 +2582,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.saveQueue()
                     self.setNeedsRefresh()
                 }
-                continue
+                return
             }
             // Its words wait for that, never keys: the chat Desktop shows is known
             // late (owner's Mac, 01.11: typed 2 s before a Code chat was seen in front).
@@ -2621,8 +2623,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func sendQueuedNow(_ id: UUID) {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return }
         // On its way already: the queue is sending this very one.
-        if let chat = queue[i].sessionId, store.sessions[chat]?.quietDesktop == true, remoteSending.contains(chat) {
+        if let chat = queue[i].sessionId, store.sessions[chat]?.quietDesktop == true, desktopWindowTaken {
             NSSound.beep()
+            showNote("Words are on their way through Desktop: a moment", for: chat)
             return
         }
         let item = queue.remove(at: i)
@@ -2641,7 +2644,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.queue.insert(item, at: 0)
                     self.saveQueue()
                     self.setNeedsRefresh()
-                    self.sayHeld(why, for: session)
+                    // You pressed it: said each time, not once for each reason.
+                    self.showNote(why, for: id)
                     return
                 }
                 if open {
@@ -2650,7 +2654,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.queue.insert(item, at: 0)
                     self.saveQueue()
                     self.setNeedsRefresh()
-                    self.sayHeld("Desktop doesn't show the task and its row wasn't found: open it there, the words go then", for: session)
+                    self.showNote("Desktop doesn't show the task and its row wasn't found: open it there, the words go then", for: id)
                     DebugLog.note("local cowork: send now held, Desktop open but not on the task")
                     return
                 }
@@ -2676,6 +2680,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A local Cowork task: not tried again till then, after its window didn't
     /// show it (soon) or its field turned the words down (for a while).
     private var quietHeld: [String: Date] = [:]
+    /// Its field's "no" in a row, for how long to leave it be.
+    private var quietRefused: [String: Int] = [:]
+    private var desktopWindowTaken: Bool {
+        LocalCowork.windowTaken(sending: remoteSending) { self.store.sessions[$0]?.quietDesktop == true }
+    }
     /// Something of yours in its field: neither way for now.
     private var fieldTaken: [String: Date] = [:]
 
@@ -2711,6 +2720,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if case .asking = result {} else if case .busy = result {} else { self.saidHeld[id] = nil }
             switch result {
             case .sent:
+                self.quietRefused[id] = nil
                 self.handedAt[id] = Date()
                 self.queueSentAt = Date()
                 self.store.markSent(id)
@@ -2754,7 +2764,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.quietHeld[id] = Date().addingTimeInterval(again ? 15 : 60)
                 done(.notSent)
             case .refused:
-                self.quietHeld[id] = Date().addingTimeInterval(10)
+                let times = (self.quietRefused[id] ?? 0) + 1
+                self.quietRefused[id] = times
+                self.quietHeld[id] = Date().addingTimeInterval(LocalCowork.refusedHold(times: times))
                 done(.held("Desktop's field didn't take them: these wait"))
             }
             self.setNeedsRefresh()

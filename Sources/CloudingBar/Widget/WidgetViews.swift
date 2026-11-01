@@ -1037,7 +1037,7 @@ struct MainPanel: View {
                         Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
                     }
                     .buttonStyle(.plain).foregroundColor(.cbMeter)
-                    .help("Opens its chat and sends it now")
+                    .help("Sends it now; its chat opens only if it has to")
                     Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
                         .buttonStyle(.plain).foregroundColor(.cbSecondary)
                         .accessibilityLabel("Remove from queue")
@@ -1047,8 +1047,10 @@ struct MainPanel: View {
             if model.queue.count > 4 {
                 Text("+\(model.queue.count - 4) more").font(.system(size: 11)).foregroundColor(.cbSecondary)
             }
-            Text("Goes out when Claude is free and its chat is in front")
-                .font(.system(size: 10)).foregroundColor(.cbSecondary)
+            // Why Send now didn't, a moment after it; else what the queue does.
+            Text(model.sentNote?.text ?? "Goes out when Claude is free and its chat can take it")
+                .font(.system(size: 10)).foregroundColor(model.sentNote == nil ? .cbSecondary : .cbText)
+                .lineLimit(2)
         }
         .padding(.horizontal, 4)
     }
@@ -1928,7 +1930,7 @@ struct ChatsPanel: View {
                         Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
                     }
                     .buttonStyle(.plain).foregroundColor(.cbMeter)
-                    .help("Opens its chat and sends it now")
+                    .help("Sends it now; its chat opens only if it has to")
                     Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
                         .buttonStyle(.plain).foregroundColor(.cbSecondary)
                         .accessibilityLabel("Remove from queue")

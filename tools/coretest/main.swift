@@ -2597,7 +2597,7 @@ do {
         code.desktopChat = "/epitaxy/local_1"
         check(code.quietDesktop, "desktop code chat: its page known, its words go by its window")
         let rows = [LocalCowork.Row(role: "AXRadioButton", label: "Code", path: nil, pressable: true), LocalCowork.Row(role: "AXRadioButton", label: "Cowork", path: nil, pressable: true)]
-        check(LocalCowork.coworkTab(rows, named: "code") == 0 && LocalCowork.coworkTab(rows) == 1, "desktop code chat: the tab its list is in")
+        check(LocalCowork.coworkTab(rows, named: LocalCowork.codeTabNames) == 0 && LocalCowork.coworkTab(rows) == 1, "desktop code chat: the tab its list is in")
     }
     do {
         // 440 pt panel, Cloud, its tabs, gear and chevron: 166 left (owner, 01.11).
@@ -2679,6 +2679,26 @@ do {
           "row: debug.log gets the roles, the start of the names alike, not the names")
     check(LocalCowork.rowsSample([], title: nil).hasPrefix("0 with a name or a link"), "row: nothing in its window is said too")
     let tabs = others + [Row(role: "AXRadioButton", label: "Cowork", path: nil, pressable: true)]
+    // Review of 1.2.30 (01.11): its counterexamples.
+    check(LocalCowork.isSend(label: "Send") && LocalCowork.isSend(label: "Send message") && LocalCowork.isSend(label: "Senden")
+          && LocalCowork.isSend(label: "送信") && LocalCowork.isSend(label: "メッセージを送信") && LocalCowork.isSend(label: "Enviar mensaje"),
+          "send button: in Desktop's other languages too")
+    check(!LocalCowork.isSend(label: nil) && !LocalCowork.isSend(label: "") && !LocalCowork.isSend(label: "Send feedback") && !LocalCowork.isSend(label: "Stop"),
+          "send button: nothing else")
+    check(LocalCowork.coworkTab([Row(role: "AXRadioButton", label: "コード", path: nil, pressable: true)], named: LocalCowork.codeTabNames) == 0,
+          "code tab: under its name in Japanese")
+    for good in ["https://claude.ai/new", "https://claude.ai/epitaxy", "https://claude.ai/epitaxy/local_x", "https://claude.ai/chat/x"] {
+        check(LocalCowork.isPage(URL(string: good)!), "page: \(good), to be taken from by a row")
+    }
+    for bad in ["https://claude.ai/", "https://claude.ai", "https://example.com/new/x", "file:///Applications/Claude.app/Contents/Resources/app.asar/index.html"] {
+        check(!LocalCowork.isPage(URL(string: bad)!), "page: not \(bad)")
+    }
+    let quietChats = ["a", "b"]
+    check(LocalCowork.windowTaken(sending: ["a"]) { quietChats.contains($0) }, "one window: words on their way to one chat hold another's")
+    check(!LocalCowork.windowTaken(sending: ["vscode"]) { quietChats.contains($0) } && !LocalCowork.windowTaken(sending: []) { quietChats.contains($0) },
+          "one window: another way of sending doesn't hold it")
+    check(LocalCowork.refusedHold(times: 1) == 10 && LocalCowork.refusedHold(times: 2) == 20 && LocalCowork.refusedHold(times: 9) == 300,
+          "field's no: longer each time, up to 5 minutes")
     check(LocalCowork.coworkTab(tabs) == 71 && LocalCowork.coworkTab(others) == nil
           && LocalCowork.coworkTab(others + [Row(role: "AXLink", label: "Cowork", path: "/cowork", pressable: true)]) == nil,
           "row: Desktop's own Cowork tab, not a link of that name")

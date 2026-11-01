@@ -125,9 +125,51 @@ enum LocalCowork {
 
     /// Desktop's own tab for Cowork, to press when its window shows a chat
     /// instead (its tasks' rows are in Cowork's list alone).
-    static func coworkTab(_ rows: [Row], named name: String = "cowork") -> Int? {
-        let tabs = rows.indices.filter { rows[$0].pressable && rows[$0].path == nil && rows[$0].label.lowercased() == name }
+    static func coworkTab(_ rows: [Row], named names: Set<String> = coworkTabNames) -> Int? {
+        let tabs = rows.indices.filter { rows[$0].pressable && rows[$0].path == nil && names.contains(rows[$0].label.lowercased()) }
         return tabs.count == 1 ? tabs[0] : nil
+    }
+
+    // Desktop's words in each of its languages (its i18n files, 4.4212, 01.11):
+    // a label in English alone left a German or Japanese window with no Send (review 01.11).
+    static let coworkTabNames: Set<String> = ["cowork"]
+    static let codeTabNames: Set<String> = ["code", "coder", "codice", "código", "kode", "programar", "कोड", "コード", "코드"]
+    private static let sendLabels: Set<String> = [
+        "send", "send message",
+        "senden", "nachricht senden",
+        "enviar", "enviar mensaje", "enviar mensagem",
+        "envoyer", "envoyer le message",
+        "invia", "invia messaggio",
+        "kirim", "kirim pesan",
+        "भेजें", "संदेश भेजें",
+        "送信", "メッセージを送信",
+        "보내기", "메시지 보내기",
+    ]
+
+    /// The button that sends what's in its field.
+    static func isSend(label: String?) -> Bool {
+        sendLabels.contains(label?.lowercased() ?? "")
+    }
+
+    /// A page of claude.ai in its window, whatever it shows: a chat, or a page
+    /// with none yet, its start (`/new`) or a tab's own (`/epitaxy`), which you
+    /// can be taken from by a row (owner's Mac, 01.11: on `/new`, eight Send
+    /// Nows did nothing). Not its shell, a file, nor the bare address.
+    static func isPage(_ url: URL) -> Bool {
+        ["claude.ai", "claude.com"].contains { url.host?.hasSuffix($0) == true } && url.pathComponents.count >= 2
+    }
+
+    /// Words go by its one window: while they're on their way to one chat
+    /// another mustn't press its own row (review 01.11).
+    static func windowTaken(sending: Set<String>, quiet: (String) -> Bool) -> Bool {
+        sending.contains(where: quiet)
+    }
+
+    /// Not tried again for this long after its field said no this many times
+    /// running: the words are written and taken out each time, and you may be
+    /// typing there.
+    static func refusedHold(times: Int) -> TimeInterval {
+        min(300, 10 * pow(2, Double(max(0, times - 1))))
     }
 
     static var folder: URL {
@@ -136,7 +178,7 @@ enum LocalCowork {
     }
 
     /// What the bar can't do for these tasks, and why: Settings and the tour say it.
-    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window, with Accessibility on: it has to be open, in the background is fine. If it shows another task, the bar presses this one's row in its list, unless you're using Desktop, the task shown asks you something or you've started typing there; then the words wait, and so does Send Now — only with Desktop closed does it open it. A screenshot can't go that way: it brings Desktop to the front. A task's questions show on the bar from its own journal, whichever task Desktop shows; the answer goes in the same way, through its row. Permissions can be answered only for the task it shows."
+    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac or chats in its Code tab, so words go through its window, with Accessibility on: it has to be open, in the background is fine. If it shows another task, the bar presses this one's row in its list, unless you're using Desktop, the task shown asks you something or you've started typing there; then the words wait, and so does Send Now — only with Desktop closed does it open it. A screenshot can't go that way: it brings Desktop to the front. A task's questions show on the bar from its own journal, whichever task Desktop shows; the answer goes in the same way, through its row. Permissions can be answered only for the task it shows."
 
     /// No word from a task at work for this long: not at work any more. (It
     /// may be waiting on you: no event says so, Desktop's window does.)
