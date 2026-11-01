@@ -19,7 +19,7 @@ TARGET = $(shell uname -m)-apple-macosx12.0
 # keychain (added in Xcode → Settings → Accounts), then the self-signed one
 # created by `make signing-identity`, then ad-hoc.
 
-.PHONY: all build bundle install clean signing-identity snapshots test release icon demo
+.PHONY: all build bundle install clean signing-identity snapshots test coverage print-test-sources release icon demo
 
 all: bundle $(TAP) $(HOOK)
 
@@ -93,11 +93,19 @@ icon:
 	iconutil -c icns build/AppIcon.iconset -o packaging/AppIcon.icns
 
 # Checks for the core: session picked by window title, hook output, config.
+TEST_SOURCES = $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift $(wildcard tools/coretest/*.swift)
 test: $(TAP) $(HOOK)
 	mkdir -p build
-	swiftc -target $(TARGET) $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift tools/coretest/main.swift -o build/coretest
+	swiftc -target $(TARGET) $(TEST_SOURCES) -o build/coretest
 	rm -rf build/test-home && mkdir -p build/test-home
 	CLOUDINGBAR_DIR=build/test-home CLOUDINGBAR_PLUGIN=plugin ./build/coretest
+
+# What the checks reach, per file and of ALL the Mac code (tools/coverage).
+coverage:
+	./tools/coverage/run.sh
+
+print-test-sources:
+	@echo $(TEST_SOURCES)
 
 # The Touch Bar in every mode as PNGs (build/snapshots), to compare with
 # design/TB-*.dc.html. A separate tool; nothing here goes into the app.
