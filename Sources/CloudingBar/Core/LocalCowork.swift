@@ -173,11 +173,12 @@ enum LocalCowork {
     /// What's in a task's field, before words go in. Its window in the
     /// background shows what was sent there for 10 s more (owner's Mac, 31.10):
     /// the same words, just sent, aren't yours.
-    enum Field: Equatable { case empty, late, yours }
+    enum Field: Equatable { case empty, late, unsent, yours }
 
-    static func field(_ before: String, sent: (words: String, at: Date)?, now: Date = Date()) -> Field {
+    static func field(_ before: String, sent: (words: String, at: Date)?, unsent: String? = nil, now: Date = Date()) -> Field {
         func bare(_ s: String) -> String { s.filter { !$0.isWhitespace } }
         if bare(before).isEmpty { return .empty }
+        if let unsent, bare(before) == bare(unsent) { return .unsent }
         if let sent, bare(before) == bare(sent.words), now.timeIntervalSince(sent.at) < 30 { return .late }
         return .yours
     }

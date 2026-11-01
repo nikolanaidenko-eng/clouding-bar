@@ -2590,6 +2590,8 @@ do {
 
     // Its window in the background shows what was sent there a while longer (owner's Mac, 31.10).
     check(LocalCowork.field(" \n", sent: nil) == .empty, "local cowork: an empty field")
+    check(LocalCowork.field("my words", sent: nil, unsent: " my\nwords") == .unsent, "local cowork: our own words left in its field by a failed try aren't a draft (owner, 01.11: busy(14))")
+    check(LocalCowork.field("my draft", sent: nil, unsent: "my words") == .yours, "local cowork: other words beside our unsent ones are still yours")
     check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(10)) == .late, "local cowork: just sent and still showing: not yours")
     check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(31)) == .yours, "local cowork: long after, the same words are yours")
     check(LocalCowork.field("my draft", sent: ("sent words", now), now: now) == .yours && LocalCowork.field("my draft", sent: nil) == .yours, "local cowork: other words are yours")

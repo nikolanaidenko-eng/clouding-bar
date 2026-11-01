@@ -114,8 +114,8 @@ final class DesktopChat {
 
     /// After a row is pressed: nudged, then up to 3 s for its page. On `queue`.
     private func pageCame(_ wanted: String, pid: pid_t) -> Bool {
-        nudge()
         for _ in 0..<6 {
+            nudge()
             Thread.sleep(forTimeInterval: 0.5)
             if shown(pid: pid)?.chat == wanted { return true }
         }
@@ -170,7 +170,9 @@ final class DesktopChat {
         if again, sidebar == .shut, page != nil, !app.isActive, Date().timeIntervalSince(sidebarPressed) > 300, showSidebar(pid: pid) {
             sidebarPressed = Date()
             nudge()
-            Thread.sleep(forTimeInterval: 1.2)
+            Thread.sleep(forTimeInterval: 0.6)
+            nudge()
+            Thread.sleep(forTimeInterval: 0.6)
             let after = self.rows(for: title, page: wanted, pid: pid, app: app, again: false)
             DebugLog.note("local cowork: its sidebar opened by the menu: \(sidebarSeen == .open ? "open now" : "not seen open"), \(after.isEmpty ? "no row" : "its row found")")
             return after
@@ -179,7 +181,9 @@ final class DesktopChat {
            AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
             DebugLog.note("local cowork: its Cowork tab pressed, the list looked at again")
             nudge()
-            Thread.sleep(forTimeInterval: 1.2)
+            Thread.sleep(forTimeInterval: 0.6)
+            nudge()
+            Thread.sleep(forTimeInterval: 0.6)
             return self.rows(for: title, page: wanted, pid: pid, app: app, again: false)
         }
         sidebarSeen = sidebar
@@ -226,6 +230,10 @@ final class DesktopChat {
 
     /// On `queue`: the words sent last.
     private var lastSent: (words: String, at: Date)?
+    /// What we wrote into its field and haven't pressed Send on: still there
+    /// after a failed try it's ours, not a draft (owner's Mac, 01.11: `busy(14)`
+    /// to every Send now, held back by its own words).
+    private var lastUnsent: String?
 
     /// Your words into the chat its window shows, written into its field and
     /// sent by its button, through Accessibility: nothing comes to the front,
@@ -239,14 +247,17 @@ final class DesktopChat {
         func bare(_ s: String) -> String { s.filter { !$0.isWhitespace } }
         func same(_ field: AXUIElement) -> Bool { Self.words(field).map(bare) == bare(text) }
         func takeBack(_ field: AXUIElement) {
-            if same(field) { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
+            if same(field) {
+                _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString)
+                self.nudge()
+            }
         }
         func start(_ tries: Int) {
             guard self.shown(pid: pid)?.chat == wanted, let page = self.page else { return done(.notShown) }
             guard self.findPrompt(pid: pid) == nil else { return done(.asking) }
             guard let field = self.composer(in: page), let before = Self.words(field) else { return done(.notShown) }
-            switch LocalCowork.field(before, sent: self.lastSent) {
-            case .empty: break
+            switch LocalCowork.field(before, sent: self.lastSent, unsent: self.lastUnsent) {
+            case .empty, .unsent: break
             case .late where tries > 0:
                 self.queue.asyncAfter(deadline: .now() + 0.5) { start(tries - 1) }
                 return
@@ -255,20 +266,23 @@ final class DesktopChat {
             guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
             let written = Date()
             self.lastSent = nil
-            // Taken up at the next event with the window in the back (01.11: the
-            // field read empty right after, the words there after the next press).
-            self.nudge()
+            self.lastUnsent = text
             func gone(_ tries: Int) {
                 self.queue.asyncAfter(deadline: .now() + 0.5) {
+                    self.nudge()
                     if !same(field) { return done(.sent) }
                     if tries > 0 { gone(tries - 1) } else { done(.unsure) }
                 }
             }
             // Chromium's tree follows late with its window in the background
             // (owner's Mac, 31.10: gave up at 0.5 s, words gone only after 3.5 s);
-            // its send button shows once there are words.
+            // its send button shows once there are words. With the window in the
+            // back the page moves at the next event only, and an event right after
+            // the write is too soon (measured 01.11, 4.4212, Cowork's field: one
+            // nudge, empty and no Send for 5 s; one at each look, both in 0.6 s).
             func press(_ tries: Int) {
                 self.queue.asyncAfter(deadline: .now() + 0.3) {
+                    self.nudge()
                     let shown = self.shown(pid: pid)
                     let asking = self.findPrompt(pid: pid) != nil
                     guard !asking, shown == nil || shown?.chat == wanted else {
@@ -289,6 +303,7 @@ final class DesktopChat {
                         return done(.refused)
                     }
                     self.lastSent = (text, Date())
+                    self.lastUnsent = nil
                     self.nudge()
                     gone(19)
                 }

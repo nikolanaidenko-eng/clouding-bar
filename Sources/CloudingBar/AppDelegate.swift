@@ -2581,6 +2581,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 continue
             }
+            // Its words wait for that, never keys: the chat Desktop shows is known
+            // late (owner's Mac, 01.11: typed 2 s before a Code chat was seen in front).
+            if parts.files.isEmpty, session.isLocalCowork { continue }
             if straightIn(session, files: parts.files) {
                 queue.remove(at: i)
                 saveQueue()
@@ -2751,7 +2754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 done(.notSent)
             case .refused:
                 self.quietHeld[id] = Date().addingTimeInterval(10)
-                done(.notSent)
+                done(.held("Desktop's field didn't take them: these wait"))
             }
             self.setNeedsRefresh()
         }
