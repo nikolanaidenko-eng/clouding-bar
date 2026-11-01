@@ -2592,10 +2592,14 @@ do {
           "row: a link to its very page is its row whatever its role or name, even with no name known")
     check(LocalCowork.rowToPress(named, title: nil, page: page) == nil, "row: no name known and no link: nothing pressed")
     let twice = named + [Row(role: "AXButton", label: "Три вопроса с ответами", path: nil, pressable: true)]
-    check(LocalCowork.rowToPress(twice, title: "Три вопроса с ответами", page: page) == 72, "row: of its name twice, the one that can be pressed")
+    check(LocalCowork.rowToPress(twice, title: "Три вопроса с ответами", page: page) == 71, "row: of its name twice, the text in its list first (pressed by what holds it)")
     let both = twice + [Row(role: "AXLink", label: "Три вопроса с ответами", path: nil, pressable: true)]
-    check(LocalCowork.rowCandidates(both, title: "Три вопроса с ответами", page: page) == [72, 73, 71],
-          "row: of its name thrice, in turn: pressable first, then by what holds the name; the page tells which was it")
+    check(LocalCowork.rowCandidates(both, title: "Три вопроса с ответами", page: page) == [71, 72, 73],
+          "row: of its name thrice, in turn: the text in its list, then the buttons; the page tells which was it")
+    // Review 01.11: a button of the page named as the task ("Retry") mustn't go before its row.
+    check(LocalCowork.rowCandidates([Row(role: "AXStaticText", label: "Retry", path: nil, pressable: false), Row(role: "AXButton", label: "Retry", path: nil, pressable: true)],
+                                    title: "Retry", page: page) == [0, 1],
+          "row: a task named as a button of the page: its list's text first, the button after")
     // Desktop 4.4212, measured 01.11: a sidebar row is a button "<name> Unread response" with the name in a text inside,
     // the one chat under its project and in Recents; no links.
     let measured = [Row(role: "AXButton", label: "Show sidebar", path: nil, pressable: true),
@@ -2606,9 +2610,13 @@ do {
                     Row(role: "AXHeading", label: "Recents", path: nil, pressable: false),
                     Row(role: "AXButton", label: "Ролик про кофейню", path: nil, pressable: true),
                     Row(role: "AXStaticText", label: "Ролик про кофейню", path: nil, pressable: false)]
-    check(LocalCowork.rowCandidates(measured, title: "Ролик про кофейню", page: "/cowork/local_x") == [6, 3, 7],
-          "row: as measured: the button of its very name, then the texts inside the buttons; not the button with a status after the name, not More options")
-    check(LocalCowork.sidebarOpen(measured) && !LocalCowork.sidebarOpen(Array(measured.prefix(1))), "row: the sidebar is open when Recents or a project's sessions are there")
+    check(LocalCowork.rowCandidates(measured, title: "Ролик про кофейню", page: "/cowork/local_x") == [3, 7, 6],
+          "row: as measured: the texts inside the buttons (pressed by what holds them), then the button of its very name; not the button with a status after the name, not More options")
+    check(LocalCowork.sidebar(measured) == .open && LocalCowork.sidebar(Array(measured.prefix(1))) == .shut, "row: the sidebar is open when Recents or a project's sessions are there, shut with its button alone")
+    // Review 01.11: the menu's item is a toggle: with nothing to go by (no tree, another language) it's left alone.
+    check(LocalCowork.sidebar([]) == .unknown && LocalCowork.sidebar([Row(role: "AXHeading", label: "Недавние", path: nil, pressable: false)]) == .unknown
+          && !LocalCowork.sidebarOpen([]),
+          "row: an empty tree or a page in another language says nothing of the sidebar: its toggle isn't pressed")
     check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "Три вопроса", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == nil,
           "row: a name that only starts the same isn't its row")
     check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "⚡ три вопроса с ответами", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == 71,
@@ -2624,6 +2632,17 @@ do {
     check(LocalCowork.sameQuestion(["Yes", "No"], ["yes", "no"]) && LocalCowork.sameQuestion(["Yes", "No", "Something else"], ["Yes", "No"])
           && !LocalCowork.sameQuestion(["Yes", "No"], ["Red", "Blue"]) && !LocalCowork.sameQuestion(["Yes"], []) && !LocalCowork.sameQuestion(["Yes", "No", "Maybe", "Other"], ["Yes", "No"]),
           "question: the window's is the events' by its options, one more allowed")
+    // Review 01.11: the window names an option with its description after it ("Chrome Google Chrome" for "Chrome").
+    check(LocalCowork.sameQuestion(["Chrome Google Chrome", "Safari Apple Safari"], ["Chrome", "Safari"])
+          && !LocalCowork.sameQuestion(["Chromebook", "Safari"], ["Chrome", "Safari"]),
+          "question: the window's options with their descriptions are the events' options; a longer word isn't")
+    let described = PendingRequest(localQuestions: [QuestionItem(text: "Which browser?", options: ["Chrome", "Safari"], descriptions: ["Google Chrome", "Apple Safari"], multiSelect: false)],
+                                   sessionId: "coworklocal-local_x", key: "toolu_1")
+    let window = PendingRequest(desktopQuestion: "Browser", options: ["Chrome Google Chrome", "Safari Apple Safari"], multiSelect: false, sessionId: nil, key: "k")
+    check(window.sameAsk(as: described), "question: read from the window with the task unknown, it's the one from the events by its options with descriptions")
+    check(PendingRequest.questions(in: ["questions": [["question": "Which?", "header": "Pick", "options": [["label": "A"]]]]]).first?.header == "Pick"
+          && PendingRequest.questions(in: ["questions": [["question": "Which?", "header": "", "options": [["label": "A"]]]]]).first?.header == nil,
+          "question: its header kept, an empty one not")
 
     // Its question, from its events (the SDK's stream: the tool call, then a user event with its result).
     func ask(_ toolId: String, _ questions: [[String: Any]], stamp: String = "2026-11-01T10:07:50Z") -> [String: Any] {
@@ -2653,6 +2672,15 @@ do {
           "question: a task's open question, whichever task the window shows; debug.log says it asks")
     let doneAsking = LocalCowork.task(file: file, events: [result, user, ask("toolu_1", three), answered("toolu_1")], changed: now, now: now)
     check(doneAsking?.ask == nil && doneAsking?.chat.needsInput == nil, "question: answered, the task asks nothing")
+    // Review 01.11: a question with no answer doesn't run out with the clock; an archived task's isn't asked.
+    let old = LocalCowork.task(file: file, events: [result, user, ask("toolu_1", three)], changed: now.addingTimeInterval(-31 * 60), now: now)
+    check(old?.ask?.id == "toolu_1" && old?.chat.running == true && old?.chat.needsInput == "question", "question: open for half an hour and more, it still waits on you")
+    let veryOld = LocalCowork.task(file: file, events: [result, user, ask("toolu_1", three)], changed: now.addingTimeInterval(-26 * 3600), now: now)
+    check(veryOld?.ask?.id == "toolu_1", "question: open for a day, it still waits on you")
+    var archivedFile = file
+    archivedFile["isArchived"] = true
+    check(LocalCowork.task(file: archivedFile, events: [result, user, ask("toolu_1", three)], changed: now, now: now)?.ask == nil, "question: an archived task's isn't asked")
+    check(LocalCowork.task(file: file, events: [user, ask("toolu_1", three), result], changed: now, now: now)?.ask == nil, "question: a turn that ended after it closed it")
     let request = PendingRequest(localQuestions: open!.questions, sessionId: "coworklocal-" + id, key: "toolu_1")
     check(request.kind == .question && request.localKey == "toolu_1" && request.hostAnswersInParallel && request.current?.options.count == 3,
           "question: on the bar as a question of its task")

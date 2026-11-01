@@ -72,24 +72,37 @@ final class DesktopChat {
         let pid = app.processIdentifier
         func done(_ result: Switched) { DispatchQueue.main.async { completion(result) } }
         queue.async {
-            guard self.shown(pid: pid)?.chat != wanted else { return done(.shown) }
+            // Its page not read: nothing can be told of what's there (review 01.11).
+            guard let shown = self.shown(pid: pid), let page = self.page else {
+                return done(.stays("Desktop's page can't be read yet: these wait"))
+            }
+            guard shown.chat != wanted else { return done(.shown) }
             let asking = !leaving && self.findPrompt(pid: pid) != nil
-            let field = self.page.flatMap { self.composer(in: $0) }
-            guard LocalCowork.mayLeave(asking: asking, draft: field == nil ? "" : field.flatMap { Self.words($0) }) else {
-                DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
-                return done(.stays(asking ? "Another task asks something in Desktop: these wait" : "Words in another task's field in Desktop: these wait"))
+            // A chat with no field found: can't be told, so not left; a page
+            // that has none (its list of tasks, settings) has no draft to lose.
+            let conversation = shown.chat.hasPrefix("/chat/") || shown.chat.hasPrefix("/cowork/")
+            let draft = self.composer(in: page).flatMap { Self.words($0) } ?? (conversation ? nil : "")
+            guard LocalCowork.mayLeave(asking: asking, draft: draft) else {
+                let why = asking ? "it asks something" : draft == nil ? "its field can't be read" : "words in its field"
+                DebugLog.note("local cowork: its window left where it is: \(why)")
+                return done(.stays(asking ? "Another task asks something in Desktop: these wait"
+                                   : draft == nil ? "Desktop's field can't be read: these wait" : "Words in another task's field in Desktop: these wait"))
             }
             // One at a time, its page telling whether that was it (measured
             // 01.11: the one chat is listed under its project and in Recents,
-            // and another chat may carry the same name).
-            for (n, row) in self.rows(for: title, page: wanted, pid: pid).prefix(3).enumerated() {
+            // and another chat may carry the same name). Never under your
+            // hands: Desktop in front, looked at before each press (review 01.11).
+            for (n, row) in self.rows(for: title, page: wanted, pid: pid, app: app).prefix(3).enumerated() {
+                guard !app.isActive else { return done(.stays(Self.inFrontNote)) }
                 guard AXUIElementPerformAction(row, kAXPressAction as CFString) == .success else { continue }
                 if self.pageCame(wanted, pid: pid) { return done(.went) }
                 DebugLog.note("local cowork: row \(n + 1) pressed, its page didn't come (it shows \(self.shown(pid: pid)?.chat.prefix(14) ?? "nothing"))")
             }
-            done(.noRow)
+            done(app.isActive ? .stays(Self.inFrontNote) : .noRow)
         }
     }
+
+    static let inFrontNote = "You're in Desktop: these wait"
 
     /// A press in its page with the window in the back is taken up at the
     /// next event only (measured 01.11, 4.4212: a row pressed, the page
@@ -118,7 +131,7 @@ final class DesktopChat {
     /// named, pressed itself or by what holds it. The list is in its sidebar,
     /// shut by default (01.11): opened by its View menu, from the back too;
     /// with Desktop on a chat, its Cowork tab first. On `queue`.
-    private func rows(for title: String?, page wanted: String, pid: pid_t, again: Bool = true) -> [AXUIElement] {
+    private func rows(for title: String?, page wanted: String, pid: pid_t, app: NSRunningApplication, again: Bool = true) -> [AXUIElement] {
         var rows: [LocalCowork.Row] = []
         var elements: [AXUIElement] = []
         for window in windows(pid: pid) {
@@ -150,23 +163,29 @@ final class DesktopChat {
             }
         }
         if !found.isEmpty { return found }
-        let sidebar = LocalCowork.sidebarOpen(rows)
-        if again, !sidebar, showSidebar(pid: pid) {
-            DebugLog.note("local cowork: its sidebar opened by the menu, the list looked at again")
+        let sidebar = LocalCowork.sidebar(rows)
+        // The menu's "Show Sidebar" is a toggle, and says nothing of its state
+        // (measured 01.11: the same name, no mark, open or shut): pressed only
+        // with the sidebar shut for sure, Desktop in the back, once in a while.
+        if again, sidebar == .shut, page != nil, !app.isActive, Date().timeIntervalSince(sidebarPressed) > 300, showSidebar(pid: pid) {
+            sidebarPressed = Date()
             nudge()
             Thread.sleep(forTimeInterval: 1.2)
-            return self.rows(for: title, page: wanted, pid: pid, again: false)
+            let after = self.rows(for: title, page: wanted, pid: pid, app: app, again: false)
+            DebugLog.note("local cowork: its sidebar opened by the menu: \(sidebarSeen == .open ? "open now" : "not seen open"), \(after.isEmpty ? "no row" : "its row found")")
+            return after
         }
-        if again, let tab = LocalCowork.coworkTab(rows), shown(pid: pid)?.chat.hasPrefix("/cowork/") != true,
+        if again, let tab = LocalCowork.coworkTab(rows), shown(pid: pid)?.chat.hasPrefix("/cowork/") != true, !app.isActive,
            AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
             DebugLog.note("local cowork: its Cowork tab pressed, the list looked at again")
             nudge()
             Thread.sleep(forTimeInterval: 1.2)
-            return self.rows(for: title, page: wanted, pid: pid, again: false)
+            return self.rows(for: title, page: wanted, pid: pid, app: app, again: false)
         }
+        sidebarSeen = sidebar
         let exact = title.map { t in rows.filter { SessionStore.titleScore($0.label, t) == 3 }.count } ?? 0
         let alike = title.map { t in rows.filter { SessionStore.sameTitle($0.label, t) }.count } ?? 0
-        DebugLog.note("local cowork: no one row for it (\(rows.count) named in its window, \(exact) exact, \(alike) alike, name \(title != nil ? "known" : "unknown"), sidebar \(sidebar ? "open" : "shut"))")
+        DebugLog.note("local cowork: no one row for it (\(rows.count) named in its window, \(exact) exact, \(alike) alike, name \(title != nil ? "known" : "unknown"), sidebar \(sidebar))")
         if Date().timeIntervalSince(rowsSampled) > 60 {
             rowsSampled = Date()
             DebugLog.note("local cowork: rows seen: " + LocalCowork.rowsSample(rows, title: title))
@@ -174,9 +193,12 @@ final class DesktopChat {
         return []
     }
 
+    /// When the sidebar's toggle was last pressed, and what the list said after.
+    private var sidebarPressed = Date.distantPast
+    private var sidebarSeen = LocalCowork.Sidebar.unknown
+
     /// View › Show Sidebar in Desktop's own menu bar: pressed through
     /// Accessibility, which works with the app in the back (measured 01.11).
-    /// Its name doesn't change once open, so only pressed with the sidebar shut.
     private func showSidebar(pid: pid_t) -> Bool {
         guard let bar = Self.element(AXUIElementCreateApplication(pid), kAXMenuBarAttribute) else { return false }
         for menu in Self.children(bar) where Self.string(menu, kAXTitleAttribute) == "View" {
@@ -328,6 +350,9 @@ final class DesktopChat {
         let multiSelect: Bool
         /// A field for an answer of your own ("Something else").
         let other: Bool
+        /// The chat its page showed when it was read ("/cowork/local_…"):
+        /// the task it asks in, with the app in the back too (review 01.11).
+        var page: String? = nil
         var key: String { "\(kind)|\(text)|\(options.joined(separator: "\u{1}"))" }
     }
 
@@ -369,24 +394,50 @@ final class DesktopChat {
     /// shows now — the task's page, with that very question (its options) on
     /// it. Calls back on the main queue: nil when the page or the question
     /// isn't there (nothing pressed), else whether it was done.
-    func answerShown(page wanted: String, question: QuestionItem, answer: String, in app: NSRunningApplication,
-                     completion: @escaping (Bool?) -> Void) {
+    /// What came of an answer from a task's events on its page.
+    enum Answered: Equatable {
+        case done, failed
+        /// The page or the question isn't there (nothing pressed).
+        case notThere
+        /// The question before it (`after`) is still up: not yet (nothing pressed).
+        case stillPrevious
+    }
+
+    /// An answer read from a task's own events, for the question its window
+    /// shows now — the task's page, with that very question (its options,
+    /// the window's with their descriptions after them) on it; `after`: the
+    /// question answered just before, which the window may show a moment
+    /// longer (review 01.11: the next answer pressed into it). Calls back on
+    /// the main queue. Nothing of Desktop's brought forward.
+    func answerShown(page wanted: String, question: QuestionItem, answer: String, after previous: String?, in app: NSRunningApplication,
+                     completion: @escaping (Answered) -> Void) {
         let pid = app.processIdentifier
         queue.async {
-            guard self.shown(pid: pid)?.chat == wanted, let found = self.findPrompt(pid: pid), found.prompt.kind == .question,
-                  LocalCowork.sameQuestion(found.prompt.options, question.options) else {
-                DispatchQueue.main.async { completion(nil) }
+            guard self.shown(pid: pid)?.chat == wanted, let found = self.findPrompt(pid: pid), found.prompt.kind == .question else {
+                self.nudge() // a press before may not have been taken up yet
+                DispatchQueue.main.async { completion(.notThere) }
+                return
+            }
+            if let previous, found.prompt.key == previous {
+                self.nudge()
+                DispatchQueue.main.async { completion(.stillPrevious) }
+                return
+            }
+            guard LocalCowork.sameQuestion(found.prompt.options, question.options) else {
+                DispatchQueue.main.async { completion(.notThere) }
                 return
             }
             let parts = answer.components(separatedBy: ", ")
             let choices = question.options.contains(answer) ? [answer] : parts.allSatisfy(question.options.contains) ? parts : []
-            self.press(found, choices: choices, own: choices.isEmpty ? answer : nil, pid: pid, app: app) { done in completion(done) }
+            self.press(found, choices: choices, own: choices.isEmpty ? answer : nil, pid: pid, app: app, mayActivate: false) { done in
+                completion(done ? .done : .failed)
+            }
         }
     }
 
     /// Presses the options (or each picked one, then the button that sends
     /// them) or the permission's button; your own words into its field. On `queue`.
-    private func press(_ found: Found, choices: [String], own: String?, pid: pid_t, app: NSRunningApplication,
+    private func press(_ found: Found, choices: [String], own: String?, pid: pid_t, app: NSRunningApplication, mayActivate: Bool = true,
                        completion: @escaping (Bool) -> Void) {
         let prompt = found.prompt
         var done = true
@@ -402,8 +453,14 @@ final class DesktopChat {
         if prompt.multiSelect, own == nil, let send = found.send {
             done = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success && done
         }
-        if let own, let field = found.field {
-            answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, completion: completion)
+        if let own {
+            // Words of your own with no field for them: not done, not lost (review 01.11).
+            guard let field = found.field else {
+                DebugLog.note("desktop prompt: words of your own, but the question has no field for them")
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, mayActivate: mayActivate, completion: completion)
             return
         }
         nudge()
@@ -412,36 +469,48 @@ final class DesktopChat {
 
     /// Your own words for a question: written into its field and sent from
     /// here, Claude's window left where it is (owner, 26.10: answering took
-    /// him to that window and nothing went). Only if that can't be done here,
+    /// him to that window and nothing went). Only if that can't be done here
+    /// and `mayActivate` (a question read from its window, the old way),
     /// the window comes forward for the words to be typed — never into
-    /// another app — and you're taken back. Never typed twice. Done when the
-    /// question is gone. On `queue`.
-    private func answerOwn(_ own: String, field: AXUIElement, prompt: Prompt, pid: pid_t, app: NSRunningApplication,
+    /// another app — and you're taken back; else it's not done. Never typed
+    /// twice. Done when the question is gone. On `queue`.
+    private func answerOwn(_ own: String, field: AXUIElement, prompt: Prompt, pid: pid_t, app: NSRunningApplication, mayActivate: Bool,
                            completion: @escaping (Bool) -> Void) {
         let set = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, own as CFString) == .success
-        queue.asyncAfter(deadline: .now() + 0.3) {
-            // Its send button shows once there are words in the field.
-            var sent = false
-            if set {
-                if let send = self.findPrompt(pid: pid).flatMap({ $0.prompt.key == prompt.key ? $0.send : nil }) {
-                    sent = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success
-                } else {
-                    sent = AXUIElementPerformAction(field, kAXConfirmAction as CFString) == .success
+        // Taken up at the next event with the window in the back; its send
+        // button shows once the words are there, up to 3.6 s (as sendQuietly).
+        if set { nudge() }
+        func trySend(_ tries: Int) {
+            queue.asyncAfter(deadline: .now() + 0.3) {
+                guard set else { return notSent(set: false) }
+                let there = Self.words(field).map { $0.filter { !$0.isWhitespace } == own.filter { !$0.isWhitespace } } ?? false
+                if let send = self.findPrompt(pid: pid).flatMap({ $0.prompt.key == prompt.key ? $0.send : nil }), there,
+                   AXUIElementPerformAction(send, kAXPressAction as CFString) == .success {
+                    return sent()
                 }
+                if tries > 0 { return trySend(tries - 1) }
+                if there, AXUIElementPerformAction(field, kAXConfirmAction as CFString) == .success { return sent() }
+                notSent(set: true)
             }
-            if sent {
-                self.nudge()
-                // Sent from here: the card may stay a few seconds (it does for
-                // the bar's own answers); not typed again whatever happens.
-                self.waitGone(pid: pid, prompt: prompt, until: Date().addingTimeInterval(6)) { gone in
-                    DebugLog.note("desktop prompt: own answer sent from here" + (gone ? "" : ", but the question is still there"))
-                    DispatchQueue.main.async { completion(gone) }
-                }
+        }
+        func sent() {
+            self.nudge()
+            // Sent from here: the card may stay a few seconds (it does for
+            // the bar's own answers); not typed again whatever happens.
+            self.waitGone(pid: pid, prompt: prompt, until: Date().addingTimeInterval(6)) { gone in
+                DebugLog.note("desktop prompt: own answer sent from here" + (gone ? "" : ", but the question is still there"))
+                DispatchQueue.main.async { completion(gone) }
+            }
+        }
+        func notSent(set: Bool) {
+            // What was set here goes, so the words aren't there twice.
+            if set { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString); self.nudge() }
+            guard mayActivate else {
+                DebugLog.note("desktop prompt: own answer couldn't be sent from here (value \(set ? "set" : "refused")): asked again on the bar")
+                DispatchQueue.main.async { completion(false) }
                 return
             }
             DebugLog.note("desktop prompt: own answer couldn't be sent from here (value \(set ? "set" : "refused")): typed in Claude's window")
-            // What was set here goes, so the words aren't there twice.
-            if set { _ = AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, "" as CFString) }
             DispatchQueue.main.async {
                 let before = NSWorkspace.shared.frontmostApplication
                 app.activate(options: [])
@@ -468,6 +537,7 @@ final class DesktopChat {
                 }
             }
         }
+        trySend(11)
     }
 
     /// Looks every half second until the question is gone or time's up. On `queue`.
@@ -478,7 +548,7 @@ final class DesktopChat {
     }
 
     private struct Found {
-        let prompt: Prompt
+        var prompt: Prompt
         /// The options or the permission's buttons, to press.
         let controls: [AXUIElement]
         let field: AXUIElement?
@@ -535,7 +605,10 @@ final class DesktopChat {
         for _ in 0..<6 {
             guard let up = box.flatMap({ Self.element($0, kAXParentAttribute) }) else { break }
             box = up
-            if let found = read(up, kind: kind) { return found }
+            if var found = read(up, kind: kind) {
+                found.prompt.page = Self.read(page)?.chat
+                return found
+            }
         }
         trace?("\(kind == .question ? "Skip or Something else" : "an Allow button") found, but no options around it")
         return nil

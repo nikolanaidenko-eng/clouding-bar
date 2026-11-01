@@ -6,6 +6,26 @@ struct QuestionItem: Equatable {
     let options: [String]
     let descriptions: [String]
     let multiSelect: Bool
+    /// Its short header, when the tool gave one: Desktop's window may show
+    /// that in place of the question.
+    var header: String? = nil
+
+    /// The window names an option with its description after it ("Chrome
+    /// Google Chrome" for "Chrome"; review 01.11): one of the window's is
+    /// this one of the events' by that rule, case aside.
+    static func sameOption(window: String, asked: String) -> Bool {
+        let a = window.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let b = asked.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return !b.isEmpty && (a == b || a.hasPrefix(b + " ") || a.hasPrefix(b + "\n"))
+    }
+
+    /// The question the window shows is this one of the events: every option
+    /// asked is there (with its description after it or not), and at most
+    /// one more of the window's own ("Something else").
+    static func sameOptions(window shown: [String], asked: [String]) -> Bool {
+        guard !asked.isEmpty, shown.count <= asked.count + 1 else { return false }
+        return asked.allSatisfy { a in shown.contains { sameOption(window: $0, asked: a) } }
+    }
 }
 
 /// Something Claude is waiting on that the bar can answer: a permission
@@ -101,7 +121,8 @@ final class PendingRequest {
             return QuestionItem(text: text,
                                 options: raw.map { $0["label"] as! String },
                                 descriptions: raw.map { $0["description"] as? String ?? "" },
-                                multiSelect: q["multiSelect"] as? Bool ?? false)
+                                multiSelect: q["multiSelect"] as? Bool ?? false,
+                                header: (q["header"] as? String).flatMap { $0.isEmpty ? nil : $0 })
         }
     }
 
@@ -178,7 +199,8 @@ final class PendingRequest {
         if let s = sessionId { return s == remote.sessionId }
         guard kind == remote.kind else { return false }
         guard kind == .question, let mine = questions.first else { return true }
-        return remote.questions.contains { $0.text == mine.text || !mine.options.isEmpty && Set($0.options) == Set(mine.options) }
+        // Mine is the window's: its options may carry their descriptions.
+        return remote.questions.contains { $0.text == mine.text || QuestionItem.sameOptions(window: mine.options, asked: $0.options) }
     }
 
     /// "Always" is Claude's: Codex refuses what it would remember, and

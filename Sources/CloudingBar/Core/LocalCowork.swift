@@ -65,16 +65,18 @@ enum LocalCowork {
     /// The rows to press for a task, in order: links to its very page; then
     /// those of exactly its name (Desktop 4.4212, measured 01.11: a button
     /// "<name> Unread response" with the name itself in a text inside it,
-    /// and the one chat listed again under its project and in Recents),
-    /// pressable themselves first, else by what holds them. Pressed one at
-    /// a time; its page says whether that was it (another chat of the same
-    /// name: on to the next). One that merely starts the same isn't it. No
-    /// name known: only its link.
+    /// and the one chat listed again under its project and in Recents) —
+    /// the texts first, pressed by what holds them (its list comes before
+    /// the page in the window, so a button of the page named as the task,
+    /// "Retry", comes after its row; review 01.11), then buttons of the
+    /// name. Pressed one at a time; its page says whether that was it
+    /// (another chat of the same name: on to the next). One that merely
+    /// starts the same isn't it. No name known: only its link.
     static func rowCandidates(_ rows: [Row], title: String?, page: String) -> [Int] {
         let links = rows.indices.filter { rows[$0].path == page }
         guard let title else { return links }
         let same = rows.indices.filter { rows[$0].path == nil && SessionStore.titleScore(rows[$0].label, title) == 3 }
-        return links + same.filter { rows[$0].pressable } + same.filter { !rows[$0].pressable }
+        return links + same.filter { !rows[$0].pressable } + same.filter { rows[$0].pressable }
     }
 
     /// The first row to press, if any.
@@ -82,12 +84,20 @@ enum LocalCowork {
         rowCandidates(rows, title: title, page: page).first
     }
 
-    /// Desktop's sidebar is open: its Recents, or a project's sessions, are
-    /// in the window (measured 01.11; shut, the task's row is nowhere, and
-    /// the View menu's "Show Sidebar" opens it, from the back too).
-    static func sidebarOpen(_ rows: [Row]) -> Bool {
-        rows.contains { $0.label == "Recents" || $0.label.hasPrefix("Toggle sessions for ") }
+    /// What the window says of its sidebar: open (its Recents or a project's
+    /// sessions are there, measured 01.11), shut (its "Show sidebar" button
+    /// alone), or nothing to go by (the tree not read, another language).
+    /// The View menu's "Show Sidebar" is a toggle (Desktop's own
+    /// dispatchToggleSidebar; review 01.11): pressed only when shut for sure.
+    enum Sidebar: Equatable { case open, shut, unknown }
+
+    static func sidebar(_ rows: [Row]) -> Sidebar {
+        if rows.contains(where: { $0.label == "Recents" || $0.label.hasPrefix("Toggle sessions for ") || $0.label.hasPrefix("More options for ") }) { return .open }
+        if rows.contains(where: { $0.label == "Show sidebar" && $0.pressable }) { return .shut }
+        return .unknown
     }
+
+    static func sidebarOpen(_ rows: [Row]) -> Bool { sidebar(rows) == .open }
 
     /// For debug.log when no row is found: what the window holds, by role,
     /// and a few rows with the start of their names, so the next test on
@@ -107,11 +117,10 @@ enum LocalCowork {
     }
 
     /// The question its window shows is the one from its events: the same
-    /// options (the window's words may be its header, not the question).
+    /// options, the window's with their descriptions after them or not (the
+    /// window's words may be its header, not the question).
     static func sameQuestion(_ shown: [String], _ asked: [String]) -> Bool {
-        func bare(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
-        let a = Set(shown.map(bare)), b = Set(asked.map(bare))
-        return !b.isEmpty && (a == b || b.isSubset(of: a) && a.count <= b.count + 1)
+        QuestionItem.sameOptions(window: shown, asked: asked)
     }
 
     /// Desktop's own tab for Cowork, to press when its window shows a chat
@@ -193,22 +202,23 @@ enum LocalCowork {
         let after = events[(end.map { $0 + 1 } ?? 0)...].filter { ["user", "assistant"].contains($0["type"] as? String) }
         let result = end.map { events[$0] }
         chat.settledAt = ClaudeAIChats.date(result?["timestamp"])
+        // A question with no answer in its events waits on you however long
+        // (review 01.11: it doesn't run out with the clock); not an archived
+        // task's, which Desktop keeps off its list.
+        let ask = chat.archived ? nil : openAsk(in: Array(after))
         // A tool at work or a question on you says nothing for as long as it takes.
         let waiting = ((after.last?["message"] as? [String: Any])?["content"] as? [Any])?
             .contains { ($0 as? [String: Any])?["type"] as? String == "tool_use" } == true
-        if !after.isEmpty, now.timeIntervalSince(changed) < (waiting ? ClaudeAIChats.recent : quiet) {
+        if !after.isEmpty, ask != nil || now.timeIntervalSince(changed) < (waiting ? ClaudeAIChats.recent : quiet) {
             chat.running = true
             chat.runningSince = ClaudeAIChats.date(after.first?["timestamp"])
             // Asked you something, in whichever task the window shows. No event says "may I".
             let asks = ((after.last?["message"] as? [String: Any])?["content"] as? [Any])?
                 .contains { ($0 as? [String: Any])?["name"] as? String == "AskUserQuestion" } == true
-            if asks { chat.needsInput = "question" }
+            if asks || ask != nil { chat.needsInput = "question" }
         }
         var task = Task(chat: chat)
-        if chat.running, let ask = openAsk(in: Array(after)) {
-            task.ask = ask
-            task.chat.needsInput = "question"
-        }
+        task.ask = ask
         task.context = ClaudeAIChats.context(events: Array(events.reversed()))
         if let context = task.context, chat.model == nil { task.chat.model = context.model }
         let usage = (result?["modelUsage"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
