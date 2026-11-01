@@ -1,11 +1,14 @@
-# Clouding Bar for Windows (beta)
+# Clouding Bar for Windows (in development)
 
-Claude Code at a glance on Windows: a floating pill at the top of the
-screen with the 5-hour limit, the context and when the limit resets; hover
-it (2 s) or click it for the panel — both meters, the weekly limit, and
-your chats as tabs. When Claude asks for a permission or asks a question,
-the card comes up right there: **Allow**, **Always allow**, **Deny**, or
-pick an answer. A tray icon holds the menu.
+**Not ready yet, and there's nothing to download: Clouding Bar is for Mac only
+for now.** This folder is the work in progress, and the earlier test builds have
+been taken down. The app for Mac: [the main README](../README.md).
+
+What it does so far: a floating pill at the top of the screen with the 5-hour
+limit, the context and when the limit resets; hover it (2 s) or click it for the
+panel — both meters, the weekly limit, and your chats as tabs. When Claude asks
+for a permission or asks a question, the card comes up right there: **Allow**,
+**Always allow**, **Deny**, or pick an answer. A tray icon holds the menu.
 
 Chats are told apart as on the Mac: each by its title (VS Code's chat tab
 shows the same) and its own colour. The widget follows the chat whose title
@@ -16,15 +19,6 @@ it shows a tick ("Done · your turn") and a moment later the chat at work.
 
 It speaks the same protocol as the macOS app ([docs/protocol.md](../docs/protocol.md)),
 over a named pipe (`\\.\pipe\cloudingbar`) instead of a unix socket.
-
-## Install
-
-Download `Clouding Bar_<version>_x64-setup.exe` from the latest
-[Windows build](../../actions/workflows/windows.yml) (or Releases), run it,
-then click **Connect** in the panel (or **Connect to Claude Code** in the
-tray menu). That copies the hook to `%USERPROFILE%\.cloudingbar` and adds it,
-and the status line, to `%USERPROFILE%\.claude\settings.json` — merged, the
-file backed up to `%USERPROFILE%\.cloudingbar\backups` first.
 
 ## What's here
 
@@ -44,7 +38,8 @@ Built on a Mac, the app runs too (for development): it then keeps to
 
 ## Not yet (the macOS app has these)
 
-Buttons and templates typed into the chat, the message queue, dictation,
-the model picker, the subagents list, file drop, the Touch Bar and the
-notch (Mac only), Stats, and the 5-hour limit from the VS Code panel (it
-comes from the status line in the terminal).
+Writing to a chat from the widget, buttons and templates, the message queue,
+dictation, screenshots and file drop, the model picker, the subagents list,
+Stats, Cowork, claude.ai chats, Codex, updates from inside the app, and the
+5-hour limit from the VS Code panel (it comes from the status line in the
+terminal). The Touch Bar and the notch are Mac only.

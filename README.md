@@ -22,7 +22,8 @@ Clouding Bar is a small macOS menu bar app for people who work with
 you answer Claude's questions and permission requests without going back to
 the chat. It works in the terminal, in the VS Code extension and with the
 desktop app, on any Mac with macOS 12 or later. A Touch Bar is a bonus, not a
-must. A first version for **Windows** is in [windows/](windows/README.md).
+must. **Mac only for now:** a [Windows version](windows/README.md) is in
+development and isn't ready yet, so there's nothing to download for it.
 
 <p align="center">
   <img src="docs/images/pill.png" width="860" alt="The pill: which chat, the 5-hour limit, the context, the reset, the model, lines, branch, subagents, buttons">
