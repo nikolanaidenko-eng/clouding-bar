@@ -110,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        watchMainThread()
         try? FileManager.default.createDirectory(at: Config.directory, withIntermediateDirectories: true)
         // Yours alone: messages in the queue, screenshots, the log, copies of
         // your settings and the sockets live here (it was 755).
@@ -2615,6 +2616,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// The main thread not answering for a while: what "it lags" would be in
+    /// debug.log, rather than a guess (owner, 01.11).
+    private func watchMainThread() {
+        let watch = DispatchQueue(label: "cloudingbar.main-watch", qos: .utility)
+        func ping() {
+            let sent = Date()
+            DispatchQueue.main.async {
+                let late = Date().timeIntervalSince(sent)
+                if late > 0.5 { DebugLog.note(String(format: "main thread late %.1f s", late)) }
+                watch.asyncAfter(deadline: .now() + 1) { ping() }
+            }
+        }
+        watch.async { ping() }
+    }
+
     /// Send now: straight in where its chat takes that (while Claude works,
     /// Claude Code queues them itself; Codex's server adds them to the turn
     /// running), else its chat brought to the front
@@ -2628,22 +2644,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             showNote("Words are on their way through Desktop: a moment", for: chat)
             return
         }
-        let item = queue.remove(at: i)
-        saveQueue()
-        refresh()
-        guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
+        let item = queue[i]
+        guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else {
+            queue.remove(at: i)
+            saveQueue()
+            refresh()
+            return
+        }
         DebugLog.tap("queue: send now → \(session.displayName)")
         let parts = Inject.split(item.text)
         if parts.files.isEmpty, session.quietDesktop, !straightIn(session) {
             let id = session.id
+            // Its row stays where it is till the words are gone: taken out and put
+            // back at each press the panel jumped under your hand, and nothing said
+            // what came of it (owner's Mac, 01.11: seven presses in two seconds).
+            model.sendingNow = item.id
             sendQuietly(parts.words, into: session) { [weak self] result in
-                guard result != .gone, let self else { return }
-                let open = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first != nil
-                if case .held(let why) = result {
-                    // It can't take them now: back in place, its window left alone.
-                    self.queue.insert(item, at: 0)
+                guard let self else { return }
+                self.model.sendingNow = nil
+                func done() {
+                    self.queue.removeAll { $0.id == item.id }
                     self.saveQueue()
                     self.setNeedsRefresh()
+                }
+                if result == .gone { return done() }
+                let open = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first != nil
+                if case .held(let why) = result {
+                    // It can't take them now: its window left alone.
                     // You pressed it: said each time, not once for each reason.
                     self.showNote(why, for: id)
                     return
@@ -2651,19 +2678,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if open {
                     // No row for it in its window, or its field said no: the words
                     // wait, Desktop where it is — only closed is it opened (owner, 01.11).
-                    self.queue.insert(item, at: 0)
-                    self.saveQueue()
-                    self.setNeedsRefresh()
-                    self.showNote("Desktop doesn't show the task and its row wasn't found: open it there, the words go then", for: id)
+                    self.showNote("Desktop doesn't show this chat: open it there, these go then", for: id)
                     DebugLog.note("local cowork: send now held, Desktop open but not on the task")
                     return
                 }
                 // Its window closed: brought up by its link, typed.
+                done()
                 if !self.chatInFront(id) { self.openSession(id) }
                 self.typeWhenInFront(item, session: id, tries: 16, since: Date())
             }
             return
         }
+        queue.remove(at: i)
+        saveQueue()
+        refresh()
         if straightIn(session, files: parts.files) {
             inject(parts.words, files: parts.files, into: session) { [weak self] in
                 self?.queue.insert(item, at: 0)

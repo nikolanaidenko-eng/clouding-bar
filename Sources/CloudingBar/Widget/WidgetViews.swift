@@ -1034,8 +1034,9 @@ struct MainPanel: View {
                     Text(item.text).lineLimit(1)
                     Spacer(minLength: 0)
                     Button { model.sendQueuedNow(item.id) } label: {
-                        Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
+                        Label(model.sendingNow == item.id ? "Sending…" : "Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
                     }
+                    .disabled(model.sendingNow != nil)
                     .buttonStyle(.plain).foregroundColor(.cbMeter)
                     .help("Sends it now; its chat opens only if it has to")
                     Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }
@@ -1050,7 +1051,7 @@ struct MainPanel: View {
             // Why Send now didn't, a moment after it; else what the queue does.
             Text(model.sentNote?.text ?? "Goes out when Claude is free and its chat can take it")
                 .font(.system(size: 10)).foregroundColor(model.sentNote == nil ? .cbSecondary : .cbText)
-                .lineLimit(2)
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 4)
     }
@@ -1927,8 +1928,9 @@ struct ChatsPanel: View {
                     Text(item.text).lineLimit(1)
                     Spacer(minLength: 0)
                     Button { model.sendQueuedNow(item.id) } label: {
-                        Label("Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
+                        Label(model.sendingNow == item.id ? "Sending…" : "Send now", systemImage: "paperplane.fill").labelStyle(.titleAndIcon).font(.system(size: 10, weight: .medium))
                     }
+                    .disabled(model.sendingNow != nil)
                     .buttonStyle(.plain).foregroundColor(.cbMeter)
                     .help("Sends it now; its chat opens only if it has to")
                     Button { model.removeFromQueue(item.id) } label: { Image(systemName: "xmark").font(.system(size: 9)) }

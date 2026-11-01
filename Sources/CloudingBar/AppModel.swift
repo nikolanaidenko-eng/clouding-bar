@@ -154,6 +154,8 @@ final class AppModel: ObservableObject {
         let text: String
     }
     @Published var sentNote: SentNote?
+    /// The queued message Send Now is taking through Desktop's window just now.
+    @Published var sendingNow: UUID?
     /// That session's chat is the window in front (Insert types into it).
     @Published var chatInFront = false
 
