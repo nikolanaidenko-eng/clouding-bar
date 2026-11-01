@@ -75,6 +75,7 @@ install: bundle
 
 # A universal, Developer ID-signed, notarized .dmg (packaging/release.sh
 # says what it needs once). DRY=1 make release: everything but the notary.
+# `make test` runs first: a failed check stops it.
 release:
 	./packaging/release.sh
 
