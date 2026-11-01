@@ -201,6 +201,9 @@ final class SessionStore {
         for s in sessions.values where s.entrypoint == "claude-desktop" {
             let entry = entries[s.id]
             s.desktopLocal = entry?.local
+            // Its page, known from its file: its title may be another's by then
+            // (owner, 01.11: "Привет - Claude Code" → not known).
+            if let local = entry?.local, s.desktopChat != "/epitaxy/" + local { link(s, desktopChat: "/epitaxy/" + local, title: nil) }
             s.remoteSession = entry?.bridge
         }
     }

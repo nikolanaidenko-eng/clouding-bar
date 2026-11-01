@@ -80,7 +80,7 @@ final class DesktopChat {
             let asking = !leaving && self.findPrompt(pid: pid) != nil
             // A chat with no field found: can't be told, so not left; a page
             // that has none (its list of tasks, settings) has no draft to lose.
-            let conversation = shown.chat.hasPrefix("/chat/") || shown.chat.hasPrefix("/cowork/")
+            let conversation = shown.chat.hasPrefix("/chat/") || shown.chat.hasPrefix("/cowork/") || shown.chat.hasPrefix("/epitaxy/")
             let draft = self.composer(in: page).flatMap { Self.words($0) } ?? (conversation ? nil : "")
             guard LocalCowork.mayLeave(asking: asking, draft: draft) else {
                 let why = asking ? "it asks something" : draft == nil ? "its field can't be read" : "words in its field"
@@ -134,6 +134,9 @@ final class DesktopChat {
     private func rows(for title: String?, page wanted: String, pid: pid_t, app: NSRunningApplication, again: Bool = true) -> [AXUIElement] {
         var rows: [LocalCowork.Row] = []
         var elements: [AXUIElement] = []
+        // The tab its list is in: a Claude Code chat's is Code.
+        let code = wanted.hasPrefix("/epitaxy/")
+        let tabName = code ? "code" : "cowork"
         for window in windows(pid: pid) {
             walk(window, into: { _ in true }) { e in
                 let role = Self.string(e, kAXRoleAttribute) ?? ""
@@ -141,7 +144,7 @@ final class DesktopChat {
                 let path = (Self.value(e, "AXURL") as? URL)?.path
                 guard !label.isEmpty || path != nil else { return true }
                 // Only a likely row is asked whether it can be pressed: that's a call each.
-                let likely = path == wanted || (title.map { SessionStore.titleScore(label, $0) == 3 } ?? false) || label.lowercased() == "cowork"
+                let likely = path == wanted || (title.map { SessionStore.titleScore(label, $0) == 3 } ?? false) || label.lowercased() == tabName
                 let pressable = ["AXLink", "AXButton"].contains(role) || (likely && Self.canPress(e))
                 rows.append(LocalCowork.Row(role: role, label: label, path: path, pressable: pressable))
                 elements.append(e)
@@ -177,9 +180,9 @@ final class DesktopChat {
             DebugLog.note("local cowork: its sidebar opened by the menu: \(sidebarSeen == .open ? "open now" : "not seen open"), \(after.isEmpty ? "no row" : "its row found")")
             return after
         }
-        if again, let tab = LocalCowork.coworkTab(rows), shown(pid: pid)?.chat.hasPrefix("/cowork/") != true, !app.isActive,
+        if again, let tab = LocalCowork.coworkTab(rows, named: tabName), shown(pid: pid)?.chat.hasPrefix(code ? "/epitaxy/" : "/cowork/") != true, !app.isActive,
            AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
-            DebugLog.note("local cowork: its Cowork tab pressed, the list looked at again")
+            DebugLog.note("local cowork: its \(tabName) tab pressed, the list looked at again")
             nudge()
             Thread.sleep(forTimeInterval: 0.6)
             nudge()

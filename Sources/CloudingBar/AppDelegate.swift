@@ -2570,7 +2570,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // A Cowork task on this Mac: into its window if that shows it, its
             // place in the queue kept till it's gone. Else keys, as below.
             if Date() < (fieldTaken[id] ?? .distantPast) { continue }
-            if parts.files.isEmpty, session.isLocalCowork, Date() >= (quietHeld[id] ?? .distantPast) {
+            let quiet = parts.files.isEmpty && session.quietDesktop && !straightIn(session)
+            if quiet, Date() >= (quietHeld[id] ?? .distantPast) {
                 sendQuietly(parts.words, into: session) { [weak self] result in
                     guard let self else { return }
                     if case .held(let why) = result { self.sayHeld(why, for: session) }
@@ -2583,7 +2584,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             // Its words wait for that, never keys: the chat Desktop shows is known
             // late (owner's Mac, 01.11: typed 2 s before a Code chat was seen in front).
-            if parts.files.isEmpty, session.isLocalCowork { continue }
+            if quiet { continue }
             if straightIn(session, files: parts.files) {
                 queue.remove(at: i)
                 saveQueue()
@@ -2620,7 +2621,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func sendQueuedNow(_ id: UUID) {
         guard let i = queue.firstIndex(where: { $0.id == id }) else { return }
         // On its way already: the queue is sending this very one.
-        if let chat = queue[i].sessionId, chat.hasPrefix("coworklocal-"), remoteSending.contains(chat) {
+        if let chat = queue[i].sessionId, store.sessions[chat]?.quietDesktop == true, remoteSending.contains(chat) {
             NSSound.beep()
             return
         }
@@ -2630,7 +2631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let session = item.sessionId.flatMap({ store.sessions[$0] }) else { return }
         DebugLog.tap("queue: send now → \(session.displayName)")
         let parts = Inject.split(item.text)
-        if parts.files.isEmpty, session.isLocalCowork {
+        if parts.files.isEmpty, session.quietDesktop, !straightIn(session) {
             let id = session.id
             sendQuietly(parts.words, into: session) { [weak self] result in
                 guard result != .gone, let self else { return }

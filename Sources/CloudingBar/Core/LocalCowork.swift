@@ -125,8 +125,8 @@ enum LocalCowork {
 
     /// Desktop's own tab for Cowork, to press when its window shows a chat
     /// instead (its tasks' rows are in Cowork's list alone).
-    static func coworkTab(_ rows: [Row]) -> Int? {
-        let tabs = rows.indices.filter { rows[$0].pressable && rows[$0].path == nil && rows[$0].label.lowercased() == "cowork" }
+    static func coworkTab(_ rows: [Row], named name: String = "cowork") -> Int? {
+        let tabs = rows.indices.filter { rows[$0].pressable && rows[$0].path == nil && rows[$0].label.lowercased() == name }
         return tabs.count == 1 ? tabs[0] : nil
     }
 

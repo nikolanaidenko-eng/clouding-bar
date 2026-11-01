@@ -2590,6 +2590,15 @@ do {
 
     // Its window in the background shows what was sent there a while longer (owner's Mac, 31.10).
     check(LocalCowork.field(" \n", sent: nil) == .empty, "local cowork: an empty field")
+    do {
+        let code = Session(id: "code-chat-of-the-app")
+        code.entrypoint = "claude-desktop"
+        check(!code.quietDesktop, "desktop code chat: its page not known, not sent by its window")
+        code.desktopChat = "/epitaxy/local_1"
+        check(code.quietDesktop, "desktop code chat: its page known, its words go by its window")
+        let rows = [LocalCowork.Row(role: "AXRadioButton", label: "Code", path: nil, pressable: true), LocalCowork.Row(role: "AXRadioButton", label: "Cowork", path: nil, pressable: true)]
+        check(LocalCowork.coworkTab(rows, named: "code") == 0 && LocalCowork.coworkTab(rows) == 1, "desktop code chat: the tab its list is in")
+    }
     check(LocalCowork.field("my words", sent: nil, unsent: " my\nwords") == .unsent, "local cowork: our own words left in its field by a failed try aren't a draft (owner, 01.11: busy(14))")
     check(LocalCowork.field("my draft", sent: nil, unsent: "my words") == .yours, "local cowork: other words beside our unsent ones are still yours")
     check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(10)) == .late, "local cowork: just sent and still showing: not yours")

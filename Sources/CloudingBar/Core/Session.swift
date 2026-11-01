@@ -187,6 +187,10 @@ final class Session {
     var inDesktopApp: Bool { fromList || entrypoint == "claude-desktop" }
     /// A Cowork task on this Mac (LocalCowork), from Claude Desktop's files.
     var isLocalCowork: Bool { entrypoint == "cowork-local" }
+    /// Its words go into Desktop's window by Accessibility, nothing brought up:
+    /// a Cowork task on this Mac, or a Claude Code chat of the app (owner, 01.11:
+    /// "Привет" in its Code tab opened in front and its words stayed in the queue).
+    var quietDesktop: Bool { isLocalCowork || (entrypoint == "claude-desktop" && desktopChat?.hasPrefix("/epitaxy/") == true) }
     /// Known from a list, claude.ai's or Claude Desktop's files, not from hooks.
     var fromList: Bool { fromClaudeAI || isLocalCowork }
     /// Known from claude.ai's list of the account's chats (a Cowork task or
