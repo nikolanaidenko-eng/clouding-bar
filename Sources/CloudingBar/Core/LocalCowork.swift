@@ -62,17 +62,31 @@ enum LocalCowork {
         var pressable: Bool
     }
 
-    /// The row to press for a task: a link to its very page; with none, the
-    /// only one of exactly its name, pressable itself or by what's around
-    /// it. Another that merely starts the same, or a second of the name, is
-    /// no way to tell. No name known: only its link.
-    static func rowToPress(_ rows: [Row], title: String?, page: String) -> Int? {
-        if let link = rows.firstIndex(where: { $0.path == page }) { return link }
-        guard let title else { return nil }
+    /// The rows to press for a task, in order: links to its very page; then
+    /// those of exactly its name (Desktop 4.4212, measured 01.11: a button
+    /// "<name> Unread response" with the name itself in a text inside it,
+    /// and the one chat listed again under its project and in Recents),
+    /// pressable themselves first, else by what holds them. Pressed one at
+    /// a time; its page says whether that was it (another chat of the same
+    /// name: on to the next). One that merely starts the same isn't it. No
+    /// name known: only its link.
+    static func rowCandidates(_ rows: [Row], title: String?, page: String) -> [Int] {
+        let links = rows.indices.filter { rows[$0].path == page }
+        guard let title else { return links }
         let same = rows.indices.filter { rows[$0].path == nil && SessionStore.titleScore(rows[$0].label, title) == 3 }
-        let pressable = same.filter { rows[$0].pressable }
-        if pressable.count == 1 { return pressable[0] }
-        return pressable.isEmpty && same.count == 1 ? same[0] : nil
+        return links + same.filter { rows[$0].pressable } + same.filter { !rows[$0].pressable }
+    }
+
+    /// The first row to press, if any.
+    static func rowToPress(_ rows: [Row], title: String?, page: String) -> Int? {
+        rowCandidates(rows, title: title, page: page).first
+    }
+
+    /// Desktop's sidebar is open: its Recents, or a project's sessions, are
+    /// in the window (measured 01.11; shut, the task's row is nowhere, and
+    /// the View menu's "Show Sidebar" opens it, from the back too).
+    static func sidebarOpen(_ rows: [Row]) -> Bool {
+        rows.contains { $0.label == "Recents" || $0.label.hasPrefix("Toggle sessions for ") }
     }
 
     /// For debug.log when no row is found: what the window holds, by role,

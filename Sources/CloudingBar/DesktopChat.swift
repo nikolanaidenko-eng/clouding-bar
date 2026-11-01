@@ -79,19 +79,46 @@ final class DesktopChat {
                 DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
                 return done(.stays(asking ? "Another task asks something in Desktop: these wait" : "Words in another task's field in Desktop: these wait"))
             }
-            guard let row = self.row(for: title, page: wanted, pid: pid) else { return done(.noRow) }
-            done(AXUIElementPerformAction(row, kAXPressAction as CFString) == .success ? .went : .noRow)
+            // One at a time, its page telling whether that was it (measured
+            // 01.11: the one chat is listed under its project and in Recents,
+            // and another chat may carry the same name).
+            for (n, row) in self.rows(for: title, page: wanted, pid: pid).prefix(3).enumerated() {
+                guard AXUIElementPerformAction(row, kAXPressAction as CFString) == .success else { continue }
+                if self.pageCame(wanted, pid: pid) { return done(.went) }
+                DebugLog.note("local cowork: row \(n + 1) pressed, its page didn't come (it shows \(self.shown(pid: pid)?.chat.prefix(14) ?? "nothing"))")
+            }
+            done(.noRow)
         }
+    }
+
+    /// A press in its page with the window in the back is taken up at the
+    /// next event only (measured 01.11, 4.4212: a row pressed, the page
+    /// stayed for 20 s; the next press or a scroll, and it went). Scrolling
+    /// the page to itself is that event, and changes nothing. On `queue`.
+    private func nudge() {
+        if let page { _ = AXUIElementPerformAction(page, "AXScrollToVisible" as CFString) }
+    }
+
+    /// After a row is pressed: nudged, then up to 3 s for its page. On `queue`.
+    private func pageCame(_ wanted: String, pid: pid_t) -> Bool {
+        nudge()
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 0.5)
+            if shown(pid: pid)?.chat == wanted { return true }
+        }
+        return false
     }
 
     /// When its rows were last written to debug.log, with nothing found.
     private var rowsSampled = Date.distantPast
 
-    /// The task's row in Desktop's window, to press. Its list isn't links
-    /// alone (4.29: links with their page; 4.4212, owner's Mac, 01.11: 71
-    /// links and buttons, none its row): anything named, pressed itself or
-    /// by what holds it. With Desktop on a chat, its Cowork tab first. On `queue`.
-    private func row(for title: String?, page wanted: String, pid: pid_t, again: Bool = true) -> AXUIElement? {
+    /// The task's rows in Desktop's window, to press in turn. Its list isn't
+    /// links (4.29: links with their page; 4.4212, measured 01.11: a button
+    /// "<name> Unread response" with the name in a text inside): anything
+    /// named, pressed itself or by what holds it. The list is in its sidebar,
+    /// shut by default (01.11): opened by its View menu, from the back too;
+    /// with Desktop on a chat, its Cowork tab first. On `queue`.
+    private func rows(for title: String?, page wanted: String, pid: pid_t, again: Bool = true) -> [AXUIElement] {
         var rows: [LocalCowork.Row] = []
         var elements: [AXUIElement] = []
         for window in windows(pid: pid) {
@@ -108,30 +135,58 @@ final class DesktopChat {
                 return true
             }
         }
-        if let i = LocalCowork.rowToPress(rows, title: title, page: wanted) {
-            if rows[i].pressable { return elements[i] }
+        var found: [AXUIElement] = []
+        for i in LocalCowork.rowCandidates(rows, title: title, page: wanted) {
+            if rows[i].pressable { found.append(elements[i]); continue }
             // Its name alone, in a row that's pressed as a whole.
             var up: AXUIElement? = elements[i]
             for _ in 0..<6 {
                 up = up.flatMap { Self.element($0, kAXParentAttribute) }
                 guard let e = up else { break }
-                if Self.canPress(e) { return e }
+                if Self.canPress(e) {
+                    if !found.contains(where: { CFEqual($0, e) }) { found.append(e) }
+                    break
+                }
             }
+        }
+        if !found.isEmpty { return found }
+        let sidebar = LocalCowork.sidebarOpen(rows)
+        if again, !sidebar, showSidebar(pid: pid) {
+            DebugLog.note("local cowork: its sidebar opened by the menu, the list looked at again")
+            nudge()
+            Thread.sleep(forTimeInterval: 1.2)
+            return self.rows(for: title, page: wanted, pid: pid, again: false)
         }
         if again, let tab = LocalCowork.coworkTab(rows), shown(pid: pid)?.chat.hasPrefix("/cowork/") != true,
            AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
             DebugLog.note("local cowork: its Cowork tab pressed, the list looked at again")
-            Thread.sleep(forTimeInterval: 1.0)
-            return row(for: title, page: wanted, pid: pid, again: false)
+            nudge()
+            Thread.sleep(forTimeInterval: 1.2)
+            return self.rows(for: title, page: wanted, pid: pid, again: false)
         }
         let exact = title.map { t in rows.filter { SessionStore.titleScore($0.label, t) == 3 }.count } ?? 0
         let alike = title.map { t in rows.filter { SessionStore.sameTitle($0.label, t) }.count } ?? 0
-        DebugLog.note("local cowork: no one row for it (\(rows.count) named in its window, \(exact) exact, \(alike) alike, name \(title != nil ? "known" : "unknown"))")
+        DebugLog.note("local cowork: no one row for it (\(rows.count) named in its window, \(exact) exact, \(alike) alike, name \(title != nil ? "known" : "unknown"), sidebar \(sidebar ? "open" : "shut"))")
         if Date().timeIntervalSince(rowsSampled) > 60 {
             rowsSampled = Date()
             DebugLog.note("local cowork: rows seen: " + LocalCowork.rowsSample(rows, title: title))
         }
-        return nil
+        return []
+    }
+
+    /// View › Show Sidebar in Desktop's own menu bar: pressed through
+    /// Accessibility, which works with the app in the back (measured 01.11).
+    /// Its name doesn't change once open, so only pressed with the sidebar shut.
+    private func showSidebar(pid: pid_t) -> Bool {
+        guard let bar = Self.element(AXUIElementCreateApplication(pid), kAXMenuBarAttribute) else { return false }
+        for menu in Self.children(bar) where Self.string(menu, kAXTitleAttribute) == "View" {
+            for sub in Self.children(menu) {
+                for item in Self.children(sub) where Self.string(item, kAXTitleAttribute) == "Show Sidebar" {
+                    return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+                }
+            }
+        }
+        return false
     }
 
     private static func canPress(_ e: AXUIElement) -> Bool {
@@ -178,6 +233,9 @@ final class DesktopChat {
             guard AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success else { return done(.refused) }
             let written = Date()
             self.lastSent = nil
+            // Taken up at the next event with the window in the back (01.11: the
+            // field read empty right after, the words there after the next press).
+            self.nudge()
             func gone(_ tries: Int) {
                 self.queue.asyncAfter(deadline: .now() + 0.5) {
                     if !same(field) { return done(.sent) }
@@ -209,6 +267,7 @@ final class DesktopChat {
                         return done(.refused)
                     }
                     self.lastSent = (text, Date())
+                    self.nudge()
                     gone(19)
                 }
             }
@@ -347,6 +406,7 @@ final class DesktopChat {
             answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, completion: completion)
             return
         }
+        nudge()
         DispatchQueue.main.async { completion(done) }
     }
 
@@ -370,6 +430,7 @@ final class DesktopChat {
                 }
             }
             if sent {
+                self.nudge()
                 // Sent from here: the card may stay a few seconds (it does for
                 // the bar's own answers); not typed again whatever happens.
                 self.waitGone(pid: pid, prompt: prompt, until: Date().addingTimeInterval(6)) { gone in

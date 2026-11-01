@@ -2565,7 +2565,7 @@ do {
     check(LocalCowork.onlyRow(rows(["New task", "New task for the invoices"]), title: "New task for the invoices", page: "/cowork/local_b") == 1
           && LocalCowork.onlyRow(rows(["New task"]), title: "New task for the invoices", page: "/cowork/local_b") == nil,
           "local cowork: a button that only starts the same isn't its row")
-    check(LocalCowork.onlyRow(rows(["Same", "Other", "Same"]), title: "Same", page: "/cowork/local_b") == nil, "local cowork: two rows of its name: neither pressed")
+    check(LocalCowork.onlyRow(rows(["Same", "Other", "Same"]), title: "Same", page: "/cowork/local_b") == 0, "local cowork: two rows of its name: the first, its page tells (01.11: one chat is listed twice)")
     check(LocalCowork.onlyRow([("Same", "/cowork/local_a"), ("Same", "/cowork/local_b")], title: "Same", page: "/cowork/local_b") == 1,
           "local cowork: of two of a name, the link to its page")
     check(LocalCowork.onlyRow([("Same", "/cowork/local_a")], title: "Same", page: "/cowork/local_b") == nil,
@@ -2594,7 +2594,21 @@ do {
     let twice = named + [Row(role: "AXButton", label: "Три вопроса с ответами", path: nil, pressable: true)]
     check(LocalCowork.rowToPress(twice, title: "Три вопроса с ответами", page: page) == 72, "row: of its name twice, the one that can be pressed")
     let both = twice + [Row(role: "AXLink", label: "Три вопроса с ответами", path: nil, pressable: true)]
-    check(LocalCowork.rowToPress(both, title: "Три вопроса с ответами", page: page) == nil, "row: two pressable of its name: neither")
+    check(LocalCowork.rowCandidates(both, title: "Три вопроса с ответами", page: page) == [72, 73, 71],
+          "row: of its name thrice, in turn: pressable first, then by what holds the name; the page tells which was it")
+    // Desktop 4.4212, measured 01.11: a sidebar row is a button "<name> Unread response" with the name in a text inside,
+    // the one chat under its project and in Recents; no links.
+    let measured = [Row(role: "AXButton", label: "Show sidebar", path: nil, pressable: true),
+                    Row(role: "AXButton", label: "Toggle sessions for bots", path: nil, pressable: true),
+                    Row(role: "AXButton", label: "Ролик про кофейню Unread response", path: nil, pressable: true),
+                    Row(role: "AXStaticText", label: "Ролик про кофейню", path: nil, pressable: false),
+                    Row(role: "AXPopUpButton", label: "More options for Ролик про кофейню", path: nil, pressable: true),
+                    Row(role: "AXHeading", label: "Recents", path: nil, pressable: false),
+                    Row(role: "AXButton", label: "Ролик про кофейню", path: nil, pressable: true),
+                    Row(role: "AXStaticText", label: "Ролик про кофейню", path: nil, pressable: false)]
+    check(LocalCowork.rowCandidates(measured, title: "Ролик про кофейню", page: "/cowork/local_x") == [6, 3, 7],
+          "row: as measured: the button of its very name, then the texts inside the buttons; not the button with a status after the name, not More options")
+    check(LocalCowork.sidebarOpen(measured) && !LocalCowork.sidebarOpen(Array(measured.prefix(1))), "row: the sidebar is open when Recents or a project's sessions are there")
     check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "Три вопроса", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == nil,
           "row: a name that only starts the same isn't its row")
     check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "⚡ три вопроса с ответами", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == 71,
