@@ -7,6 +7,11 @@ guard ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"] != nil else {
     print("run through `make test` (it sets CLOUDINGBAR_DIR)")
     exit(2)
 }
+// Nor anything else of yours: whatever asks for the home folder gets one that
+// isn't there (the status of your own chats, Claude Desktop's files, the tap's
+// socket), and a check that needs a home makes its own (withHome).
+let fakeHome = "/Users/me"
+setenv("CFFIXED_USER_HOME", fakeHome, 1)
 // Nothing here reads the real ~/.codex either.
 if ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"] == nil {
     setenv("CLOUDINGBAR_CODEX_HOME", ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]! + "/no-codex", 1)
@@ -14,8 +19,8 @@ if ProcessInfo.processInfo.environment["CLOUDINGBAR_CODEX_HOME"] == nil {
 // `make coverage` runs its own builds of the helpers, which count what they run.
 let helperBinaries = ProcessInfo.processInfo.environment["CLOUDINGBAR_TEST_HELPERS"] ?? "build"
 var failures = 0
-func check(_ ok: Bool, _ what: String, line: Int = #line) {
-    print(ok ? "ok   \(what)" : "FAIL \(what) (line \(line))")
+func check(_ ok: Bool, _ what: String, file: String = #fileID, line: Int = #line) {
+    print(ok ? "ok   \(what)" : "FAIL \(what) (\(file) line \(line))")
     if !ok { failures += 1 }
 }
 
@@ -2659,6 +2664,8 @@ do {
     let hidden = ProblemReport.text(detail: "claude.ai answered HTTP 400 to chats", about: [], log: [])
     check(!hidden.contains("HTTP 400") && ProblemReport.text(detail: "claude.ai answered HTTP 400", about: [], log: [], claudeAI: true).contains("HTTP 400"), "report: a problem about claude.ai only if you ask")
 }
+
+runMoreChecks()
 
 print(failures == 0 ? "\nall passed" : "\n\(failures) failed")
 exit(failures == 0 ? 0 : 1)
