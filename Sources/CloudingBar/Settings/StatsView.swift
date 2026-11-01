@@ -300,17 +300,7 @@ struct StatsTab: View {
     // MARK: Days
 
     /// "Mostly Opus 5.5 · peak hour 14:00 · busiest on Tuesdays"
-    private func subline(_ s: StatsSummary) -> String {
-        let weekday = DateFormatter()
-        weekday.locale = Locale(identifier: "en_US")
-        let parts: [String?] = [
-            s.favoriteModel.map { "Mostly \($0)" },
-            s.peakHour.map { "peak hour \($0):00" },
-            s.busiestWeekday.map { "busiest on \(weekday.weekdaySymbols[$0 - 1])s" },
-        ]
-        let text = parts.compactMap { $0 }.joined(separator: " · ")
-        return text.isEmpty ? "Nothing yet \(rangeName)" : text
-    }
+    private func subline(_ s: StatsSummary) -> String { StatsText.subline(s, rangeName: rangeName) }
 
     private func tiles(_ s: StatsSummary) -> some View {
         HStack(spacing: 10) {
@@ -344,19 +334,7 @@ struct StatsTab: View {
     }
 
     /// The grid's days: [week][weekday], nil after today.
-    private static func gridDays(now: Date = Date()) -> [[Date?]] {
-        var cal = Calendar.current
-        cal.firstWeekday = 2 // Monday
-        let today = cal.startOfDay(for: now)
-        let thisWeek = cal.dateInterval(of: .weekOfYear, for: today)!.start
-        let first = cal.date(byAdding: .weekOfYear, value: -(gridWeeks - 1), to: thisWeek)!
-        return (0..<gridWeeks).map { w in
-            (0..<7).map { d in
-                let day = cal.date(byAdding: .day, value: w * 7 + d, to: first)!
-                return day <= today ? day : nil
-            }
-        }
-    }
+    private static func gridDays(now: Date = Date()) -> [[Date?]] { StatsText.gridDays(weeks: gridWeeks, now: now) }
 
     private func dayGrid(_ history: [String: DayStats]) -> some View {
         let weeks = Self.gridDays()
@@ -539,9 +517,7 @@ struct StatsTab: View {
         }
     }
 
-    static func duration(_ minutes: Int) -> String {
-        minutes >= 60 ? "\(minutes / 60) h" + (minutes % 60 > 0 ? " \(minutes % 60) min" : "") : "\(minutes) min"
-    }
+    static func duration(_ minutes: Int) -> String { StatsText.duration(minutes) }
 
     private func today(_ s: WeekStats) -> String {
         var parts = ["Today: \(s.todaySessions) session\(s.todaySessions == 1 ? "" : "s")"]

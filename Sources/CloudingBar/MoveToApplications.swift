@@ -64,12 +64,10 @@ enum MoveToApplications {
         let fm = FileManager.default
         let shared = URL(fileURLWithPath: "/Applications", isDirectory: true)
         let own = fm.homeDirectoryForCurrentUser.appendingPathComponent("Applications", isDirectory: true)
-        if let existing = [shared, own].first(where: { fm.fileExists(atPath: $0.appendingPathComponent(here.lastPathComponent).path) }) {
-            return existing
-        }
-        if fm.isWritableFile(atPath: shared.path) { return shared }
-        try? fm.createDirectory(at: own, withIntermediateDirectories: true)
-        return own
+        let folder = AppSwap.folder(name: here.lastPathComponent, shared: shared, own: own,
+                                    exists: fm.fileExists(atPath:), writable: fm.isWritableFile(atPath:))
+        if folder == own { try? fm.createDirectory(at: own, withIntermediateDirectories: true) }
+        return folder
     }
 
     private static func version(at app: URL) -> String? {
@@ -94,26 +92,13 @@ enum MoveToApplications {
             throw Failure("The copy didn't come out whole.")
         }
         // The older copy moved aside, not deleted, until the new one is in
-        // its place (as Updater.put does): a failed move puts it back.
+        // its place: a failed move puts it back.
         let old = target.deletingLastPathComponent().appendingPathComponent(".Clouding Bar old.app")
-        let hadOne = fm.fileExists(atPath: target.path)
-        if hadOne {
-            try? fm.removeItem(at: old)
-            do {
-                try fm.moveItem(at: target, to: old)
-            } catch {
-                try? fm.removeItem(at: staged)
-                throw Failure("The older copy in \(target.deletingLastPathComponent().path) can't be replaced.")
-            }
-        }
         do {
-            try fm.moveItem(at: staged, to: target)
-        } catch {
-            if hadOne { try? fm.moveItem(at: old, to: target) }
-            try? fm.removeItem(at: staged)
-            throw error
+            try AppSwap.put(staged, over: target, aside: old)
+        } catch is AppSwap.OldStays {
+            throw Failure("The older copy in \(target.deletingLastPathComponent().path) can't be replaced.")
         }
-        if hadOne { try? fm.removeItem(at: old) }
     }
 
     /// Every other running copy (but the one `keeping`, opened next): asked
@@ -159,10 +144,7 @@ enum MoveToApplications {
         do { try p.run() } catch { return [] }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
-        guard let info = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] else { return [] }
-        return (info["images"] as? [[String: Any]] ?? []).flatMap { image in
-            (image["system-entities"] as? [[String: Any]] ?? []).compactMap { $0["mount-point"] as? String }
-        }
+        return AppSwap.mountPoints(hdiutilInfo: data)
     }
 
     @discardableResult
