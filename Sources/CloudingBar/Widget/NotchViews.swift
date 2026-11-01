@@ -36,15 +36,13 @@ struct NotchView: View {
     @State private var flash: String?
 
     /// The concave curve at each top corner, where it meets the screen edge.
-    static let shoulder: CGFloat = 8
+    static let shoulder = NotchSizes.shoulder
     /// Each side of the camera, at least (in a real notch).
-    static let ear: CGFloat = 92
+    static let ear = NotchSizes.ear
 
     /// The compact island's width: two ears around the camera, or, drawn,
     /// the two sides with a hairline between.
-    static func compactWidth(camera: CGFloat) -> CGFloat {
-        camera > 0 ? 2 * shoulder + 22 + 2 * ear + camera : 2 * shoulder + 22 + 210
-    }
+    static func compactWidth(camera: CGFloat) -> CGFloat { NotchSizes.compactWidth(camera: camera) }
 
     /// Pulled wider than the compact island: the pill's items, around the camera.
     private var wideBudget: CGSize? {
@@ -191,7 +189,7 @@ struct NotchView: View {
     // MARK: Grown
 
     /// Grown wider and taller for what needs you or what you're writing.
-    static func grownWidth(camera: CGFloat) -> CGFloat { max(460, camera + 2 * ear + 80) }
+    static func grownWidth(camera: CGFloat) -> CGFloat { NotchSizes.grownWidth(camera: camera) }
     private var inner: CGFloat { Self.grownWidth(camera: state.notchWidth) - 2 * (Self.shoulder + 16) }
 
     /// The grown island: a header line (under the camera, in a real notch),

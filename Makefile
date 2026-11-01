@@ -93,7 +93,7 @@ icon:
 	iconutil -c icns build/AppIcon.iconset -o packaging/AppIcon.icns
 
 # Checks for the core: session picked by window title, hook output, config.
-TEST_SOURCES = $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift $(wildcard tools/coretest/*.swift)
+TEST_SOURCES = $(wildcard Sources/CloudingBar/Core/*.swift) Sources/CloudingBar/DebugLog.swift Sources/CloudingBar/HotKeys.swift Sources/CloudingBar/KeySender.swift Sources/CloudingBar/Setup.swift Sources/CloudingBar/AppModel.swift Sources/CloudingBar/Widget/FileDrop.swift Sources/CloudingBar/TouchBar/Palette.swift $(wildcard tools/coretest/*.swift)
 test: $(TAP) $(HOOK)
 	mkdir -p build
 	swiftc -target $(TARGET) $(TEST_SOURCES) -o build/coretest

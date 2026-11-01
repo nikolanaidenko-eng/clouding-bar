@@ -5,8 +5,6 @@ import UniformTypeIdentifiers
 // Sizes are in points; colors and timings come from the mockups.
 
 /// `chats`: the open widget's Chats tab, every chat to write to.
-enum WidgetMode { case strip, pill, panel, chats }
-
 final class WidgetState: ObservableObject {
     @Published var mode: WidgetMode = .pill
     /// While an item's right edge is dragged: the widths as they'd be on
@@ -61,20 +59,12 @@ final class WidgetState: ObservableObject {
     /// composer (without activating the app, so your editor stays in front).
     var composerKeyboard: (() -> Void)?
     /// How close to an end a press resizes instead of moving.
-    static let pillEdge: CGFloat = 14
+    static let pillEdge = WidgetRules.pillEdge
     /// How close to the top or bottom of the outline.
-    static let pillRim: CGFloat = 7
+    static let pillRim = WidgetRules.pillRim
 
-    /// Which sides a press on the pill's outline pulls — always one end and
-    /// the top or bottom, so one drag sizes it both ways (free form): `h`
-    /// −1 left, 1 right (the nearer end); `v` 1 top (only from the band
-    /// along the top), else −1 bottom. Nil: not on the outline. `p` in
-    /// window points, y up.
-    static func pillRim(_ p: NSPoint, in size: NSSize) -> (h: Int, v: Int)? {
-        let onRim = p.x <= pillEdge || p.x >= size.width - pillEdge || p.y <= pillRim || p.y >= size.height - pillRim
-        guard onRim else { return nil }
-        return (p.x > size.width / 2 ? 1 : -1, p.y >= size.height - pillRim ? 1 : -1)
-    }
+    /// Which sides a press on the pill's outline pulls (WidgetRules).
+    static func pillRim(_ p: NSPoint, in size: NSSize) -> (h: Int, v: Int)? { WidgetRules.pillRim(p, in: size) }
 }
 
 extension Color {
@@ -535,7 +525,7 @@ struct Metric {
             + 14 + 4 + 3
     }
 
-    static let ids = ["model", "time", "lines", "git", "agents", "cost"]
+    static let ids = PillLayout.metricIDs
 
     /// The metrics that are on and known, in the owner's order.
     static func list(_ model: AppModel) -> [Metric] {
@@ -691,17 +681,7 @@ struct MainPanel: View {
 
     /// Greedy line breaking: indices of items per row within `width`.
     static func rows(_ widths: [CGFloat], within width: CGFloat, gap: CGFloat) -> [[Int]] {
-        var rows: [[Int]] = [[]]
-        var used: CGFloat = 0
-        for (i, w) in widths.enumerated() {
-            if !rows[rows.count - 1].isEmpty && used + gap + w > width {
-                rows.append([])
-                used = 0
-            }
-            used += (rows[rows.count - 1].isEmpty ? 0 : gap) + w
-            rows[rows.count - 1].append(i)
-        }
-        return rows
+        WidgetRules.rows(widths, within: width, gap: gap)
     }
 
     var body: some View {
@@ -2019,10 +1999,7 @@ struct ChatsPanel: View {
     }
 
     /// A chat colour light enough for a dark icon on it (yellow, mint).
-    static func light(_ hex: UInt32) -> Bool {
-        let r = Double((hex >> 16) & 0xFF), g = Double((hex >> 8) & 0xFF), b = Double(hex & 0xFF)
-        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7
-    }
+    static func light(_ hex: UInt32) -> Bool { WidgetRules.light(hex) }
 }
 
 extension View {
