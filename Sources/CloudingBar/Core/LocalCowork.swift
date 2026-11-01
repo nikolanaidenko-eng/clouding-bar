@@ -12,8 +12,99 @@ enum LocalCowork {
         var context: ClaudeAIChats.Context?
         var window: Int?
         var costUSD: Double?
+        /// What it asks you (AskUserQuestion), from its events: shown on the
+        /// bar whichever task Desktop's window has (owner, 01.11).
+        var ask: Ask?
         /// What its events gave, for debug.log: no names, no words.
         var seen = ""
+    }
+
+    /// A question open in a task: its tool call, with no answer in the
+    /// events after it. Answered, a user event names the call (`tool_use_id`).
+    struct Ask: Equatable {
+        let id: String
+        let questions: [QuestionItem]
+    }
+
+    /// The last question with no answer yet, in events oldest first.
+    static func openAsk(in events: [[String: Any]]) -> Ask? {
+        var answered = Set<String>()
+        for event in events.reversed() {
+            let content = ((event["message"] as? [String: Any])?["content"] as? [[String: Any]]) ?? []
+            switch event["type"] as? String {
+            case "user":
+                for part in content where part["type"] as? String == "tool_result" {
+                    if let id = part["tool_use_id"] as? String { answered.insert(id) }
+                }
+            case "assistant":
+                for part in content where part["type"] as? String == "tool_use" && part["name"] as? String == "AskUserQuestion" {
+                    guard let id = part["id"] as? String, !answered.contains(id), let input = part["input"] as? [String: Any] else { continue }
+                    let questions = PendingRequest.questions(in: input)
+                    return questions.isEmpty ? nil : Ask(id: id, questions: questions)
+                }
+            default:
+                break
+            }
+        }
+        return nil
+    }
+
+    // MARK: Its row in Desktop's window
+
+    /// What Desktop's window holds that may be a task's row: anything with
+    /// a name or a link (its list's rows aren't links or buttons on every
+    /// version: 71 of those and none its row, owner's Mac, 01.11).
+    struct Row: Equatable {
+        var role: String
+        var label: String
+        var path: String?
+        /// It can be pressed itself; else the nearest part around it that can.
+        var pressable: Bool
+    }
+
+    /// The row to press for a task: a link to its very page; with none, the
+    /// only one of exactly its name, pressable itself or by what's around
+    /// it. Another that merely starts the same, or a second of the name, is
+    /// no way to tell. No name known: only its link.
+    static func rowToPress(_ rows: [Row], title: String?, page: String) -> Int? {
+        if let link = rows.firstIndex(where: { $0.path == page }) { return link }
+        guard let title else { return nil }
+        let same = rows.indices.filter { rows[$0].path == nil && SessionStore.titleScore(rows[$0].label, title) == 3 }
+        let pressable = same.filter { rows[$0].pressable }
+        if pressable.count == 1 { return pressable[0] }
+        return pressable.isEmpty && same.count == 1 ? same[0] : nil
+    }
+
+    /// For debug.log when no row is found: what the window holds, by role,
+    /// and a few rows with the start of their names, so the next test on
+    /// another Mac says where its list is. Once a minute, not a stream.
+    static func rowsSample(_ rows: [Row], title: String?) -> String {
+        var byRole: [String: Int] = [:]
+        for row in rows { byRole[row.role, default: 0] += 1 }
+        let roles = byRole.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.prefix(8)
+            .map { "\($0.key.dropFirst(2)) \($0.value)" }.joined(separator: ", ")
+        let alike = rows.filter { row in title.map { SessionStore.titleScore(row.label, $0) >= 1 } ?? false }.prefix(4)
+        let named = rows.filter { !$0.label.isEmpty && $0.path != nil }.prefix(4)
+        func one(_ r: Row) -> String {
+            "\(r.role.dropFirst(2)) '\(r.label.prefix(12))'\(r.label.count > 12 ? "…" : "")\(r.path != nil ? " link" : "")\(r.pressable ? "" : " unpressable")"
+        }
+        let shown = (Array(alike) + Array(named)).map(one)
+        return "\(rows.count) with a name or a link: \(roles); alike or linked: [\(shown.joined(separator: "; "))]"
+    }
+
+    /// The question its window shows is the one from its events: the same
+    /// options (the window's words may be its header, not the question).
+    static func sameQuestion(_ shown: [String], _ asked: [String]) -> Bool {
+        func bare(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        let a = Set(shown.map(bare)), b = Set(asked.map(bare))
+        return !b.isEmpty && (a == b || b.isSubset(of: a) && a.count <= b.count + 1)
+    }
+
+    /// Desktop's own tab for Cowork, to press when its window shows a chat
+    /// instead (its tasks' rows are in Cowork's list alone).
+    static func coworkTab(_ rows: [Row]) -> Int? {
+        let tabs = rows.indices.filter { rows[$0].pressable && rows[$0].path == nil && rows[$0].label.lowercased() == "cowork" }
+        return tabs.count == 1 ? tabs[0] : nil
     }
 
     static var folder: URL {
@@ -22,7 +113,7 @@ enum LocalCowork {
     }
 
     /// What the bar can't do for these tasks, and why: Settings and the tour say it.
-    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window, with Accessibility on: it has to be open. If it shows another task, the bar switches it there, unless you're using Desktop, it asks you something or you've started typing there; closed, words wait, and Send Now opens it. A screenshot can't go that way: it brings Desktop to the front. Questions and permissions can be answered from the bar only for the task it shows."
+    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac, so words go through its window, with Accessibility on: it has to be open, in the background is fine. If it shows another task, the bar presses this one's row in its list, unless you're using Desktop, the task shown asks you something or you've started typing there; then the words wait, and so does Send Now — only with Desktop closed does it open it. A screenshot can't go that way: it brings Desktop to the front. A task's questions show on the bar from its own journal, whichever task Desktop shows; the answer goes in the same way, through its row. Permissions can be answered only for the task it shows."
 
     /// No word from a task at work for this long: not at work any more. (It
     /// may be waiting on you: no event says so, Desktop's window does.)
@@ -47,9 +138,7 @@ enum LocalCowork {
     /// only one of exactly its name. Another that merely starts the same, or a
     /// second of the name, is no way to tell.
     static func onlyRow(_ rows: [(label: String, path: String?)], title: String, page: String) -> Int? {
-        if let link = rows.firstIndex(where: { $0.path == page }) { return link }
-        let same = rows.indices.filter { rows[$0].path == nil && SessionStore.titleScore(rows[$0].label, title) == 3 }
-        return same.count == 1 ? same[0] : nil
+        rowToPress(rows.map { Row(role: "AXLink", label: $0.label, path: $0.path, pressable: true) }, title: title, page: page)
     }
 
     /// Its window may be taken off the task it shows: that one asks nothing,
@@ -102,12 +191,17 @@ enum LocalCowork {
             if asks { chat.needsInput = "question" }
         }
         var task = Task(chat: chat)
+        if chat.running, let ask = openAsk(in: Array(after)) {
+            task.ask = ask
+            task.chat.needsInput = "question"
+        }
         task.context = ClaudeAIChats.context(events: Array(events.reversed()))
         if let context = task.context, chat.model == nil { task.chat.model = context.model }
         let usage = (result?["modelUsage"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
         task.window = usage.compactMap { ($0["contextWindow"] as? NSNumber)?.intValue }.max().flatMap { $0 > 0 ? $0 : nil }
         task.costUSD = (result?["total_cost_usd"] as? NSNumber)?.doubleValue
         task.seen = "\(id.dropFirst("local_".count).prefix(8)): events \(events.isEmpty ? "none" : "read"), context \(task.context != nil), window \(task.window != nil), cost \(task.costUSD != nil), answer \(task.context?.answer != nil)"
+            + (task.ask.map { ", asks (\($0.questions.count) question(s))" } ?? "")
         return task
     }
 
@@ -124,8 +218,11 @@ enum LocalCowork {
         /// The end of its events; more if a single line is longer than that.
         private let tailSizes: [UInt64] = [512 * 1024, 8 * 1024 * 1024]
 
-        /// The tasks active in the last half hour.
-        func read(in folder: URL = LocalCowork.folder, now: Date = Date()) -> [Task] {
+        /// The tasks active in the last half hour — and those in `keep` (ids,
+        /// "local_…") however long ago: words or a question wait on them, and
+        /// without their file they'd have no name and no page (owner's Mac,
+        /// 01.11: "Cowork" every 15 s, its row never looked for).
+        func read(in folder: URL = LocalCowork.folder, now: Date = Date(), keep: Set<String> = []) -> [Task] {
             let fm = FileManager.default
             var found: [Task] = []
             var seen = Set<String>()
@@ -136,7 +233,7 @@ enum LocalCowork {
                     where file.lastPathComponent.hasPrefix("local_") && file.pathExtension == "json" {
                         let audit = LocalCowork.auditFile(of: file)
                         let changed = [file, audit].compactMap { Self.modified($0) }.max() ?? .distantPast
-                        guard now.timeIntervalSince(changed) < ClaudeAIChats.recent else { continue }
+                        guard now.timeIntervalSince(changed) < ClaudeAIChats.recent || keep.contains(file.deletingPathExtension().lastPathComponent) else { continue }
                         seen.insert(file.path)
                         // A quiet one is looked at again too: "at work" runs out by the clock.
                         if let known = kept[file.path], known.changed == changed, known.task?.chat.running != true {

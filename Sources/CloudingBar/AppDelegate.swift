@@ -1032,6 +1032,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func answer(_ request: PendingRequest, _ output: [String: Any]) {
         guard requests.contains(where: { $0 === request }) else { return }
+        if request.localKey != nil {
+            answerLocal(request)
+            return
+        }
         if request.desktopKey != nil, let q = request.questions.first {
             // Asked in Claude Desktop's window: the option pressed there, or
             // your own words typed into its field.
@@ -1112,9 +1116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                              sessionId: session, key: prompt.key)
             : PendingRequest(desktopPermission: prompt.text, sessionId: session, key: prompt.key)
         // Read from claude.ai already, or just answered there: the bar has it once (review, 29.10).
-        let remote = requests.filter { $0.remoteKey != nil }
+        // A task on this Mac: its events put the question on the bar already, or
+        // it was answered from there a moment ago and the window still shows it.
+        let remote = requests.filter { $0.remoteKey != nil || $0.localKey != nil }
             + remoteJustAnswered.filter { Date().timeIntervalSince($0.at) < 20 }.map(\.request)
         if remote.contains(where: request.sameAsk) { return }
+        if localAnswered.values.contains(where: { Date().timeIntervalSince($0.at) < 60 && LocalCowork.sameQuestion(prompt.options, $0.options) }) { return }
         requests.append(request)
         DebugLog.note("desktop prompt: \(prompt.kind == .question ? "question" : "permission") on the bar (\(prompt.options.count) options)")
         setNeedsRefresh()
@@ -1428,11 +1435,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let reader = LocalCowork.Reader()
         var reading = false, said: Int?, told: [String: String] = [:]
         let timer = Timer(timeInterval: ClaudeAIChats.Pace.active, repeats: true) { [weak self] _ in
-            guard !reading else { return }
+            guard !reading, let self else { return }
             reading = true
+            // Tasks words or a question wait on: read however long quiet, for
+            // their name and page (owner's Mac, 01.11: a nameless "Cowork").
+            let keep = Set((self.queue.compactMap(\.sessionId) + self.requests.compactMap(\.sessionId))
+                .filter { $0.hasPrefix("coworklocal-") }.map { String($0.dropFirst("coworklocal-".count)) })
             queue.async {
-                let tasks = reader.read()
-                DispatchQueue.main.async {
+                let tasks = reader.read(keep: keep)
+                DispatchQueue.main.async { [weak self] in
                     reading = false
                     if said != tasks.count {
                         said = tasks.count
@@ -1443,11 +1454,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         DebugLog.note("local cowork: " + task.seen)
                     }
                     self?.store.apply(localCowork: tasks)
+                    self?.syncLocalAsks(tasks)
                 }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         localCoworkTimer = timer
+    }
+
+    // MARK: - A local Cowork task's questions, from its events
+
+    /// Questions answered from here lately, by the tool call's id: its
+    /// events show the call open a while after the option was pressed, and
+    /// its window shows it too (its options, to know it there).
+    private var localAnswered: [String: (at: Date, options: [String])] = [:]
+
+    /// A task's open question (AskUserQuestion in its events) on the bar,
+    /// over every window, whichever task Desktop shows (owner, 01.11); gone
+    /// from the bar once its events have the answer, given anywhere.
+    private func syncLocalAsks(_ tasks: [LocalCowork.Task]) {
+        var open = Set<String>()
+        for task in tasks {
+            let id = ClaudeAIChats.sessionId(task.chat)
+            guard let ask = task.ask else { continue }
+            open.insert(ask.id)
+            if requests.contains(where: { $0.localKey == ask.id }) { continue }
+            if let a = localAnswered[ask.id], Date().timeIntervalSince(a.at) < 90 { continue }
+            let request = PendingRequest(localQuestions: ask.questions, sessionId: id, key: ask.id)
+            // Read from its window already (the task it shows), or just answered
+            // there from the bar: once on the bar. The window's reading knows no
+            // task with Desktop in the back: the same question by its options.
+            if requests.contains(where: { $0.desktopKey != nil && ($0.sessionId == id || $0.sameAsk(as: request)) }) { continue }
+            if let a = desktopAnswered, Date().timeIntervalSince(a.at) < 90, let first = ask.questions.first,
+               a.key.hasSuffix("|" + first.options.joined(separator: "\u{1}")) { continue }
+            requests.append(request)
+            DebugLog.note("local cowork: question on the bar from its events (\(ask.questions.first?.options.count ?? 0) options)")
+            setNeedsRefresh()
+        }
+        for r in requests where r.localKey != nil && !open.contains(r.localKey!) {
+            finish(r, "local cowork: its question is answered or gone", reply: false)
+        }
+        localAnswered = localAnswered.filter { Date().timeIntervalSince($0.value.at) < 600 }
+    }
+
+    /// The answers to a question read from a task's events: pressed in
+    /// Desktop's window, which has to show the task — switched to it by its
+    /// row, nothing brought up; Desktop closed, its link opens it (the one
+    /// case, owner 01.11). Not done: asked again on the bar, with why.
+    private func answerLocal(_ request: PendingRequest) {
+        guard let key = request.localKey, let id = request.sessionId, let session = store.sessions[id],
+              let page = session.desktopChat else {
+            requests.removeAll { $0 === request }
+            setNeedsRefresh()
+            return
+        }
+        if typingFor === request { stopTyping() }
+        let answers = request.answersInOrder
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
+            DebugLog.note("local cowork: Desktop is closed: opened by its link for the answer")
+            openSession(id)
+            answerLocalWhenShown(request, answers: answers, page: page, tries: 20)
+            return
+        }
+        if answers.contains(where: { !$0.question.options.contains($0.answer) }) { widget.releaseKey() }
+        remoteSending.insert(id)
+        answerLocalShown(answers, page: page, in: app) { [weak self] done in
+            guard let self else { return }
+            if let done {
+                self.remoteSending.remove(id)
+                self.settleLocal(request, key: key, done: done, why: "pressed in its window")
+                return
+            }
+            // Its window shows another task: over to this one by its row.
+            self.desktopChat.switchTo(title: session.title, from: page, in: app, leaving: true) { [weak self] switched in
+                guard let self else { return }
+                self.remoteSending.remove(id)
+                DebugLog.note("local cowork: its row for the answer \(switched)")
+                guard switched == .went || switched == .shown else {
+                    request.askAgain()
+                    self.sayHeld(switched == .noRow ? "Open the task in Desktop: the answer goes there" : "Desktop is busy with another task: the answer waits", for: session)
+                    self.setNeedsRefresh()
+                    return
+                }
+                self.answerLocalWhenShown(request, answers: answers, page: page, tries: 8)
+            }
+        }
+    }
+
+    /// The page just asked for: its question looked for a few times.
+    private func answerLocalWhenShown(_ request: PendingRequest, answers: [(question: QuestionItem, answer: String)], page: String, tries: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, let key = request.localKey else { return }
+            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first else {
+                if tries > 0 { self.answerLocalWhenShown(request, answers: answers, page: page, tries: tries - 1) }
+                return
+            }
+            self.answerLocalShown(answers, page: page, in: app) { [weak self] done in
+                guard let self else { return }
+                if let done {
+                    self.settleLocal(request, key: key, done: done, why: "pressed in its window once it showed the task")
+                } else if tries > 0 {
+                    self.answerLocalWhenShown(request, answers: answers, page: page, tries: tries - 1)
+                } else {
+                    request.askAgain()
+                    DebugLog.note("local cowork: its question didn't show in its window: asked again on the bar")
+                    self.setNeedsRefresh()
+                }
+            }
+        }
+    }
+
+    /// Each question's answer, in turn, on the page that shows the task.
+    /// nil: the page or the question isn't there.
+    private func answerLocalShown(_ answers: [(question: QuestionItem, answer: String)], page: String, in app: NSRunningApplication,
+                                  completion: @escaping (Bool?) -> Void) {
+        guard let first = answers.first else { return completion(true) }
+        let choices = first.question.options.contains(first.answer) ? [first.answer] : first.answer.components(separatedBy: ", ")
+        let own = choices.allSatisfy(first.question.options.contains) ? nil : first.answer
+        desktopChat.answerShown(page: page, question: first.question, answer: own ?? choices.joined(separator: ", "), in: app) { [weak self] done in
+            guard done == true, answers.count > 1 else { return completion(done) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                self?.answerLocalShown(Array(answers.dropFirst()), page: page, in: app) { next in completion(next ?? false) }
+            }
+        }
+    }
+
+    private func settleLocal(_ request: PendingRequest, key: String, done: Bool, why: String) {
+        if done {
+            localAnswered[key] = (Date(), request.questions.first?.options ?? [])
+            requests.removeAll { $0 === request }
+            DebugLog.note("local cowork: question answered from the bar, \(why)")
+        } else {
+            request.askAgain()
+            NSSound.beep()
+            DebugLog.problem("desktop answer", "local cowork: couldn't press the answer in its window")
+        }
+        setNeedsRefresh()
     }
 
     @objc private func reportProblem() {
@@ -2438,6 +2580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let id = session.id
             sendQuietly(parts.words, into: session) { [weak self] result in
                 guard result != .gone, let self else { return }
+                let open = NSRunningApplication.runningApplications(withBundleIdentifier: Self.desktopBundle).first != nil
                 if case .held(let why) = result {
                     // It can't take them now: back in place, its window left alone.
                     self.queue.insert(item, at: 0)
@@ -2446,7 +2589,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.sayHeld(why, for: session)
                     return
                 }
-                // Its window closed, or nothing else got them there: brought up, typed.
+                if open {
+                    // No row for it in its window, or its field said no: the words
+                    // wait, Desktop where it is — only closed is it opened (owner, 01.11).
+                    self.queue.insert(item, at: 0)
+                    self.saveQueue()
+                    self.setNeedsRefresh()
+                    self.sayHeld("Desktop doesn't show the task and its row wasn't found: open it there, the words go then", for: session)
+                    DebugLog.note("local cowork: send now held, Desktop open but not on the task")
+                    return
+                }
+                // Its window closed: brought up by its link, typed.
                 if !self.chatInFront(id) { self.openSession(id) }
                 self.typeWhenInFront(item, session: id, tries: 16, since: Date())
             }
@@ -2520,14 +2673,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // Its window shows another task, and you aren't in it: over to
                 // this one by its row, nothing brought up. Once; the page is
                 // looked at again before a word is written.
-                if again, self.frontApp?.bundleIdentifier != Self.desktopBundle, let title = session.title,
-                   let session = self.store.sessions[id] {
+                if again, self.frontApp?.bundleIdentifier != Self.desktopBundle, let session = self.store.sessions[id] {
                     // Busy through the wait too: the queue's timer would send it again (review, 31.10).
                     self.remoteSending.insert(id)
-                    self.desktopChat.switchTo(title: title, from: page, in: app) { [weak self] switched in
+                    self.desktopChat.switchTo(title: session.title, from: page, in: app) { [weak self] switched in
                         DebugLog.note("local cowork: its row \(switched)")
                         guard let self else { return }
-                        guard switched == .went else {
+                        guard switched == .went || switched == .shown else {
                             self.remoteSending.remove(id)
                             self.quietHeld[id] = Date().addingTimeInterval(30)
                             if case .stays(let why) = switched { done(.held(why)) } else { done(.notSent) }

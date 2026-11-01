@@ -1,7 +1,7 @@
 import Foundation
 
 /// One question from AskUserQuestion.
-struct QuestionItem {
+struct QuestionItem: Equatable {
     let text: String
     let options: [String]
     let descriptions: [String]
@@ -38,6 +38,9 @@ final class PendingRequest {
     /// Asked in a Cowork task, as claude.ai has it (its session's
     /// pending_action): answered through claude.ai by this request id.
     let remoteKey: String?
+    /// Asked in a Cowork task on this Mac, read from its events (the tool
+    /// call's id): answered in Desktop's window once that shows the task.
+    let localKey: String?
 
     /// When the app stops holding it and lets Claude's own UI take over.
     var holdUntil: Date?
@@ -50,6 +53,7 @@ final class PendingRequest {
         self.responder = responder
         desktopKey = nil
         remoteKey = nil
+        localKey = nil
         sessionId = m.sessionId
         entrypoint = m.entrypoint
         toolName = m.toolName ?? "tool"
@@ -72,6 +76,7 @@ final class PendingRequest {
         responder = Responder(answered: answered)
         desktopKey = nil
         remoteKey = pending.requestId
+        localKey = nil
         self.sessionId = sessionId
         entrypoint = "cowork"
         toolName = pending.tool
@@ -105,6 +110,7 @@ final class PendingRequest {
         responder = Responder()
         desktopKey = key
         remoteKey = nil
+        localKey = nil
         kind = .question
         viaPermission = false
         self.sessionId = sessionId
@@ -120,6 +126,7 @@ final class PendingRequest {
         responder = Responder()
         desktopKey = key
         remoteKey = nil
+        localKey = nil
         kind = .permission
         viaPermission = true
         self.sessionId = sessionId
@@ -130,7 +137,37 @@ final class PendingRequest {
         questions = []
     }
 
+    /// A question of a Cowork task on this Mac, from its events: on the bar
+    /// over every window, whichever task Desktop shows (owner, 01.11).
+    init(localQuestions questions: [QuestionItem], sessionId: String, key: String) {
+        responder = Responder()
+        desktopKey = nil
+        remoteKey = nil
+        localKey = key
+        kind = .question
+        viaPermission = true
+        self.sessionId = sessionId
+        entrypoint = "cowork-local"
+        toolName = "AskUserQuestion"
+        toolInput = [:]
+        suggestions = nil
+        self.questions = questions
+    }
+
     var current: QuestionItem? { index < questions.count ? questions[index] : nil }
+
+    /// The answer given to each question, in their order, once all are in.
+    var answersInOrder: [(question: QuestionItem, answer: String)] {
+        questions.compactMap { q in answers[q.text].map { (q, $0) } }
+    }
+
+    /// Back to its first question: the answers couldn't be pressed where
+    /// they go, so it's asked here again.
+    func askAgain() {
+        index = 0
+        answers = [:]
+        picked = []
+    }
 
     /// This one, read from Claude Desktop's window, is what `remote` (read
     /// from claude.ai) asks: its chat's — or, read with the app in the back
@@ -154,7 +191,7 @@ final class PendingRequest {
     /// nothing; a Cowork task waits on its own. Elsewhere (terminal,
     /// scripts) Claude may wait on the hook.
     var hostAnswersInParallel: Bool {
-        entrypoint == "claude-vscode" || entrypoint == "claude-desktop" || desktopKey != nil || remoteKey != nil
+        entrypoint == "claude-vscode" || entrypoint == "claude-desktop" || desktopKey != nil || remoteKey != nil || localKey != nil
     }
 
     /// Records an answer to the current question. True when all are done.

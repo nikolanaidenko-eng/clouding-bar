@@ -690,11 +690,18 @@ final class WidgetController: NSObject {
         }
     }
 
+    /// What debug.log was last told of the screens: macOS says it a hundred
+    /// times in a second as a monitor wakes (owner's Mac, 01.11: 120 lines/s).
+    private var screensSaid = ""
+
     /// A monitor came or went, or the main screen changed.
     @objc private func screensChanged() {
         layout()
         let list = NSScreen.screens.map { "\($0.frame)\(Self.hasNotch($0) ? " notch" : "")" }.joined(separator: ", ")
-        DebugLog.note("screens: \(list); the widget at \(panel.frame), docked \(docked)")
+        let line = "screens: \(list); the widget at \(panel.frame), docked \(docked)"
+        guard line != screensSaid else { return }
+        screensSaid = line
+        DebugLog.note(line)
     }
 }
 

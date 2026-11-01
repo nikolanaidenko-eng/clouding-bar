@@ -62,35 +62,82 @@ final class DesktopChat {
     /// Its window over to the task called `title`, by its row, for words
     /// waiting for it: not while the task it shows asks you something or has
     /// words in its field. Calls back on the main queue with what came of it.
-    enum Switched: Equatable { case went, stays(String), noRow }
+    /// `shown`: it shows the task already, nothing pressed.
+    enum Switched: Equatable { case went, shown, stays(String), noRow }
 
-    func switchTo(title: String, from wanted: String, in app: NSRunningApplication, completion: @escaping (Switched) -> Void) {
+    /// `leaving`: the task it shows may be left even while it asks something
+    /// (an answer for another task is wanted: the question there stays).
+    func switchTo(title: String?, from wanted: String, in app: NSRunningApplication, leaving: Bool = false,
+                  completion: @escaping (Switched) -> Void) {
         let pid = app.processIdentifier
         func done(_ result: Switched) { DispatchQueue.main.async { completion(result) } }
         queue.async {
-            guard self.shown(pid: pid)?.chat != wanted else { return done(.noRow) }
-            let asking = self.findPrompt(pid: pid) != nil
+            guard self.shown(pid: pid)?.chat != wanted else { return done(.shown) }
+            let asking = !leaving && self.findPrompt(pid: pid) != nil
             let field = self.page.flatMap { self.composer(in: $0) }
             guard LocalCowork.mayLeave(asking: asking, draft: field == nil ? "" : field.flatMap { Self.words($0) }) else {
                 DebugLog.note("local cowork: its window left where it is: \(asking ? "it asks something" : "words in its field")")
                 return done(.stays(asking ? "Another task asks something in Desktop: these wait" : "Words in another task's field in Desktop: these wait"))
             }
-            // Links in its list (measured, Desktop 4.29); a link says where it goes.
-            var rows: [(element: AXUIElement, label: String, path: String?)] = []
-            for window in self.windows(pid: pid) {
-                self.walk(window, into: { _ in true }) { e in
-                    if ["AXLink", "AXButton"].contains(Self.string(e, kAXRoleAttribute) ?? "") {
-                        rows.append((e, Self.label(e) ?? "", (Self.value(e, "AXURL") as? URL)?.path))
-                    }
-                    return true
-                }
-            }
-            guard let i = LocalCowork.onlyRow(rows.map { ($0.label, $0.path) }, title: title, page: wanted) else {
-                DebugLog.note("local cowork: no one row for it (\(rows.count) in its window, \(rows.filter { SessionStore.titleScore($0.label, title) == 3 }.count) exact, \(rows.filter { SessionStore.sameTitle($0.label, title) }.count) alike)")
-                return done(.noRow)
-            }
-            done(AXUIElementPerformAction(rows[i].element, kAXPressAction as CFString) == .success ? .went : .noRow)
+            guard let row = self.row(for: title, page: wanted, pid: pid) else { return done(.noRow) }
+            done(AXUIElementPerformAction(row, kAXPressAction as CFString) == .success ? .went : .noRow)
         }
+    }
+
+    /// When its rows were last written to debug.log, with nothing found.
+    private var rowsSampled = Date.distantPast
+
+    /// The task's row in Desktop's window, to press. Its list isn't links
+    /// alone (4.29: links with their page; 4.4212, owner's Mac, 01.11: 71
+    /// links and buttons, none its row): anything named, pressed itself or
+    /// by what holds it. With Desktop on a chat, its Cowork tab first. On `queue`.
+    private func row(for title: String?, page wanted: String, pid: pid_t, again: Bool = true) -> AXUIElement? {
+        var rows: [LocalCowork.Row] = []
+        var elements: [AXUIElement] = []
+        for window in windows(pid: pid) {
+            walk(window, into: { _ in true }) { e in
+                let role = Self.string(e, kAXRoleAttribute) ?? ""
+                let label = Self.label(e) ?? ""
+                let path = (Self.value(e, "AXURL") as? URL)?.path
+                guard !label.isEmpty || path != nil else { return true }
+                // Only a likely row is asked whether it can be pressed: that's a call each.
+                let likely = path == wanted || (title.map { SessionStore.titleScore(label, $0) == 3 } ?? false) || label.lowercased() == "cowork"
+                let pressable = ["AXLink", "AXButton"].contains(role) || (likely && Self.canPress(e))
+                rows.append(LocalCowork.Row(role: role, label: label, path: path, pressable: pressable))
+                elements.append(e)
+                return true
+            }
+        }
+        if let i = LocalCowork.rowToPress(rows, title: title, page: wanted) {
+            if rows[i].pressable { return elements[i] }
+            // Its name alone, in a row that's pressed as a whole.
+            var up: AXUIElement? = elements[i]
+            for _ in 0..<6 {
+                up = up.flatMap { Self.element($0, kAXParentAttribute) }
+                guard let e = up else { break }
+                if Self.canPress(e) { return e }
+            }
+        }
+        if again, let tab = LocalCowork.coworkTab(rows), shown(pid: pid)?.chat.hasPrefix("/cowork/") != true,
+           AXUIElementPerformAction(elements[tab], kAXPressAction as CFString) == .success {
+            DebugLog.note("local cowork: its Cowork tab pressed, the list looked at again")
+            Thread.sleep(forTimeInterval: 1.0)
+            return row(for: title, page: wanted, pid: pid, again: false)
+        }
+        let exact = title.map { t in rows.filter { SessionStore.titleScore($0.label, t) == 3 }.count } ?? 0
+        let alike = title.map { t in rows.filter { SessionStore.sameTitle($0.label, t) }.count } ?? 0
+        DebugLog.note("local cowork: no one row for it (\(rows.count) named in its window, \(exact) exact, \(alike) alike, name \(title != nil ? "known" : "unknown"))")
+        if Date().timeIntervalSince(rowsSampled) > 60 {
+            rowsSampled = Date()
+            DebugLog.note("local cowork: rows seen: " + LocalCowork.rowsSample(rows, title: title))
+        }
+        return nil
+    }
+
+    private static func canPress(_ e: AXUIElement) -> Bool {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(e, &names) == .success, let actions = names as? [String] else { return false }
+        return actions.contains(kAXPressAction as String)
     }
 
     /// `unsure`: its button was pressed and the words are still in the field.
@@ -255,25 +302,52 @@ final class DesktopChat {
                 DispatchQueue.main.async { completion(false) }
                 return
             }
-            var done = true
-            for choice in choices {
-                // The very label first: "Allow" must not press "Allow always".
-                guard let e = found.controls.first(where: { Self.label($0)?.lowercased() == choice.lowercased() })
-                        ?? found.controls.first(where: { Self.label($0).map { Self.same($0, choice) } ?? false }) else {
-                    done = false
-                    continue
-                }
-                done = AXUIElementPerformAction(e, kAXPressAction as CFString) == .success && done
-            }
-            if prompt.multiSelect, own == nil, let send = found.send {
-                done = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success && done
-            }
-            if let own, let field = found.field {
-                self.answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, completion: completion)
+            self.press(found, choices: choices, own: own, pid: pid, app: app, completion: completion)
+        }
+    }
+
+    /// An answer read from a task's own events, for the question its window
+    /// shows now — the task's page, with that very question (its options) on
+    /// it. Calls back on the main queue: nil when the page or the question
+    /// isn't there (nothing pressed), else whether it was done.
+    func answerShown(page wanted: String, question: QuestionItem, answer: String, in app: NSRunningApplication,
+                     completion: @escaping (Bool?) -> Void) {
+        let pid = app.processIdentifier
+        queue.async {
+            guard self.shown(pid: pid)?.chat == wanted, let found = self.findPrompt(pid: pid), found.prompt.kind == .question,
+                  LocalCowork.sameQuestion(found.prompt.options, question.options) else {
+                DispatchQueue.main.async { completion(nil) }
                 return
             }
-            DispatchQueue.main.async { completion(done) }
+            let parts = answer.components(separatedBy: ", ")
+            let choices = question.options.contains(answer) ? [answer] : parts.allSatisfy(question.options.contains) ? parts : []
+            self.press(found, choices: choices, own: choices.isEmpty ? answer : nil, pid: pid, app: app) { done in completion(done) }
         }
+    }
+
+    /// Presses the options (or each picked one, then the button that sends
+    /// them) or the permission's button; your own words into its field. On `queue`.
+    private func press(_ found: Found, choices: [String], own: String?, pid: pid_t, app: NSRunningApplication,
+                       completion: @escaping (Bool) -> Void) {
+        let prompt = found.prompt
+        var done = true
+        for choice in choices {
+            // The very label first: "Allow" must not press "Allow always".
+            guard let e = found.controls.first(where: { Self.label($0)?.lowercased() == choice.lowercased() })
+                    ?? found.controls.first(where: { Self.label($0).map { Self.same($0, choice) } ?? false }) else {
+                done = false
+                continue
+            }
+            done = AXUIElementPerformAction(e, kAXPressAction as CFString) == .success && done
+        }
+        if prompt.multiSelect, own == nil, let send = found.send {
+            done = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success && done
+        }
+        if let own, let field = found.field {
+            answerOwn(own, field: field, prompt: prompt, pid: pid, app: app, completion: completion)
+            return
+        }
+        DispatchQueue.main.async { completion(done) }
     }
 
     /// Your own words for a question: written into its field and sent from

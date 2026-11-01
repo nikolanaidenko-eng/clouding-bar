@@ -276,6 +276,15 @@ final class SessionStore {
         var changed = false
         for task in tasks {
             guard let session = sessions[ClaudeAIChats.sessionId(task.chat)] else { continue }
+            // Kept for words over a sleep or a restart (keepLocalCowork) and
+            // long quiet: not on the list, but its file names it and says
+            // where its page is (owner's Mac, 01.11: "Cowork", no row looked for).
+            if session.title == nil, let name = task.chat.name {
+                session.title = name
+                changed = true
+            }
+            if session.model == nil, let model = task.chat.model { session.model = model }
+            if session.desktopChat != task.chat.page { link(session, desktopChat: task.chat.page, title: nil) }
             if let window = task.window, session.cardWindow != window {
                 session.cardWindow = window
                 changed = true

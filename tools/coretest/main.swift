@@ -2575,6 +2575,102 @@ do {
           "local cowork: its window stays on a task that asks, has a draft or can't be told")
 }
 
+// MARK: Cowork tasks on this Mac: its row, its question from its events, kept over a sleep (owner's Mac, 01.11)
+
+do {
+    let now = Date()
+    let id = "local_77777777-aaaa-4bbb-8ccc-0000000004d4"
+    let page = "/cowork/" + id
+    typealias Row = LocalCowork.Row
+    // debug (4).log 10:07:13: 71 links and buttons in its window, none its row.
+    let others = (0..<71).map { Row(role: $0 % 2 == 0 ? "AXLink" : "AXButton", label: "Something else \($0)", path: $0 % 2 == 0 ? "/chat/\($0)" : nil, pressable: true) }
+    check(LocalCowork.rowToPress(others, title: "Три вопроса с ответами", page: page) == nil, "row: among 71 links and buttons of other names, none is pressed")
+    let named = others + [Row(role: "AXStaticText", label: "Три вопроса с ответами", path: nil, pressable: false)]
+    check(LocalCowork.rowToPress(named, title: "Три вопроса с ответами", page: page) == 71, "row: its name alone, not pressable itself: that row, pressed by what holds it")
+    let group = others + [Row(role: "AXGroup", label: "Три вопроса с ответами", path: page, pressable: false)]
+    check(LocalCowork.rowToPress(group, title: nil, page: page) == 71 && LocalCowork.rowToPress(group, title: "Other", page: page) == 71,
+          "row: a link to its very page is its row whatever its role or name, even with no name known")
+    check(LocalCowork.rowToPress(named, title: nil, page: page) == nil, "row: no name known and no link: nothing pressed")
+    let twice = named + [Row(role: "AXButton", label: "Три вопроса с ответами", path: nil, pressable: true)]
+    check(LocalCowork.rowToPress(twice, title: "Три вопроса с ответами", page: page) == 72, "row: of its name twice, the one that can be pressed")
+    let both = twice + [Row(role: "AXLink", label: "Три вопроса с ответами", path: nil, pressable: true)]
+    check(LocalCowork.rowToPress(both, title: "Три вопроса с ответами", page: page) == nil, "row: two pressable of its name: neither")
+    check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "Три вопроса", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == nil,
+          "row: a name that only starts the same isn't its row")
+    check(LocalCowork.rowToPress(others + [Row(role: "AXStaticText", label: "⚡ три вопроса с ответами", path: nil, pressable: false)], title: "Три вопроса с ответами", page: page) == 71,
+          "row: its name with an emoji before it and another case is its name")
+    let sample = LocalCowork.rowsSample(named, title: "Три вопроса с ответами")
+    check(sample.hasPrefix("72 with a name or a link: Link 36, Button 35, StaticText 1") && sample.contains("StaticText 'Три вопроса '… unpressable") && !sample.contains("ответами"),
+          "row: debug.log gets the roles, the start of the names alike, not the names")
+    check(LocalCowork.rowsSample([], title: nil).hasPrefix("0 with a name or a link"), "row: nothing in its window is said too")
+    let tabs = others + [Row(role: "AXRadioButton", label: "Cowork", path: nil, pressable: true)]
+    check(LocalCowork.coworkTab(tabs) == 71 && LocalCowork.coworkTab(others) == nil
+          && LocalCowork.coworkTab(others + [Row(role: "AXLink", label: "Cowork", path: "/cowork", pressable: true)]) == nil,
+          "row: Desktop's own Cowork tab, not a link of that name")
+    check(LocalCowork.sameQuestion(["Yes", "No"], ["yes", "no"]) && LocalCowork.sameQuestion(["Yes", "No", "Something else"], ["Yes", "No"])
+          && !LocalCowork.sameQuestion(["Yes", "No"], ["Red", "Blue"]) && !LocalCowork.sameQuestion(["Yes"], []) && !LocalCowork.sameQuestion(["Yes", "No", "Maybe", "Other"], ["Yes", "No"]),
+          "question: the window's is the events' by its options, one more allowed")
+
+    // Its question, from its events (the SDK's stream: the tool call, then a user event with its result).
+    func ask(_ toolId: String, _ questions: [[String: Any]], stamp: String = "2026-11-01T10:07:50Z") -> [String: Any] {
+        ["type": "assistant", "timestamp": stamp, "message": ["id": "m_" + toolId, "model": "claude-opus-5",
+                                                               "content": [["type": "tool_use", "id": toolId, "name": "AskUserQuestion", "input": ["questions": questions]]],
+                                                               "usage": ["input_tokens": 500, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0]]]
+    }
+    func answered(_ toolId: String) -> [String: Any] {
+        ["type": "user", "timestamp": "2026-11-01T10:08:04Z", "message": ["content": [["type": "tool_result", "tool_use_id": toolId, "content": "answered"]]]]
+    }
+    let three: [[String: Any]] = [["question": "Which colour?", "header": "Colour", "multiSelect": false,
+                                   "options": [["label": "Red", "description": "warm"], ["label": "Blue", "description": "cool"], ["label": "Green", "description": ""]]]]
+    let user: [String: Any] = ["type": "user", "timestamp": "2026-11-01T10:07:00Z", "message": ["content": [["type": "text", "text": "go"]]]]
+    let open = LocalCowork.openAsk(in: [user, ask("toolu_1", three)])
+    check(open?.id == "toolu_1" && open?.questions.first?.text == "Which colour?" && open?.questions.first?.options == ["Red", "Blue", "Green"]
+          && open?.questions.first?.descriptions == ["warm", "cool", ""] && open?.questions.first?.multiSelect == false,
+          "question: the last question with no answer, its options and their descriptions")
+    check(LocalCowork.openAsk(in: [user, ask("toolu_1", three), answered("toolu_1")]) == nil, "question: answered (anywhere), it's no longer open")
+    check(LocalCowork.openAsk(in: [user, ask("toolu_1", three), answered("toolu_1"), ask("toolu_2", three)])?.id == "toolu_2", "question: a second one after the first's answer")
+    check(LocalCowork.openAsk(in: [user, ask("toolu_3", [])]) == nil && LocalCowork.openAsk(in: [["type": "assistant", "message": ["content": [["type": "tool_use", "name": "AskUserQuestion"]]]]]) == nil,
+          "question: no questions in it, or no id and input: nothing to show")
+    let file: [String: Any] = ["sessionId": id, "initialMessage": "Три вопроса с ответами", "model": "claude-opus-5", "isArchived": false,
+                               "lastActivityAt": (now.timeIntervalSince1970 - 60) * 1000]
+    let result: [String: Any] = ["type": "result", "timestamp": "2026-11-01T10:06:00Z", "total_cost_usd": 0.1]
+    let asking = LocalCowork.task(file: file, events: [result, user, ask("toolu_1", three)], changed: now, now: now)
+    check(asking?.ask?.id == "toolu_1" && asking?.chat.needsInput == "question" && asking?.chat.running == true && asking?.seen.hasSuffix(", asks (1 question(s))") == true,
+          "question: a task's open question, whichever task the window shows; debug.log says it asks")
+    let doneAsking = LocalCowork.task(file: file, events: [result, user, ask("toolu_1", three), answered("toolu_1")], changed: now, now: now)
+    check(doneAsking?.ask == nil && doneAsking?.chat.needsInput == nil, "question: answered, the task asks nothing")
+    let request = PendingRequest(localQuestions: open!.questions, sessionId: "coworklocal-" + id, key: "toolu_1")
+    check(request.kind == .question && request.localKey == "toolu_1" && request.hostAnswersInParallel && request.current?.options.count == 3,
+          "question: on the bar as a question of its task")
+    check(request.answerCurrent("Blue") && request.answersInOrder.map(\.answer) == ["Blue"] && request.current == nil, "question: answered on the bar, the answer in order")
+    request.askAgain()
+    check(request.current?.text == "Which colour?" && request.answersInOrder.isEmpty, "question: not pressed where it goes, asked again")
+
+    // Kept for words over a sleep: read however long quiet, so it has its name and page.
+    let base = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CLOUDINGBAR_DIR"]!).appendingPathComponent("local-sessions-kept")
+    let org = base.appendingPathComponent("account/org")
+    try? FileManager.default.createDirectory(at: org.appendingPathComponent("77777777"), withIntermediateDirectories: true)
+    try? JSONSerialization.data(withJSONObject: file).write(to: org.appendingPathComponent(id + ".json"))
+    let lines = [result].compactMap { try? JSONSerialization.data(withJSONObject: $0) }
+    try? Data(lines.joined(separator: Data("\n".utf8))).write(to: org.appendingPathComponent("77777777/audit.jsonl"))
+    let later = now.addingTimeInterval(ClaudeAIChats.recent + 3600)
+    let reader = LocalCowork.Reader()
+    check(reader.read(in: base, now: later).isEmpty && reader.read(in: base, now: later, keep: ["local_other"]).isEmpty,
+          "kept: an hour quiet it's off the list, and another id kept doesn't bring it")
+    let kept = reader.read(in: base, now: later, keep: [id])
+    check(kept.count == 1 && kept.first?.chat.name == "Три вопроса с ответами" && kept.first?.chat.running == false, "kept: words wait on it: read, with its name, not at work")
+    let woken = SessionStore()
+    woken.keepLocalCowork("coworklocal-" + id, now: later)
+    check(woken.sessions["coworklocal-" + id]?.displayName == "Cowork" && woken.sessions["coworklocal-" + id]?.title == nil,
+          "kept: brought back by its words alone, it has no name yet (the log's \"Cowork\")")
+    woken.apply(localCowork: kept, now: later)
+    let session = woken.sessions["coworklocal-" + id]
+    check(session?.title == "Три вопроса с ответами" && session?.desktopChat == page && session?.model == "claude-opus-5", "kept: its file names it and says where its page is")
+    check(session?.isAlive(now: later) == true && session?.activity == .sleep, "kept: on the list, it isn't put to sleep every 5 s (the flicker: none, Cowork, none…)")
+    woken.apply(localCowork: [], now: later)
+    check(session?.isAlive(now: later) == false, "kept: its words gone and its file off the list, it's gone")
+}
+
 // MARK: Problem reports (public once sent: nothing of yours in them)
 
 do {
