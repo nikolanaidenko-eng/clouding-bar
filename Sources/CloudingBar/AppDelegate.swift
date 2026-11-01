@@ -1525,7 +1525,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.settleLocal(request, key: key, done: done, why: "pressed in its window")
                 return
             }
-            // Its window shows another task: over to this one by its row.
+            // Its window shows another task: over to this one by its row — unless
+            // you're in Desktop yourself: then it's a step away, not switched under you.
+            if self.frontApp?.bundleIdentifier == Self.desktopBundle {
+                self.remoteSending.remove(id)
+                request.askAgain()
+                self.sayHeld("Open the task in Desktop: the answer goes there", for: session)
+                DebugLog.note("local cowork: the answer waits, Desktop in front on another task")
+                self.setNeedsRefresh()
+                return
+            }
             self.desktopChat.switchTo(title: session.title, from: page, in: app, leaving: true) { [weak self] switched in
                 guard let self else { return }
                 self.remoteSending.remove(id)
