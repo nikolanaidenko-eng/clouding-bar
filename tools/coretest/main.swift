@@ -2599,6 +2599,14 @@ do {
         let rows = [LocalCowork.Row(role: "AXRadioButton", label: "Code", path: nil, pressable: true), LocalCowork.Row(role: "AXRadioButton", label: "Cowork", path: nil, pressable: true)]
         check(LocalCowork.coworkTab(rows, named: "code") == 0 && LocalCowork.coworkTab(rows) == 1, "desktop code chat: the tab its list is in")
     }
+    do {
+        // 440 pt panel, Cloud, its tabs, gear and chevron: 166 left (owner, 01.11).
+        let name = WidgetRules.tabNameMax(width: 166, more: true, waiting: false, nameMax: 140)
+        check(33 + name + 42 <= 166, "panel: a long name and +7 stay inside the panel")
+        check(33 + 13 + WidgetRules.tabNameMax(width: 166, more: true, waiting: true, nameMax: 140) + 42 <= 166, "panel: with its pulse too")
+        check(WidgetRules.tabNameMax(width: 400, more: false, waiting: false, nameMax: 140) == 140, "panel: room to spare, its usual longest")
+        check(WidgetRules.tabNameMax(width: 10, more: true, waiting: true, nameMax: 140) == 40, "panel: never down to nothing")
+    }
     check(LocalCowork.field("my words", sent: nil, unsent: " my\nwords") == .unsent, "local cowork: our own words left in its field by a failed try aren't a draft (owner, 01.11: busy(14))")
     check(LocalCowork.field("my draft", sent: nil, unsent: "my words") == .yours, "local cowork: other words beside our unsent ones are still yours")
     check(LocalCowork.field("sent words", sent: ("sent words", now), now: now.addingTimeInterval(10)) == .late, "local cowork: just sent and still showing: not yours")

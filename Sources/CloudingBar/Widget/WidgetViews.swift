@@ -845,7 +845,7 @@ struct MainPanel: View {
             if model.hasSession { PanelTabs(state: state) }
             VStack(alignment: .leading, spacing: several ? 6 : 1) {
                 if several {
-                    ChatTabs(model: model, state: state, width: inner - character - tabs - 2 * 30 - 18)
+                    ChatTabs(model: model, state: state, width: inner - character - tabs - 2 * 30 - 30)
                 } else {
                     // Where it runs and what it's doing: on hover (owner, 26.10).
                     Text(model.hasSession ? model.chatName ?? model.statusTitle : "No chat open")
@@ -877,6 +877,7 @@ struct MainPanel: View {
                 .buttonStyle(IconButtonStyle(size: 30))
                 .accessibilityLabel("Collapse")
         }
+        .frame(width: inner, alignment: .leading)
         .disabled(preview) // Settings' copy: the chats aren't opened from it, not even by keyboard
     }
 
@@ -1207,9 +1208,15 @@ struct ChatTabs: View {
 
     static let nameMax: CGFloat = 140
 
-    static func tabWidth(_ r: AppModel.SessionRow) -> CGFloat {
+    /// The longest a name may be here: a long one with "+7" beside it ran past
+    /// the panel, and took everything in it along (owner, 01.11).
+    private func nameLimit(_ r: AppModel.SessionRow) -> CGFloat {
+        WidgetRules.tabNameMax(width: width, more: model.sessions.count > 1, waiting: r.waiting, nameMax: Self.nameMax)
+    }
+
+    private func tabWidth(_ r: AppModel.SessionRow) -> CGFloat {
         let weight: NSFont.Weight = r.current ? .semibold : .regular
-        let name: CGFloat = min(nameMax, MainPanel.textWidth(r.name, 12, weight: weight) + 1)
+        let name: CGFloat = min(nameLimit(r), MainPanel.textWidth(r.name, 12, weight: weight) + 1)
         let pulse: CGFloat = r.waiting ? 13 : 0
         return 23 + name + pulse + 10
     }
@@ -1222,7 +1229,7 @@ struct ChatTabs: View {
         var used: CGFloat = 0
         let moreWidth: CGFloat = 36
         for r in keep + all.filter({ !$0.current && !$0.waiting }) {
-            let w = Self.tabWidth(r) + (shown.isEmpty ? 0 : 6)
+            let w = tabWidth(r) + (shown.isEmpty ? 0 : 6)
             let left = all.count - shown.count - 1
             guard used + w + (left > 0 ? 6 + moreWidth : 0) <= width || shown.isEmpty else { continue }
             shown.append(r)
@@ -1255,7 +1262,7 @@ struct ChatTabs: View {
         Button { if !r.current { model.focusSession(r.id) } } label: {
             HStack(spacing: 6) {
                 ChatDot(color: r.color)
-                MarqueeText(text: r.name, size: 12, weight: r.current ? .semibold : .regular, maxWidth: Self.nameMax, slides: false)
+                MarqueeText(text: r.name, size: 12, weight: r.current ? .semibold : .regular, maxWidth: nameLimit(r), slides: false)
                 if r.waiting { PulseDot(size: 7, still: model.config.doNotDisturb) }
             }
             .padding(.horizontal, 10)

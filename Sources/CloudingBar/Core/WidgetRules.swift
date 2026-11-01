@@ -7,6 +7,12 @@ enum WidgetMode { case strip, pill, panel, chats }
 /// can check them): where a press pulls, what a pull comes to, who has the
 /// keyboard, the notch's sizes.
 enum WidgetRules {
+    /// A chat's name in the panel's tabs: what's left of `width` by its dot and
+    /// padding (33), its pulse (13), and "+N" beside it (6 + 36).
+    static func tabNameMax(width: CGFloat, more: Bool, waiting: Bool, nameMax: CGFloat) -> CGFloat {
+        max(40, min(nameMax, width - 33 - (waiting ? 13 : 0) - (more ? 42 : 0)))
+    }
+
     /// How close to an end a press resizes instead of moving.
     static let pillEdge: CGFloat = 14
     /// How close to the top or bottom of the outline.
