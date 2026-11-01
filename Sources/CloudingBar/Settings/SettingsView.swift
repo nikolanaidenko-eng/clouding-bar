@@ -33,6 +33,9 @@ struct SettingsView: View {
         _tab = State(initialValue: Self.resolve(tab))
     }
 
+    /// Where a tour stop is scrolled to: at the top, a little under its edge.
+    private static let tourSpot = UnitPoint(x: 0.5, y: 0.03)
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             VStack(spacing: 0) {
@@ -49,11 +52,12 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.leading, SettingsCloud.gutter).padding(.trailing, 18).padding(.vertical, 18)
+                    .padding(.bottom, model.tourStep == nil ? 0 : SettingsTour.scrollRoom)
                     .transition(.opacity.combined(with: .offset(y: 6)))
                 }
                 .onAppear {
                     cloud.reveal = { id in
-                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo("tour." + id, anchor: .center) }
+                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo("tour." + id, anchor: Self.tourSpot) }
                     }
                 }
                 // The tour's stop in view, once its tab is drawn.
@@ -62,7 +66,7 @@ struct SettingsView: View {
                     if let group = SettingsTour.stops[step].group { SettingsFolds.shared.show(group) }
                     let id = "tour." + SettingsTour.stops[step].anchor
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: .center) }
+                        withAnimation(.easeInOut(duration: 0.4)) { scroller.scrollTo(id, anchor: Self.tourSpot) }
                     }
                 }
                 }

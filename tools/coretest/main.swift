@@ -2605,6 +2605,9 @@ do {
     }
     do {
         // 440 pt panel, Cloud, its tabs, gear and chevron: 166 left (owner, 01.11).
+        check(WidgetRules.tourCardY(height: 196, window: 560) + 196 == 548 && WidgetRules.tourCardY(height: 260, window: 560) + 260 == 548,
+              "tour card: its foot stays put, whatever its height")
+        check(WidgetRules.tourCardY(height: 500, window: 420) == 8, "tour card: in a short window it stays on it")
         let name = WidgetRules.tabNameMax(width: 166, more: true, waiting: false, nameMax: 140)
         check(33 + name + 42 <= 166, "panel: a long name and +7 stay inside the panel")
         check(33 + 13 + WidgetRules.tabNameMax(width: 166, more: true, waiting: true, nameMax: 140) + 42 <= 166, "panel: with its pulse too")

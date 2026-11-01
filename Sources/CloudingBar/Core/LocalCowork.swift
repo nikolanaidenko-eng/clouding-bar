@@ -178,7 +178,7 @@ enum LocalCowork {
     }
 
     /// What the bar can't do for these tasks, and why: Settings and the tour say it.
-    static let limits = "Claude Desktop has no way in from outside for tasks on this Mac or chats in its Code tab, so words go through its window, with Accessibility on: it has to be open, in the background is fine. If it shows another task, the bar presses this one's row in its list, unless you're using Desktop, the task shown asks you something or you've started typing there; then the words wait, and so does Send Now — only with Desktop closed does it open it. A screenshot can't go that way: it brings Desktop to the front. A task's questions show on the bar from its own journal, whichever task Desktop shows; the answer goes in the same way, through its row. Permissions can be answered only for the task it shows."
+    static let limits = "Shows without signing in. Your messages go through Claude Desktop's window: it has to be open, and can stay behind the others. They wait while you're using Desktop or another task there asks something or has text in its field. A screenshot brings it to the front. Stats doesn't count these tasks yet."
 
     /// No word from a task at work for this long: not at work any more. (It
     /// may be waiting on you: no event says so, Desktop's window does.)

@@ -9,6 +9,11 @@ enum WidgetMode { case strip, pill, panel, chats }
 enum WidgetRules {
     /// A chat's name in the panel's tabs: what's left of `width` by its dot and
     /// padding (33), its pulse (13), and "+N" beside it (6 + 36).
+    /// The tour card's place, the same at every stop: at the window's foot, Next
+    /// under your hand (owner, 01.11: over or under what it lit, it jumped up and
+    /// down from stop to stop). What it lights is scrolled to the top, clear of it.
+    static func tourCardY(height: CGFloat, window: CGFloat) -> CGFloat { max(8, window - height - 12) }
+
     static func tabNameMax(width: CGFloat, more: Bool, waiting: Bool, nameMax: CGFloat) -> CGFloat {
         max(40, min(nameMax, width - 33 - (waiting ? 13 : 0) - (more ? 42 : 0)))
     }

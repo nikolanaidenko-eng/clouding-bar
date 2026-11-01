@@ -42,8 +42,17 @@ enum SettingsTour {
     /// The blocks for this Mac, before the first one shows.
     static func begin() { stops = lay(all) }
 
+    /// The tabs this tour goes through.
+    static var sections: Int { (stops.last?.section ?? 0) + 1 }
+
+    /// Its text at least this tall, so most stops don't change the card's size.
+    static let cardTextHeight: CGFloat = 140
+    /// Room under a tab's last setting to scroll it clear of the card.
+    static let scrollRoom: CGFloat = 260
+
     private static func lay(_ sections: [Section]) -> [TourStop] {
-        sections.enumerated().flatMap { index, section -> [TourStop] in
+        // No blocks left for a tab (no Touch Bar on this Mac): no stop, no dot for it.
+        sections.filter { $0.blocks.contains { $0.only?() ?? true } }.enumerated().flatMap { index, section -> [TourStop] in
             let blocks = section.blocks.filter { $0.only?() ?? true }
             return blocks.enumerated().map { i, block in
                 var s = block
@@ -66,7 +75,7 @@ enum SettingsTour {
     }
 
     private static func touchBar(_ anchor: String, _ title: String, _ text: String, fallback: String? = "touchbar.preview") -> TourStop {
-        TourStop(tab: "touchbar", anchor: anchor, title: title, text: text, fallback: fallback)
+        TourStop(tab: "touchbar", anchor: anchor, title: title, text: text, fallback: fallback, only: { TouchBarDetector.hasTouchBar })
     }
 
     private static func buttons(_ anchor: String, _ title: String, _ text: String) -> TourStop {
@@ -82,8 +91,8 @@ enum SettingsTour {
             general("hooks", "Claude Code", "Connect once, for Terminal and VS Code. Chats, permission requests and the 5-hour limit then come here. Your settings are backed up first.", group: "Claude"),
             general("vscode", "VS Code", "Set Up adds a small wrapper: the limit comes, and the widget's messages go straight into the chat. For chats opened after it.", group: "Claude", only: { Setup.hasVSCode }),
             general("claudeai", "claude.ai", "Optional. Sign In for Cowork tasks on claude.ai, your recent chats and the whole account's limit. It goes against Anthropic's terms for third-party apps: at your own risk.", group: "Claude"),
-            general("general.localcowork", "Cowork on this Mac", "These tasks show by themselves. Claude Desktop has no way in from outside, so words go through its window, which has to be open, with Accessibility on — in the background is fine: the bar presses the task's row in its list when you aren't using it. Closed, they wait. A screenshot brings Desktop to the front. Questions come to the bar from the task's own journal, whichever task the window shows.", group: "Claude"),
-            general("general.accessibility", "Accessibility", "Lets the bar's buttons type into your chats, and find Claude Desktop's questions. Open Settings takes you to the switch.", group: "Claude"),
+            general("general.localcowork", "Cowork on this Mac", "These tasks show by themselves. Your messages to them, and to chats in Desktop's Code tab, go through Claude Desktop's window: it has to be open, but can stay behind the others. A screenshot brings it to the front.", group: "Claude"),
+            general("general.accessibility", "Accessibility", "Lets the bar write to your chats and see Claude Desktop's questions. Open Settings takes you to the switch; the app starts again once you allow it.", group: "Claude"),
             general("codex", "Codex", "Its chats, limits and context show by themselves. Connect adds hooks for permission requests: Codex asks you to trust them once.", group: "Codex", only: { Setup.hasCodex }),
             general("general.context", "Context", "The bar turns red and offers /compact when a chat fills up, at the share you pick.", group: "Context"),
             general("general.app", "Login and quiet", "Open at login. Do not disturb keeps requests waiting quietly: nothing pops open.", group: "App"),
@@ -97,9 +106,9 @@ enum SettingsTour {
             widget("widget.notch", "In the notch", "Around the camera, or a drawn notch on a Mac without one. Drag it out to move it, back in to dock.", fallback: "widget.show"),
             widget("widget.position", "Place it", "Drag the pill anywhere, on any screen: it stays, and goes back when that monitor returns. Reset brings it home.", fallback: "widget.show"),
             widget("widget.more", "Under More…", "Follow the chat at work, tell when another is done, the start of the answer, and whether the pill stays visible.", fallback: "widget.show"),
-            widget("widget.shows", "What it shows", "Numbers, details and controls: what's on is on the pill. Chat sends to the chat the widget shows, once Claude is free.", fallback: "widget.show"),
+            widget("widget.shows", "What it shows", "Numbers, details and controls: what's switched on shows on the pill.", fallback: "widget.show"),
         ]),
-        Section(tab: "touchbar", name: "Touch Bar", summary: "Only on a Mac with a Touch Bar. Without one, nothing here is needed.", blocks: [
+        Section(tab: "touchbar", name: "Touch Bar", summary: "What the Touch Bar shows, and when.", blocks: [
             touchBar("touchbar.preview", "Arrange it", "Drag a block to move it, pull its edge to size it.", fallback: nil),
             touchBar("touchbar.chips", "What's on it", "These chips switch blocks on and off, for the whole bar and for the short one."),
             touchBar("touchbar.more", "In every app", "Under More…: not only while Claude's apps are in front. Outside them, the short bar beside Apple's keys, or the whole bar.", fallback: "touchbar.chips"),
@@ -114,7 +123,7 @@ enum SettingsTour {
         Section(tab: "stats", name: "Stats", summary: "Where your limit and time went, read from your sessions on this Mac.", blocks: [
             TourStop(tab: "stats", anchor: "stats.limits", title: "Limits", text: "The 5-hour and weekly limits, as Claude Code reports them, and how they moved."),
             stats("stats.map", "Your Claude", "Sessions, active time, tokens and your streak, day by day. Both, Code or Cowork; week, month or all."),
-            stats("stats.time", "Where the time went", "The projects Claude worked on. More has the week hour by hour, the models and the tools. This tour is here again behind ?."),
+            stats("stats.time", "Where the time went", "The projects Claude worked on. More has the week hour by hour, the models and the tools. This tour is always behind the ? at the top."),
         ]),
     ]
 }
@@ -191,12 +200,8 @@ struct TourOverlay: View {
 
     var body: some View {
         let s = spot.insetBy(dx: -4, dy: -4)
-        let below = s.maxY + 14 + cardHeight <= size.height - 8
-        let above = s.minY - 14 - cardHeight >= 8
-        let x = min(max(16, s.midX - Self.cardWidth / 2), size.width - Self.cardWidth - 16)
-        // Under or over what it lights up; with no room for either (the
-        // window can be short), at the window's foot.
-        let y = below ? s.maxY + 14 : above ? s.minY - 14 - cardHeight : max(8, size.height - cardHeight - 8)
+        let x = (size.width - Self.cardWidth) / 2
+        let y = WidgetRules.tourCardY(height: cardHeight, window: size.height)
         ZStack(alignment: .topLeading) {
             // The dimming, a hole where the spotlight is. A click in the hole
             // goes through (to try the switch); elsewhere it stops.
@@ -244,13 +249,13 @@ struct TourOverlay: View {
                 Text(stop.text).font(.system(size: 12)).foregroundColor(Color(hex: 0x48484A)).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, minHeight: SettingsTour.cardTextHeight, alignment: .topLeading)
             .id(step)
-            .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)).combined(with: .scale(scale: 0.97)),
-                                    removal: .opacity))
+            .transition(.opacity)
             HStack(spacing: 6) {
                 // The five tabs; the one you're in fills as its blocks go by.
                 HStack(spacing: 3) {
-                    ForEach(0..<SettingsTour.all.count, id: \.self) { i in
+                    ForEach(0..<SettingsTour.sections, id: \.self) { i in
                         let wide: CGFloat = i == stop.section ? 26 : 8
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color(hex: 0xD1D1D6))
@@ -290,7 +295,8 @@ struct TourOverlay: View {
         guard let rect, rect != .zero else { return }
         // Below or above what shows (Stats grows as it loads): scroll to it, once.
         let inHeader = ["cloud", "tabs", "help"].contains(stop.anchor)
-        if !inHeader, revealed != step, rect.maxY > size.height - 10 || rect.minY < 60 {
+        let cardTop = WidgetRules.tourCardY(height: cardHeight, window: size.height)
+        if !inHeader, revealed != step, rect.maxY > cardTop || rect.minY < 60 {
             revealed = step
             cloud.reveal?(stop.anchor)
         }
