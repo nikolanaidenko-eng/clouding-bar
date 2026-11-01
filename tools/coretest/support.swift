@@ -12,6 +12,10 @@ func runMoreChecks() {
     runStoreChecks()
     runSocketChecks()
     runHelperChecks()
+    runFileChecks()
+    runStatsChecks()
+    runSetupChecks()
+    runTextChecks()
 }
 
 /// A real bug these checks found, not fixed here (only the checks changed):
